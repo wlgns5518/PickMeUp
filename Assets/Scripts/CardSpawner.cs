@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class CardSpawner : MonoBehaviour
@@ -14,26 +16,41 @@ public class CardSpawner : MonoBehaviour
 
     private void Start()
     {
-        for (int i = 0; i < spawnCountOnStart; i++) Spawn();
+        StartCoroutine(SpawnBatch(spawnCountOnStart));
     }
 
-    public CharacterCard Spawn()
+    // 이름을 한 번에 N개 받아 카드별로 주입
+    public IEnumerator SpawnBatch(int count)
     {
-        if (cardPrefab == null)
+        if (cardPrefab == null || generator == null)
         {
-            Debug.LogError("[CardSpawner] cardPrefab이 비어 있습니다.");
-            return null;
+            Debug.LogError("[CardSpawner] cardPrefab 또는 generator가 비어있습니다.");
+            yield break;
         }
-        if (generator == null)
+        if (count <= 0) yield break;
+
+        List<string> names = null;
+        yield return generator.GenerateNames(count, list => names = list);
+
+        for (int i = 0; i < count; i++)
         {
-            Debug.LogError("[CardSpawner] generator가 비어 있습니다.");
+            string presetName = (names != null && i < names.Count) ? names[i] : null;
+            Spawn(presetName);
+        }
+    }
+
+    public CharacterCard Spawn(string presetName = null)
+    {
+        if (cardPrefab == null || generator == null)
+        {
+            Debug.LogError("[CardSpawner] cardPrefab 또는 generator가 비어있습니다.");
             return null;
         }
 
         Transform parent = cardParent != null ? cardParent : transform;
         CharacterCard card = Instantiate(cardPrefab, parent);
         card.ResetCard();
-        StartCoroutine(generator.GenerateCharacter(card.Apply));
+        StartCoroutine(generator.GenerateCharacter(card.Apply, presetName));
         return card;
     }
 }

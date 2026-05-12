@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dc9fd870c5559754d8d253c21c558de4, type: 3}
+  m_Name: "\uC2E4\uBC18\uB4DC\uB9AC\uC5D8"
+  m_EditorClassIdentifier: 
+  characterName: "\uC2E4\uBC18\uB4DC\uB9AC\uC5D8"
+  description: "\uB099\uCC9C\uC801\uC778 \uC778\uAC04 \uB9C8\uBC95\uC0AC"
+  portrait: {fileID: 21300000, guid: c0233eebcc1a5fa40a3eeaca53634004, type: 3}
+  portraitAssetPath: "Assets/CharacterImage/\uC2E4\uBC18\uB4DC\uB9AC\uC5D8_20260512_185356_5203.png"
+  starCount: 1
+  level: 1
+  exp: 0
+  expToNext: 10
+  job: 1
+  constitution:
+    name: "\uD604\uC790"
+    strengthGrowth: 0.42513624
+    intelligenceGrowth: 1.5333554
+    vitalityGrowth: 0.6286177
+    agilityGrowth: 0.66892385
+  stats:
+    strength: 7
+    intelligence: 10
+    vitality: 8
+    agility: 7
+  hiddenStats:
+    diligence: 4
+    stamina: 6
+    stress: 2
+    mental: 1
+    skill: 7
+    body: 5
+    sanity: 8
+  mainHand: 0
+  offHand: 0
+  friendships: []
+  isDead: 0
+  firstBattleDone: 0
+  currentHP: 55
+  emotionState: 0

@@ -14,7 +14,6 @@ public class CharacterSO : ScriptableObject
     [TextArea] public string description;
     public Sprite portrait;
     public string portraitAssetPath; // Assets/CharacterImage/*.png
-    public string modelUrl;          // 3D 모델 URL (사용 시)
 
     // 희귀도 ------------------------------------------------------------
     [Header("Rarity")]
@@ -165,13 +164,6 @@ public class CharacterSO : ScriptableObject
                 AssetDatabase.DeleteAsset(portraitAssetPath);
                 portraitAssetPath = null;
                 portrait = null;
-            }
-
-            // modelUrl이 로컬 에셋 경로(Assets/...로 시작)면 함께 삭제
-            if (!string.IsNullOrEmpty(modelUrl) && modelUrl.StartsWith("Assets/"))
-            {
-                AssetDatabase.DeleteAsset(modelUrl);
-                modelUrl = null;
             }
 
             string soPath = AssetDatabase.GetAssetPath(this);
