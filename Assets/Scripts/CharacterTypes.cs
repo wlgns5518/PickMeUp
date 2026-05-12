@@ -2,8 +2,21 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-public enum CombatType { Melee, Mage, Archer, Assassin, Tank, Support }
-public enum SupportType { Carpenter, Cook, Blacksmith, Tanner }
+public enum JobType
+{
+    // 전투 계열
+    Melee,
+    Mage,
+    Archer,
+    Assassin,
+    Tank,
+    Support,
+    // 생산 계열
+    Carpenter,
+    Cook,
+    Blacksmith,
+    Tanner,
+}
 
 public enum WeaponType
 {
@@ -92,15 +105,12 @@ public static class CharacterRules
     public static bool IsFragileMental(int stars) => stars <= 2;
 
     // 한국어 표시 이름
-    private static readonly Dictionary<CombatType, string> CombatKr = new Dictionary<CombatType, string>
+    private static readonly Dictionary<JobType, string> JobKr = new Dictionary<JobType, string>
     {
-        { CombatType.Melee, "근접" }, { CombatType.Mage, "마법사" }, { CombatType.Archer, "궁수" },
-        { CombatType.Assassin, "암살자" }, { CombatType.Tank, "탱커" }, { CombatType.Support, "서포터" },
-    };
-    private static readonly Dictionary<SupportType, string> SupportKr = new Dictionary<SupportType, string>
-    {
-        { SupportType.Carpenter, "목수" }, { SupportType.Cook, "요리사" },
-        { SupportType.Blacksmith, "대장장이" }, { SupportType.Tanner, "무두장이" },
+        { JobType.Melee, "근접" }, { JobType.Mage, "마법사" }, { JobType.Archer, "궁수" },
+        { JobType.Assassin, "암살자" }, { JobType.Tank, "탱커" }, { JobType.Support, "서포터" },
+        { JobType.Carpenter, "목수" }, { JobType.Cook, "요리사" },
+        { JobType.Blacksmith, "대장장이" }, { JobType.Tanner, "무두장이" },
     };
     private static readonly Dictionary<WeaponType, string> WeaponKr = new Dictionary<WeaponType, string>
     {
@@ -109,7 +119,10 @@ public static class CharacterRules
         { WeaponType.Bow, "활" }, { WeaponType.Spear, "창" }, { WeaponType.Dagger, "단검" },
     };
 
-    public static string Korean(CombatType t) => CombatKr.TryGetValue(t, out var v) ? v : t.ToString();
-    public static string Korean(SupportType t) => SupportKr.TryGetValue(t, out var v) ? v : t.ToString();
+    public static string Korean(JobType t) => JobKr.TryGetValue(t, out var v) ? v : t.ToString();
     public static string Korean(WeaponType t) => WeaponKr.TryGetValue(t, out var v) ? v : t.ToString();
+
+    // 생산 계열인지 판별
+    public static bool IsCraftJob(JobType t) =>
+        t == JobType.Carpenter || t == JobType.Cook || t == JobType.Blacksmith || t == JobType.Tanner;
 }

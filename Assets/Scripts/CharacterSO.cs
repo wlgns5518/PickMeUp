@@ -28,10 +28,9 @@ public class CharacterSO : ScriptableObject
     public int exp;
     public int expToNext = 10;
 
-    // 타입 --------------------------------------------------------------
-    [Header("Types")]
-    public CombatType combatType;
-    public SupportType supportType;
+    // 직업 --------------------------------------------------------------
+    [Header("Job")]
+    public JobType job;
 
     // 체질 (스탯 성장 가중치) -------------------------------------------
     [Header("Constitution")]
