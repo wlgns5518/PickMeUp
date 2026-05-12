@@ -1,164 +1,87 @@
-using System.Collections;
-using System.Text;
+using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.Networking;
 
 public class CharacterCard : MonoBehaviour
 {
     [Header("UI References")]
     [SerializeField] private Image characterImage;
-    [SerializeField] private Text characterNameText;
+    [SerializeField] private TMP_Text characterNameText;
 
-    // Gemini API ¼³Á¤
-    private const string GeminiTextApiUrl =
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-    private const string GeminiImageApiUrl =
-        "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict";
-    private const string ApiKey = "YOUR_API_KEY_HERE"; // ½ÇÁ¦ API Å°·Î ±³Ã¼ÇÏ¼¼¿ä
+    [Header("Stars")]
+    [SerializeField] private GameObject starPrefab;
+    [SerializeField] private float starSpacing = 30f;
+    [SerializeField] private float starYOffset = -80f;
+    [SerializeField] private int maxStars = 7;
 
-    void Start()
+    public CharacterSO Character { get; private set; }
+
+    private readonly List<GameObject> spawnedStars = new List<GameObject>();
+    private int appliedStarCount = -1;
+
+    public void ResetCard()
     {
-        StartCoroutine(GenerateCharacterCard());
+        Character = null;
+        if (characterNameText != null) characterNameText.text = "";
+        ClearStars();
+        appliedStarCount = -1;
     }
 
-    private IEnumerator GenerateCharacterCard()
+    public void Apply(CharacterSO so)
     {
-        // ÀÌ¸§°ú ÀÌ¹ÌÁö¸¦ º´·Ä ¿äÃ»
-        string characterName = null;
-        Texture2D characterTexture = null;
+        if (so == null) return;
+        Character = so;
 
-        bool nameReady = false;
-        bool imageReady = false;
+        if (characterNameText != null)
+            characterNameText.text = string.IsNullOrEmpty(so.characterName) ? "ì´ë¦„ ì—†ìŒ" : so.characterName;
 
-        StartCoroutine(GenerateCharacterName(result =>
+        if (so.portrait != null && characterImage != null)
         {
-            characterName = result;
-            nameReady = true;
-        }));
+            characterImage.sprite = so.portrait;
+            characterImage.preserveAspect = true;
+        }
 
-        StartCoroutine(GenerateCharacterImage(result =>
+        if (appliedStarCount != so.starCount)
         {
-            characterTexture = result;
-            imageReady = true;
-        }));
-
-        // µÑ ´Ù ¿Ï·áµÉ ¶§±îÁö ´ë±â
-        yield return new WaitUntil(() => nameReady && imageReady);
-
-        // UI Àû¿ë
-        if (!string.IsNullOrEmpty(characterName))
-            characterNameText.text = characterName;
-
-        if (characterTexture != null)
-            characterImage.sprite = Sprite.Create(
-                characterTexture,
-                new Rect(0, 0, characterTexture.width, characterTexture.height),
-                new Vector2(0.5f, 0.5f));
-    }
-
-    // ¦¡¦¡ ÅØ½ºÆ® »ý¼º (Ä³¸¯ÅÍ ÀÌ¸§) ¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡
-
-    private IEnumerator GenerateCharacterName(System.Action<string> onComplete)
-    {
-        string requestBody = @"{
-            ""contents"": [{
-                ""parts"": [{
-                    ""text"": ""ÆÇÅ¸Áö RPG °ÔÀÓ Ä³¸¯ÅÍÀÇ ÀÌ¸§À» ÇÏ³ª¸¸ »ý¼ºÇØÁà. ÀÌ¸§¸¸ Ãâ·ÂÇØ.""
-                }]
-            }]
-        }";
-
-        using (UnityWebRequest request = new UnityWebRequest(
-            $"{GeminiTextApiUrl}?key={ApiKey}", "POST"))
-        {
-            byte[] bodyRaw = Encoding.UTF8.GetBytes(requestBody);
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
-
-            yield return request.SendWebRequest();
-
-            if (request.result == UnityWebRequest.Result.Success)
-            {
-                string name = ParseTextFromGeminiResponse(request.downloadHandler.text);
-                onComplete?.Invoke(name);
-            }
-            else
-            {
-                Debug.LogError($"[CharacterCard] ÀÌ¸§ »ý¼º ½ÇÆÐ: {request.error}");
-                onComplete?.Invoke("¾Ë ¼ö ¾ø´Â ¿ë»ç");
-            }
+            DisplayStars(so.starCount);
+            appliedStarCount = so.starCount;
         }
     }
 
-    private string ParseTextFromGeminiResponse(string json)
+    private void DisplayStars(int count)
     {
-        // "text": "..." ¿¡¼­ °ªÀ» ÃßÃâÇÏ´Â °£´ÜÇÑ ÆÄ½Ì
-        const string key = "\"text\": \"";
-        int start = json.IndexOf(key);
-        if (start < 0) return "ÀÌ¸§ ¾øÀ½";
-        start += key.Length;
-        int end = json.IndexOf("\"", start);
-        return end < 0 ? "ÀÌ¸§ ¾øÀ½" : json.Substring(start, end - start).Trim();
-    }
+        ClearStars();
+        count = Mathf.Clamp(count, 0, maxStars);
+        if (count == 0 || starPrefab == null) return;
 
-    // ¦¡¦¡ ÀÌ¹ÌÁö »ý¼º (Imagen API) ¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡
-
-    private IEnumerator GenerateCharacterImage(System.Action<Texture2D> onComplete)
-    {
-        string requestBody = @"{
-            ""instances"": [{
-                ""prompt"": ""A fantasy RPG character portrait, detailed, high quality, digital art""
-            }],
-            ""parameters"": {
-                ""sampleCount"": 1
-            }
-        }";
-
-        using (UnityWebRequest request = new UnityWebRequest(
-            $"{GeminiImageApiUrl}?key={ApiKey}", "POST"))
+        float startX = -(count - 1) * 0.5f * starSpacing;
+        for (int i = 0; i < count; i++)
         {
-            byte[] bodyRaw = Encoding.UTF8.GetBytes(requestBody);
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
+            GameObject star = Instantiate(starPrefab, transform);
+            star.name = $"Star_{i + 1}";
 
-            yield return request.SendWebRequest();
-
-            if (request.result == UnityWebRequest.Result.Success)
+            Vector2 pos = new Vector2(startX + i * starSpacing, starYOffset);
+            if (star.transform is RectTransform rt)
             {
-                byte[] imageBytes = ParseImageBytesFromResponse(request.downloadHandler.text);
-                if (imageBytes != null)
-                {
-                    Texture2D texture = new Texture2D(2, 2);
-                    texture.LoadImage(imageBytes);
-                    onComplete?.Invoke(texture);
-                }
-                else
-                {
-                    Debug.LogError("[CharacterCard] ÀÌ¹ÌÁö ÆÄ½Ì ½ÇÆÐ");
-                    onComplete?.Invoke(null);
-                }
+                rt.anchoredPosition = pos;
+                rt.localRotation = Quaternion.identity;
+                rt.localScale = Vector3.one;
             }
             else
             {
-                Debug.LogError($"[CharacterCard] ÀÌ¹ÌÁö »ý¼º ½ÇÆÐ: {request.error}");
-                onComplete?.Invoke(null);
+                star.transform.localPosition = new Vector3(pos.x, pos.y, 0f);
+                star.transform.localRotation = Quaternion.identity;
+                star.transform.localScale = Vector3.one;
             }
+            spawnedStars.Add(star);
         }
     }
 
-    private byte[] ParseImageBytesFromResponse(string json)
+    private void ClearStars()
     {
-        // Imagen ÀÀ´ä¿¡¼­ base64 ÀÎÄÚµùµÈ ÀÌ¹ÌÁö µ¥ÀÌÅÍ ÃßÃâ
-        const string key = "\"bytesBase64Encoded\": \"";
-        int start = json.IndexOf(key);
-        if (start < 0) return null;
-        start += key.Length;
-        int end = json.IndexOf("\"", start);
-        if (end < 0) return null;
-        string base64 = json.Substring(start, end - start);
-        return System.Convert.FromBase64String(base64);
+        for (int i = 0; i < spawnedStars.Count; i++)
+            if (spawnedStars[i] != null) Destroy(spawnedStars[i]);
+        spawnedStars.Clear();
     }
 }

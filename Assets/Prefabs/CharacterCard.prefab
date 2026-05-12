@@ -146,6 +146,7 @@ GameObject:
   - component: {fileID: 3782769258126708200}
   - component: {fileID: 8316982483288915261}
   - component: {fileID: 1973575573074891855}
+  - component: {fileID: -5443837647192553864}
   m_Layer: 5
   m_Name: CharacterCard
   m_TagString: Card
@@ -212,6 +213,29 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
+--- !u!114 &-5443837647192553864
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5549274074553150371}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a75a965f6fc05924ab8aa3383ad87598, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  characterImage: {fileID: 6634750510291770639}
+  characterNameText: {fileID: 3736087510455964327}
+  starPrefab: {fileID: 4254050031491879770, guid: 7d9afeef61ee8c94db092b9fcafdb410,
+    type: 3}
+  starSpacing: 30
+  starYOffset: -80
+  maxStars: 7
+  generator: {fileID: 0}
+  generateOnStart: 1
+  loadingSprite: {fileID: 10907, guid: 0000000000000000f000000000000000, type: 0}
+  loadingName: "\uC0DD\uC131 \uC911..."
 --- !u!1 &6277498106415371663
 GameObject:
   m_ObjectHideFlags: 0
