@@ -74,16 +74,6 @@ crashlytics-build.properties
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 
-[Ll]ibrary/
-[Tt]emp/
-[Oo]bj/
-[Bb]uild/
-[Bb]uilds/
-[Ll]ogs/
-UserSettings/
-
-.vs/
-.idea/
-
-*.csproj
-*.sln
+# Track Structure folder
+!Assets/Structure/
+!Assets/Structure/**
