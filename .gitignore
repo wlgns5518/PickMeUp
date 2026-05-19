@@ -77,3 +77,5 @@ crashlytics-build.properties
 # Track Structure folder
 !Assets/Structure/
 !Assets/Structure/**
+!Assets/Structure.meta
+!Assets/Structure/**/*.meta
