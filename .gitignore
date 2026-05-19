@@ -75,7 +75,7 @@ crashlytics-build.properties
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 
 # Track Structure folder
-!Assets/Structure/
-!Assets/Structure/**
-!Assets/Structure.meta
-!Assets/Structure/**/*.meta
+/[Aa]ssets/[Ss]tructure/
+/[Aa]ssets/[Ss]tructure/**
+/[Aa]ssets/[Ss]tructure.meta
+/[Aa]ssets/[Ss]tructure/**/*.meta
