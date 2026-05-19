@@ -91,6 +91,9 @@ public class MeshyCharacterGenerator : MonoBehaviour
         so.starCount = RollStars();
         so.level = 1; so.exp = 0; so.expToNext = 10;
         so.job = JobPool[jIdx];
+        so.gender = UnityEngine.Random.value < 0.5f ? Gender.Male : Gender.Female;
+        so.hairIndex = UnityEngine.Random.Range(0, 2);
+        so.outfit = CharacterRules.OutfitFor(so.job);
 
         if (!string.IsNullOrEmpty(presetName))
             so.characterName = presetName;
@@ -107,7 +110,7 @@ public class MeshyCharacterGenerator : MonoBehaviour
 
         // Meshy text-to-image
         string imageUrl = null;
-        yield return GenerateImageUrl(BuildPortraitPrompt(jIdx, tIdx), u => imageUrl = u);
+        yield return GenerateImageUrl(BuildPortraitPrompt(jIdx, tIdx, so), u => imageUrl = u);
 
         if (!string.IsNullOrEmpty(imageUrl))
             yield return DownloadAndApplyPortrait(imageUrl, so);
@@ -221,17 +224,29 @@ public class MeshyCharacterGenerator : MonoBehaviour
     // Meshy: text-to-image
     // ─────────────────────────────────────────────────────────────────────────
 
-    private string BuildPortraitPrompt(int jIdx, int tIdx) =>
-        $"A single {TraitsEn[tIdx]} human {JobPromptsEn[jIdx]} character, " +
-        "upper body portrait from the waist up, natural relaxed standing pose, " +
-        "slight three-quarter view, looking forward, " +
-        "semi-realistic mature fantasy illustration, detailed face and costume, " +
-        "cinematic lighting, painterly style, " +
-        "PURE SOLID WHITE BACKGROUND #FFFFFF, completely white background, " +
-        "no scenery, no environment, no gradient, no shadow on the ground, " +
-        "no props, no other characters, no text, no logo, " +
-        "not cute, not chibi, not childish, adult proportions, " +
-        "character centered and fully visible, high quality";
+    private string BuildPortraitPrompt(int jIdx, int tIdx, CharacterSO so)
+    {
+        string genderEn = so.gender == Gender.Male ? "male" : "female";
+        string hairEn = so.hairIndex == 0
+            ? (so.gender == Gender.Male ? "short messy hair" : "shoulder-length hair")
+            : (so.gender == Gender.Male ? "long tied back hair" : "long flowing hair");
+        string beardEn = so.HasBeard ? "with a short beard, " : "clean shaven, ";
+        if (so.gender == Gender.Female) beardEn = "no facial hair, ";
+        string outfitEn = CharacterRules.OutfitPromptEn(so.outfit);
+
+        return
+            $"A single {TraitsEn[tIdx]} {genderEn} human {JobPromptsEn[jIdx]} character, " +
+            $"{outfitEn}, {hairEn}, {beardEn}" +
+            "upper body portrait from the waist up, natural relaxed standing pose, " +
+            "slight three-quarter view, looking forward, " +
+            "semi-realistic mature fantasy illustration, detailed face and costume, " +
+            "cinematic lighting, painterly style, " +
+            "PURE SOLID WHITE BACKGROUND #FFFFFF, completely white background, " +
+            "no scenery, no environment, no gradient, no shadow on the ground, " +
+            "no props, no other characters, no text, no logo, " +
+            "not cute, not chibi, not childish, adult proportions, " +
+            "character centered and fully visible, high quality";
+    }
 
     private IEnumerator GenerateImageUrl(string prompt, Action<string> onComplete)
     {
