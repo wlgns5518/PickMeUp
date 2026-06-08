@@ -1,20 +1,20 @@
 using UnityEngine;
 
 // 미니게임 성공 시 호출되어 장비를 만들거나 보상을 지급하는 진입점.
-// EquipmentPuzzleGame.onSuccess 에 OnPuzzleSuccess를 연결하면 됨.
-public class EquipmentForge : MonoBehaviour
+// PuzzleGame.onSuccess 에 OnPuzzleSuccess를 연결하면 됨.
+public class Forge : MonoBehaviour
 {
     [Header("Puzzle 연동")]
-    [SerializeField] private EquipmentPuzzleGame puzzle;
+    [SerializeField] private PuzzleGame puzzle;
 
     [Header("결과")]
-    [Tooltip("성공 시 만들어질 장비 (지금은 placeholder, 추후 EquipmentSO 시스템으로 확장)")]
+    [Tooltip("성공 시 만들어질 장비 (지금은 placeholder, 추후 ItemSO 시스템으로 확장)")]
     [SerializeField] private string equipmentName = "강철 검";
 
     public void OnPuzzleSuccess()
     {
         Debug.Log($"[Forge] 장비 생성 성공: {equipmentName}");
-        // TODO: 실제 EquipmentSO 인스턴스 생성, 인벤토리 추가 등
+        // TODO: 실제 ItemSO 인스턴스 생성, 인벤토리 추가 등
     }
 
     public void OnPuzzleFail()

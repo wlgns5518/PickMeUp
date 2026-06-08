@@ -15,7 +15,7 @@ public enum PuzzleDifficulty
     Hell   = 15,
 }
 
-public class EquipmentPuzzleGame : MonoBehaviour
+public class PuzzleGame : MonoBehaviour
 {
     [Header("Setup")]
     [Tooltip("맞출 장비 이미지 (Read/Write Enabled 필요)")]

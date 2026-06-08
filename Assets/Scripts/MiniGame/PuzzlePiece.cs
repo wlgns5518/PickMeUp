@@ -13,10 +13,10 @@ public class PuzzlePiece : MonoBehaviour,
     public CanvasGroup   CG { get; private set; }
     public Image         Image { get; private set; }
 
-    private EquipmentPuzzleGame manager;
+    private PuzzleGame manager;
     private Canvas canvas;
 
-    public void Init(int col, int row, EquipmentPuzzleGame mgr)
+    public void Init(int col, int row, PuzzleGame mgr)
     {
         gridCol = col;
         gridRow = row;
