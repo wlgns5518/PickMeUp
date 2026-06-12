@@ -2,10 +2,10 @@ using UnityEngine;
 
 public class PlayerAIFleeState : State<PlayerAIContext>
 {
-    private PlayerAIAliveState parent;
+    private PlayerAIMoveGroupState parent;
     private float potionTimer;
 
-    public PlayerAIFleeState(PlayerAIContext context, PlayerAIAliveState parent) : base(context)
+    public PlayerAIFleeState(PlayerAIContext context, PlayerAIMoveGroupState parent) : base(context)
     {
         this.parent = parent;
     }
@@ -18,11 +18,7 @@ public class PlayerAIFleeState : State<PlayerAIContext>
 
     public override void Update()
     {
-        if (context.target == null || context.IsSafeHp())
-        {
-            parent.GoToIdle();
-            return;
-        }
+        if (context.target == null) return;
 
         Vector3 away = context.transform.position - context.target.Position;
         away.y = 0f;
@@ -30,13 +26,13 @@ public class PlayerAIFleeState : State<PlayerAIContext>
             away = -context.transform.forward;
 
         Vector3 fleeTarget = context.transform.position + away.normalized * context.config.fleeDistance;
-        context.MoveTo(fleeTarget, context.RunSpeed);                     // ← config → context
+        context.MoveTo(fleeTarget, context.RunSpeed);
 
         potionTimer += Time.deltaTime;
         if (potionTimer >= context.config.potionCooldown)
         {
             potionTimer = 0f;
-            context.stats?.HealHp(context.PotionHealAmount);             // ← config → context
+            context.stats?.HealHp(context.PotionHealAmount);
             context.onPotion?.Invoke();
         }
     }

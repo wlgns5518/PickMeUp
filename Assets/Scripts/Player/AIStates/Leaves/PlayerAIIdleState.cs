@@ -2,10 +2,12 @@ using UnityEngine;
 
 public class PlayerAIIdleState : State<PlayerAIContext>
 {
-    private PlayerAIAliveState parent;
+    private PlayerAIIdleGroupState parent;
     private float timer;
 
-    public PlayerAIIdleState(PlayerAIContext context, PlayerAIAliveState parent) : base(context)
+    private static readonly string[] IdleClips = { "Idle1", "Idle2", "Idle3", "Idle4" };
+
+    public PlayerAIIdleState(PlayerAIContext context, PlayerAIIdleGroupState parent) : base(context)
     {
         this.parent = parent;
     }
@@ -14,7 +16,7 @@ public class PlayerAIIdleState : State<PlayerAIContext>
     {
         timer = 0f;
         context.StopMoving();
-        context.Play("Idle");
+        context.Play(IdleClips[Random.Range(0, IdleClips.Length)]);
     }
 
     public override void Update()

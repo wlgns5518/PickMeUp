@@ -3,9 +3,9 @@ using UnityEngine.AI;
 
 public class PlayerAIPatrolState : State<PlayerAIContext>
 {
-    private PlayerAIAliveState parent;
+    private PlayerAIIdleGroupState parent;
 
-    public PlayerAIPatrolState(PlayerAIContext context, PlayerAIAliveState parent) : base(context)
+    public PlayerAIPatrolState(PlayerAIContext context, PlayerAIIdleGroupState parent) : base(context)
     {
         this.parent = parent;
     }
@@ -18,7 +18,7 @@ public class PlayerAIPatrolState : State<PlayerAIContext>
 
     public override void Update()
     {
-        context.MoveTo(context.patrolTarget, context.MoveSpeed * 0.6f);   // ← config → context
+        context.MoveTo(context.patrolTarget, context.MoveSpeed * 0.6f);
         if (context.Reached(context.patrolTarget, 0.4f))
             PickPatrolTarget();
     }

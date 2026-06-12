@@ -124,7 +124,7 @@ public class PlayerAIController : HFSMRunner<PlayerAIContext>
     public void TakeDamage()
     {
         if (aliveState == null || CurrentRootState == deadState) return;
-        aliveState.GoToFlee();
+        aliveState.GoToMove(); // GoToFlee() → GoToMove()
     }
 
     public void GoToDead()
