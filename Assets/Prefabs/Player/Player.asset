@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7bee9b75290880944acb82d57487c115, type: 3}
+  m_Name: Player
+  m_EditorClassIdentifier: 
+  moveSpeed: 5
+  runSpeed: 8.5
+  attackRange: 1.5
+  skillRange: 4
+  detectRange: 7.5
+  dangerSkillRadius: 3
+  fleeHpRatio: 0.25
+  safeHpRatio: 0.5
+  attackCooldown: 0.6
+  skillCooldown: 4
+  dodgeCooldown: 1.2
+  potionCooldown: 8
+  fleeDistance: 8.75
+  patrolRadius: 5
+  attackMotionDuration: 0.2
+  skillMotionDuration: 0.5
+  dodgeDuration: 0.3
+  potionHealAmount: 40
+  stuckThreshold: 1.2
+  maxKiteTime: 3
