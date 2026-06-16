@@ -153,7 +153,10 @@ public class PlayerAIController : HFSMRunner<PlayerAIContext>
         Gizmos.DrawWireSphere(pos, context?.DetectRange ?? 7f);
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(pos, context?.AttackRange ?? 1.5f);
-        UnityEditor.Handles.Label(pos + Vector3.up * 1.5f, CurrentState ?? "");
+
+        // ✅ 플레이 중일 때만 상태 표시
+        if (Application.isPlaying)
+            UnityEditor.Handles.Label(pos + Vector3.up * 1.5f, CurrentState ?? "");
     }
 #endif
 }
