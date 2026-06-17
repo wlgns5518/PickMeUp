@@ -17,11 +17,9 @@ public class PlayerAIController : HFSMRunner<PlayerAIContext>
 {
     [Header("AI")]
     [SerializeField] private PlayerAIConfig config;
-    [SerializeField] private CharacterSO character;          // ← 추가
-    [SerializeField] private Animator animator;
-    [SerializeField] private bool showDebugGizmos = true;
-    [SerializeField] private bool autoCollectTargets = true;
-    [SerializeField] private float autoCollectInterval = 0.5f;
+    [SerializeField] private CharacterSO    character;
+    [SerializeField] private Animator       animator;
+    [SerializeField] private bool           showDebugGizmos = true;
 
     [Header("Events")]
     public AttackEvent OnAttackEvent;
@@ -31,22 +29,18 @@ public class PlayerAIController : HFSMRunner<PlayerAIContext>
 
     private PlayerAIAliveState aliveState;
     private PlayerAIDeadState  deadState;
-    private float nextCollectTime;
 
     public PlayerAIContext Context => context;
+
     public string CurrentState
-{
-    get
     {
-        if (aliveState?.CurrentSubState != null)
-            return aliveState.CurrentSubState.GetType().Name;
-
-        if (CurrentRootState != null)
-            return CurrentRootState.GetType().Name;
-
-        return "Uninitialized";
+        get
+        {
+            if (aliveState?.CurrentSubState != null)
+                return aliveState.CurrentSubState.GetType().Name;
+            return CurrentRootState?.GetType().Name ?? "Uninitialized";
+        }
     }
-}
 
     protected new void Awake()
     {
@@ -57,29 +51,42 @@ public class PlayerAIController : HFSMRunner<PlayerAIContext>
             return;
         }
 
-        base.Awake(); // context = CreateContext()
+        base.Awake();
 
         if (animator == null)
             animator = GetComponentInChildren<Animator>();
 
-        context.animator   = animator;
-        context.character  = character;                      // ← 추가
-        context.onAttack   = (dir, go) => OnAttackEvent?.Invoke(dir, go);
-        context.onSkill    = (dir, go) => OnSkillEvent?.Invoke(dir, go);
-        context.onDodge    = dir       => OnDodgeEvent?.Invoke(dir);
-        context.onPotion   = ()        => OnPotionEvent?.Invoke();
+        context.animator  = animator;
+        context.character = character;
+        context.onAttack  = (dir, go) => OnAttackEvent?.Invoke(dir, go);
+        context.onSkill   = (dir, go) => OnSkillEvent?.Invoke(dir, go);
+        context.onDodge   = dir       => OnDodgeEvent?.Invoke(dir);
+        context.onPotion  = ()        => OnPotionEvent?.Invoke();
+
+        // UtilityAIEvaluator 직접 생성
+        context.evaluator = new UtilityAIEvaluator(context);
+
+        // 레지스트리에 등록
+        PlayerRegistry.Instance?.Register(this);
+    }
+
+    private void OnDestroy()
+    {
+        PlayerRegistry.Instance?.Unregister(this);
     }
 
     protected override PlayerAIContext CreateContext()
     {
+        NavMeshAgent navAgent = GetComponent<NavMeshAgent>();
+        navAgent.updateRotation = false;
+
         return new PlayerAIContext
         {
-            agent         = GetComponent<NavMeshAgent>(),
+            agent         = navAgent,
             transform     = transform,
             stats         = GetComponent<IPlayerStats>(),
             config        = config,
             spawnPosition = transform.position,
-            // character는 Awake()에서 주입 (CreateContext 시점엔 character 필드가 아직 직렬화됨)
         };
     }
 
@@ -92,16 +99,29 @@ public class PlayerAIController : HFSMRunner<PlayerAIContext>
 
     protected override void Update()
     {
-        if (autoCollectTargets && Time.time >= nextCollectTime)
-        {
-            nextCollectTime = Time.time + Mathf.Max(0.1f, autoCollectInterval);
-            AutoCollectWorldTargets();
-        }
-
+        SyncFromRegistry();
         base.Update();
     }
 
-    // ── 외부 주입 ──────────────────────────────────────────
+    private void SyncFromRegistry()
+    {
+        if (EnemyRegistry.Instance != null)
+        {
+            context.enemies.Clear();
+            var enemies = EnemyRegistry.Instance.Enemies;
+            for (int i = 0; i < enemies.Count; i++)
+                context.enemies.Add(enemies[i]);
+        }
+
+        if (ProjectileRegistry.Instance != null)
+        {
+            context.projectiles.Clear();
+            var projectiles = ProjectileRegistry.Instance.Projectiles;
+            for (int i = 0; i < projectiles.Count; i++)
+                context.projectiles.Add(projectiles[i]);
+        }
+    }
+
     public void SetEnemies(List<IEnemy> source)
     {
         context.enemies.Clear();
@@ -114,49 +134,33 @@ public class PlayerAIController : HFSMRunner<PlayerAIContext>
         if (source != null) context.projectiles.AddRange(source);
     }
 
-    /// <summary>런타임에 캐릭터 교체 시 호출 (예: 전직, 캐릭터 스왑)</summary>
     public void SetCharacter(CharacterSO newCharacter)
     {
         context.character = newCharacter;
     }
 
-    // ── 외부 이벤트 ────────────────────────────────────────
     public void TakeDamage()
     {
         if (aliveState == null || CurrentRootState == deadState) return;
-        aliveState.GoToMove(); // GoToFlee() → GoToMove()
+        aliveState.GoToMove();
     }
 
     public void GoToDead()
     {
+        PlayerRegistry.Instance?.Unregister(this);
         ChangeRootState(deadState);
-    }
-
-    private void AutoCollectWorldTargets()
-    {
-        context.enemies.Clear();
-        foreach (var enemy in FindObjectsByType<EnemyController>(FindObjectsSortMode.None))
-            context.enemies.Add(enemy);
-
-        context.projectiles.Clear();
-        foreach (var projectile in FindObjectsByType<ProjectileAdapter>(FindObjectsSortMode.None))
-            context.projectiles.Add(projectile);
     }
 
 #if UNITY_EDITOR
     private void OnDrawGizmosSelected()
     {
         if (!showDebugGizmos || config == null) return;
-
         Vector3 pos = transform.position;
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(pos, context?.DetectRange ?? 7f);
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(pos, context?.AttackRange ?? 1.5f);
-
-        // ✅ 플레이 중일 때만 상태 표시
-        if (Application.isPlaying)
-            UnityEditor.Handles.Label(pos + Vector3.up * 1.5f, CurrentState ?? "");
+        UnityEditor.Handles.Label(pos + Vector3.up * 1.5f, CurrentState ?? "");
     }
 #endif
 }

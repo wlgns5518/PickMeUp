@@ -5,7 +5,7 @@ public class PlayerAIJumpState : State<PlayerAIContext>
     private PlayerAIIdleGroupState parent;
     private string currentClip;
 
-    private static readonly string[] JumpClips = { "Jump1", "Jump2" };
+    private static readonly string[] JumpClips = { "Jump", "Jump2" };
 
     public PlayerAIJumpState(PlayerAIContext context, PlayerAIIdleGroupState parent) : base(context)
     {

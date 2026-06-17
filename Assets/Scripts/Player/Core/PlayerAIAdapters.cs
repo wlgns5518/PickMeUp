@@ -62,21 +62,6 @@ public class EnemyAdapter : MonoBehaviour, IEnemy
     }
 }
 
-// ════════════════════════════════════════════════════════
-//  ProjectileAdapter  —  IDangerousProjectile 구현 예시
-//  (위험 스킬 투사체 GameObject에 부착)
-// ════════════════════════════════════════════════════════
-public class ProjectileAdapter : MonoBehaviour, IDangerousProjectile
-{
-    [Tooltip("이 투사체가 향하는 타겟 GameObject")]
-    [SerializeField] private GameObject _targetObject;
-
-    public Vector3     Position     => transform.position;
-    public GameObject  TargetObject => _targetObject;
-
-    /// <summary>외부에서 타겟 설정 (스킬 발사 시 호출)</summary>
-    public void SetTarget(GameObject target) => _targetObject = target;
-}
 
 // ════════════════════════════════════════════════════════
 //  EnemyManager  —  PlayerAIController에 적 목록 주입 예시
@@ -93,7 +78,7 @@ public class EnemyManager : MonoBehaviour
     {
         // ── 적 목록 갱신 ──────────────────────────────
         _enemies.Clear();
-        foreach (var e in FindObjectsByType<EnemyController>(FindObjectsSortMode.None))
+        foreach (var e in FindObjectsByType<EnemyAIController>(FindObjectsSortMode.None))
             _enemies.Add(e);
 
         // 샘플 EnemyAdapter를 쓰는 씬 호환성 유지

@@ -6,7 +6,7 @@ public class PlayerAIAttackState : State<PlayerAIContext>
     private float minMotionEndTime;
     private string currentClip;
 
-    private static readonly string[] LightAttackClips = { "LightAttack1", "LightAttack2" };
+    private static readonly string[] LightAttackClips = { "LightAttack", "LightAttack2" };
 
     public PlayerAIAttackState(PlayerAIContext context, PlayerAIAttackGroupState parent) : base(context)
     {

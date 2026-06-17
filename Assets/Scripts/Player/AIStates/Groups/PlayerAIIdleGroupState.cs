@@ -1,6 +1,6 @@
 using UnityEngine;
 
-/// <summary>Idle1~4 랜덤 → Patrol → Jump → Roar 를 묶는 그룹</summary>
+/// <summary>Idle/Idle2~4 랜덤 → Patrol → Jump → Roar 를 묶는 그룹</summary>
 public class PlayerAIIdleGroupState : State<PlayerAIContext>
 {
     private PlayerAIAliveState parent;

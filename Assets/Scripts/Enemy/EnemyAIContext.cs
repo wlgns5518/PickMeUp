@@ -2,79 +2,52 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
-public class PlayerAIContext
+public class EnemyAIContext
 {
     // ── 컴포넌트 ──────────────────────────────────────────
     public NavMeshAgent agent;
-    public Animator animator;
-    public Transform transform;
-    public IPlayerStats stats;
-    public PlayerAIConfig config;
-
-    // ── 캐릭터 데이터 (CharacterSO) ───────────────────────
-    public CharacterSO character;
-
-    // ── Utility AI ────────────────────────────────────────
-    public UtilityAIEvaluator evaluator;
-
-    // ── 계산 프로퍼티 (CharacterSO → AI 수치) ─────────────
-    private int Agility  => character?.stats?.agility  ?? 10;
-    private int Vitality => character?.stats?.vitality ?? 10;
-
-    public float MoveSpeed        => CharacterRules.MoveSpeed(Agility);
-    public float RunSpeed         => CharacterRules.RunSpeed(Agility);
-    public float AttackCooldown   => CharacterRules.AttackCooldown(Agility);
-    public float SkillCooldown    => CharacterRules.SkillCooldown(Agility);
-    public int   PotionHealAmount => CharacterRules.PotionHealAmount(Vitality);
-
-    private CharacterRules.CombatRanges CombatRanges =>
-        character != null
-            ? CharacterRules.GetCombatRanges(character.job)
-            : CharacterRules.GetCombatRanges(JobType.Melee);
-
-    public float AttackRange => CombatRanges.attackRange;
-    public float SkillRange  => CombatRanges.skillRange;
-    public float DetectRange => CombatRanges.detectRange;
+    public Animator     animator;
+    public Transform    transform;
+    public EnemyConfig  config;
 
     // ── 월드 데이터 ───────────────────────────────────────
-    public readonly List<IEnemy> enemies = new List<IEnemy>();
-    public readonly List<IDangerousProjectile> projectiles = new List<IDangerousProjectile>();
-    public IEnemy target;
-    public Vector3 spawnPosition;
-    public Vector3 patrolTarget;
+    public Transform target;
+    public Vector3   spawnPosition;
+    public Vector3   patrolTarget;
+
+    // ── HP ────────────────────────────────────────────────
+    public int  hp;
+    public int  MaxHp    => config.maxHp;
+    public bool IsDead   => hp <= 0;
+    public float HpRatio => MaxHp > 0 ? (float)hp / MaxHp : 0f;
 
     // ── 타이머 ────────────────────────────────────────────
     public float nextAttackTime;
 
-    // ── 이벤트 (외부 Unity Event에 연결) ──────────────────
-    public System.Action<Vector3, GameObject> onAttack;
-    public System.Action<Vector3, GameObject> onSkill;
-    public System.Action<Vector3> onDodge;
-    public System.Action onPotion;
+    // ── 이벤트 ────────────────────────────────────────────
+    public System.Action<Transform> onAttack;
+    public System.Action            onDeath;
+
+    // ── 편의 프로퍼티 ─────────────────────────────────────
+    public bool  HasTarget       => target != null;
+    public float DistanceToTarget => target != null
+        ? Vector3.Distance(transform.position, target.position)
+        : float.MaxValue;
+    public bool InAttackRange => DistanceToTarget <= config.attackRange;
+    public bool InDetectRange => DistanceToTarget <= config.detectRange;
+    public bool CanAttack     => Time.time >= nextAttackTime;
 
     // ── 애니메이션 내부 상태 ──────────────────────────────
     private string currentClip;
 
     // ════════════════════════════════════════════════════
-    //  타겟 갱신
+    //  HP
     // ════════════════════════════════════════════════════
-    public void RefreshTarget()
+    public void TakeDamage(int amount)
     {
-        target = null;
-        float bestDistance = float.MaxValue;
-
-        for (int i = 0; i < enemies.Count; i++)
-        {
-            IEnemy enemy = enemies[i];
-            if (enemy == null || enemy.IsDead) continue;
-
-            float distance = Vector3.Distance(transform.position, enemy.Position);
-            if (distance <= DetectRange && distance < bestDistance)
-            {
-                bestDistance = distance;
-                target = enemy;
-            }
-        }
+        if (IsDead) return;
+        hp = Mathf.Max(0, hp - amount);
+        if (IsDead) onDeath?.Invoke();
     }
 
     // ════════════════════════════════════════════════════
@@ -143,24 +116,12 @@ public class PlayerAIContext
     }
 
     // ════════════════════════════════════════════════════
-    //  HP 판단
-    // ════════════════════════════════════════════════════
-    public bool IsDead()   => stats != null && stats.Hp <= 0;
-    public bool IsLowHp()  => stats != null && stats.MaxHp > 0 && (float)stats.Hp / stats.MaxHp <= config.fleeHpRatio;
-    public bool IsSafeHp() => stats == null || stats.MaxHp <= 0 || (float)stats.Hp / stats.MaxHp >= config.safeHpRatio;
-
-    // ════════════════════════════════════════════════════
     //  애니메이션
     // ════════════════════════════════════════════════════
-    public void Play(string clipName, bool restart = false)
+    public void Play(string clipName, bool restart = false, float speed = 1f)
     {
         if (animator == null) return;
-        if (!HasAnimationState(clipName))
-        {
-            Debug.LogWarning($"Animator state '{clipName}' could not be found.", animator);
-            return;
-        }
-
+        animator.speed = speed;
         if (!restart && currentClip == clipName) return;
         currentClip = clipName;
 
@@ -170,20 +131,15 @@ public class PlayerAIContext
             animator.Play(clipName);
     }
 
-    private bool HasAnimationState(string clipName)
-    {
-        return animator.HasState(0, Animator.StringToHash(clipName)) ||
-               animator.HasState(0, Animator.StringToHash($"Base Layer.{clipName}"));
-    }
-
     public bool IsAnimationFinished(string clipName)
     {
         if (animator == null) return true;
         AnimatorStateInfo info = animator.GetCurrentAnimatorStateInfo(0);
         return info.IsName(clipName) && info.normalizedTime >= 1f;
     }
-    public void InitEvaluator()
+
+    public void ResetAnimSpeed()
     {
-        evaluator = new UtilityAIEvaluator(this);
+        if (animator != null) animator.speed = 1f;
     }
 }

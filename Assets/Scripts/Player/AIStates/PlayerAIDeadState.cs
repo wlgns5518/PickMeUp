@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class PlayerAIDeadState : State<PlayerAIContext>
 {
-    private static readonly string[] DeathClips = { "Death1", "Death2" };
+    private static readonly string[] DeathClips = { "Death", "Death2" };
 
     public PlayerAIDeadState(PlayerAIContext context) : base(context) { }
 

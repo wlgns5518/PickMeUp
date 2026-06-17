@@ -5,7 +5,7 @@ public class PlayerAIHitState : State<PlayerAIContext>
     private PlayerAIAttackGroupState parent;
     private string currentClip;
 
-    private static readonly string[] HitClips = { "Hit1", "Hit2" };
+    private static readonly string[] HitClips = { "Hit", "Hit2" };
 
     public PlayerAIHitState(PlayerAIContext context, PlayerAIAttackGroupState parent) : base(context)
     {

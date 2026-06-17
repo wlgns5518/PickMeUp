@@ -5,7 +5,7 @@ public class PlayerAIIdleState : State<PlayerAIContext>
     private PlayerAIIdleGroupState parent;
     private float timer;
 
-    private static readonly string[] IdleClips = { "Idle1", "Idle2", "Idle3", "Idle4" };
+    private static readonly string[] IdleClips = { "Idle", "Idle2", "Idle3", "Idle4" };
 
     public PlayerAIIdleState(PlayerAIContext context, PlayerAIIdleGroupState parent) : base(context)
     {

@@ -6,7 +6,7 @@ public class PlayerAIHeavyAttackState : State<PlayerAIContext>
     private float minMotionEndTime;
     private string currentClip;
 
-    private static readonly string[] HeavyAttackClips = { "HeavyAttack1", "HeavyAttack2", "HeavyAttack3", "HeavyAttack4" };
+    private static readonly string[] HeavyAttackClips = { "HeavyAttack", "HeavyAttack2", "HeavyAttack3", "HeavyAttack4" };
 
     public PlayerAIHeavyAttackState(PlayerAIContext context, PlayerAIAttackGroupState parent) : base(context)
     {
