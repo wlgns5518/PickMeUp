@@ -51,6 +51,7 @@ public class RhythmGame : MonoBehaviour
 
     private readonly List<float> noteHitTimes = new List<float>();
     private readonly List<RhythmNote> activeNotes = new List<RhythmNote>();
+    private readonly List<RhythmNote> notePool = new List<RhythmNote>();
 
     private float elapsedTime;
     private float totalDuration;
@@ -68,6 +69,11 @@ public class RhythmGame : MonoBehaviour
     private RectTransform targetLine;
     private Image[] laneFlashImages;
     private float[] laneFlashTimers;
+    private bool[] laneFlashActive;
+    private Camera cachedUiCamera;
+    private Vector2 cachedNoteSize;
+    private float cachedTargetLineHeight;
+    private float cachedClickLineTolerance;
 
     private enum Judgment
     {
@@ -82,6 +88,7 @@ public class RhythmGame : MonoBehaviour
         public float spawnTime;
         public float hitTime;
         public int lane;
+        public bool pooled;
     }
 
     private void Start()
@@ -228,25 +235,14 @@ public class RhythmGame : MonoBehaviour
 
     private void SpawnNote(int index, float hitTime)
     {
-        var noteObject = new GameObject("RhythmNote", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        noteObject.transform.SetParent(playArea, false);
-
-        var noteRect = (RectTransform)noteObject.transform;
-        var image = noteObject.GetComponent<Image>();
-        image.color = new Color(1f, 0.86f, 0.25f, 1f);
-        image.raycastTarget = false;
-
-        noteRect.anchorMin = noteRect.anchorMax = new Vector2(0.5f, 0.5f);
-        noteRect.pivot = new Vector2(0.5f, 0.5f);
-        noteRect.sizeDelta = GetScaledNoteSize();
-
-        var note = new RhythmNote
-        {
-            rectTransform = noteRect,
-            spawnTime = hitTime - noteTravelTime,
-            hitTime = hitTime,
-            lane = GetLane(index),
-        };
+        RhythmNote note = GetPooledNote();
+        note.spawnTime = hitTime - noteTravelTime;
+        note.hitTime = hitTime;
+        note.lane = GetLane(index);
+        note.pooled = false;
+        note.rectTransform.SetParent(playArea, false);
+        note.rectTransform.sizeDelta = GetScaledNoteSize();
+        note.rectTransform.gameObject.SetActive(true);
 
         SetNotePosition(note, 0f);
         activeNotes.Add(note);
@@ -349,8 +345,7 @@ public class RhythmGame : MonoBehaviour
 
         RhythmNote note = activeNotes[bestIndex];
         activeNotes.RemoveAt(bestIndex);
-        if (note.rectTransform != null)
-            Destroy(note.rectTransform.gameObject);
+        ReleaseNote(note);
 
         hitCount++;
         resolvedNotes++;
@@ -400,19 +395,14 @@ public class RhythmGame : MonoBehaviour
 
     private Camera GetUiCamera()
     {
-        Canvas canvas = playArea != null ? playArea.GetComponentInParent<Canvas>() : null;
-        if (canvas == null || canvas.renderMode == RenderMode.ScreenSpaceOverlay)
-            return null;
-
-        return canvas.worldCamera;
+        return cachedUiCamera;
     }
 
     private void ResolveMiss(int index)
     {
         RhythmNote note = activeNotes[index];
         activeNotes.RemoveAt(index);
-        if (note != null && note.rectTransform != null)
-            Destroy(note.rectTransform.gameObject);
+        ReleaseNote(note);
 
         missCount++;
         resolvedNotes++;
@@ -430,6 +420,9 @@ public class RhythmGame : MonoBehaviour
 
     private Vector2 GetScaledNoteSize()
     {
+        if (cachedNoteSize != Vector2.zero)
+            return cachedNoteSize;
+
         Rect rect = playArea.rect;
         float scaleX = referenceResolution.x > 0f ? rect.width / referenceResolution.x : 1f;
         float scaleY = referenceResolution.y > 0f ? rect.height / referenceResolution.y : 1f;
@@ -440,6 +433,9 @@ public class RhythmGame : MonoBehaviour
 
     private float GetScaledTargetLineHeight()
     {
+        if (cachedTargetLineHeight > 0f)
+            return cachedTargetLineHeight;
+
         Rect rect = playArea.rect;
         float scaleY = referenceResolution.y > 0f ? rect.height / referenceResolution.y : 1f;
         return Mathf.Max(1f, targetLineHeight * scaleY);
@@ -447,6 +443,9 @@ public class RhythmGame : MonoBehaviour
 
     private float GetScaledClickLineTolerance()
     {
+        if (cachedClickLineTolerance > 0f)
+            return cachedClickLineTolerance;
+
         Rect rect = playArea.rect;
         float scaleY = referenceResolution.y > 0f ? rect.height / referenceResolution.y : 1f;
         return Mathf.Max(1f, clickLineTolerance * scaleY);
@@ -454,10 +453,28 @@ public class RhythmGame : MonoBehaviour
 
     private void PrepareLayout()
     {
+        CacheLayoutValues();
         EnsureTargetLine();
         EnsureLaneFlashImages();
         UpdateTargetLineLayout();
         UpdateLaneFlashLayout();
+    }
+
+    private void CacheLayoutValues()
+    {
+        Rect rect = playArea.rect;
+        float scaleX = referenceResolution.x > 0f ? rect.width / referenceResolution.x : 1f;
+        float scaleY = referenceResolution.y > 0f ? rect.height / referenceResolution.y : 1f;
+        cachedNoteSize = new Vector2(
+            Mathf.Max(1f, noteWidth * scaleX),
+            Mathf.Max(1f, noteHeight * scaleY));
+        cachedTargetLineHeight = Mathf.Max(1f, targetLineHeight * scaleY);
+        cachedClickLineTolerance = Mathf.Max(1f, clickLineTolerance * scaleY);
+
+        Canvas canvas = playArea.GetComponentInParent<Canvas>();
+        cachedUiCamera = canvas == null || canvas.renderMode == RenderMode.ScreenSpaceOverlay
+            ? null
+            : canvas.worldCamera;
     }
 
     private void EnsureTargetLine()
@@ -490,6 +507,7 @@ public class RhythmGame : MonoBehaviour
 
         laneFlashImages = new Image[safeLaneCount];
         laneFlashTimers = new float[safeLaneCount];
+        laneFlashActive = new bool[safeLaneCount];
 
         for (int i = 0; i < safeLaneCount; i++)
         {
@@ -548,17 +566,19 @@ public class RhythmGame : MonoBehaviour
             return;
 
         laneFlashTimers[lane] = laneFlashDuration;
+        laneFlashActive[lane] = true;
         if (laneFlashImages != null && lane < laneFlashImages.Length && laneFlashImages[lane] != null)
             laneFlashImages[lane].color = laneFlashColor;
     }
 
     private void UpdateLaneFlashes()
     {
-        if (laneFlashImages == null || laneFlashTimers == null) return;
+        if (laneFlashImages == null || laneFlashTimers == null || laneFlashActive == null) return;
 
         for (int i = 0; i < laneFlashImages.Length; i++)
         {
             if (laneFlashImages[i] == null) continue;
+            if (!laneFlashActive[i]) continue;
 
             if (laneFlashTimers[i] > 0f)
             {
@@ -571,6 +591,7 @@ public class RhythmGame : MonoBehaviour
             else
             {
                 laneFlashImages[i].color = Color.clear;
+                laneFlashActive[i] = false;
             }
         }
     }
@@ -579,12 +600,46 @@ public class RhythmGame : MonoBehaviour
     {
         for (int i = 0; i < activeNotes.Count; i++)
         {
-            if (activeNotes[i] != null && activeNotes[i].rectTransform != null)
-                Destroy(activeNotes[i].rectTransform.gameObject);
+            ReleaseNote(activeNotes[i]);
         }
 
         activeNotes.Clear();
         noteHitTimes.Clear();
+    }
+
+    private RhythmNote GetPooledNote()
+    {
+        int lastIndex = notePool.Count - 1;
+        if (lastIndex >= 0)
+        {
+            RhythmNote note = notePool[lastIndex];
+            notePool.RemoveAt(lastIndex);
+            note.pooled = false;
+            return note;
+        }
+
+        var noteObject = new GameObject("RhythmNote", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        noteObject.transform.SetParent(playArea, false);
+
+        var noteRect = (RectTransform)noteObject.transform;
+        var image = noteObject.GetComponent<Image>();
+        image.color = new Color(1f, 0.86f, 0.25f, 1f);
+        image.raycastTarget = false;
+
+        noteRect.anchorMin = noteRect.anchorMax = new Vector2(0.5f, 0.5f);
+        noteRect.pivot = new Vector2(0.5f, 0.5f);
+
+        return new RhythmNote { rectTransform = noteRect };
+    }
+
+    private void ReleaseNote(RhythmNote note)
+    {
+        if (note == null || note.rectTransform == null) return;
+        if (note.pooled) return;
+
+        note.pooled = true;
+        note.rectTransform.gameObject.SetActive(false);
+        notePool.Add(note);
     }
 
     private void UpdateTimerUI()

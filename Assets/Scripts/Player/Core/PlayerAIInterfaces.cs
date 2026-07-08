@@ -5,6 +5,7 @@ public interface IPlayerStats
     int Hp { get; }
     int MaxHp { get; }
     void HealHp(int amount);
+    void TakeDamage(int amount);
 }
 
 public interface IEnemy
@@ -13,6 +14,7 @@ public interface IEnemy
     Vector3 Position { get; }
     float Hp { get; }
     bool IsDead { get; }
+    void TakeDamage(int amount);
 }
 
 public interface IDangerousProjectile

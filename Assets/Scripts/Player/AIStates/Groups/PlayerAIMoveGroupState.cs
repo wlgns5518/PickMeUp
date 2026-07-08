@@ -24,7 +24,7 @@ public class PlayerAIMoveGroupState : State<PlayerAIContext>
     public override void Enter()
     {
         // 도주 조건이면 Flee, 아니면 Chase로 진입
-        if (context.IsLowHp() && context.target != null)
+        if (parent.ShouldFlee())
             ChangeSubState(fleeState);
         else
             ChangeSubState(chaseState);
@@ -35,6 +35,20 @@ public class PlayerAIMoveGroupState : State<PlayerAIContext>
     public override void Update() => base.Update();
     public override void Exit()   => base.Exit();
 
-    public void GoToChase() => ChangeSubState(chaseState);
-    public void GoToFlee()  => ChangeSubState(fleeState);
+    public void GoToChase()
+    {
+        if (CurrentSubState != chaseState)
+            ChangeSubState(chaseState);
+    }
+
+    public void GoToFlee()
+    {
+        if (CurrentSubState != fleeState)
+            ChangeSubState(fleeState);
+    }
+
+    public void FinishFlee()
+    {
+        parent.FinishFlee();
+    }
 }

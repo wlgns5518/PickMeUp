@@ -4,6 +4,7 @@ public class PlayerAIFleeState : State<PlayerAIContext>
 {
     private PlayerAIMoveGroupState parent;
     private float potionTimer;
+    private float fleeTimer;
 
     public PlayerAIFleeState(PlayerAIContext context, PlayerAIMoveGroupState parent) : base(context)
     {
@@ -13,12 +14,20 @@ public class PlayerAIFleeState : State<PlayerAIContext>
     public override void Enter()
     {
         potionTimer = 0f;
+        fleeTimer = 0f;
         context.Play("Run");
     }
 
     public override void Update()
     {
         if (context.target == null) return;
+
+        fleeTimer += Time.deltaTime;
+        if (fleeTimer >= context.config.maxKiteTime)
+        {
+            parent.FinishFlee();
+            return;
+        }
 
         Vector3 away = context.transform.position - context.target.Position;
         away.y = 0f;
@@ -40,5 +49,6 @@ public class PlayerAIFleeState : State<PlayerAIContext>
     public override void Exit()
     {
         potionTimer = 0f;
+        fleeTimer = 0f;
     }
 }

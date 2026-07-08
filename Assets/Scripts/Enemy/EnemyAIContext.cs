@@ -30,15 +30,23 @@ public class EnemyAIContext
 
     // ── 편의 프로퍼티 ─────────────────────────────────────
     public bool  HasTarget       => target != null;
+    public float SqrDistanceToTarget => target != null
+        ? (target.position - transform.position).sqrMagnitude
+        : float.MaxValue;
     public float DistanceToTarget => target != null
         ? Vector3.Distance(transform.position, target.position)
         : float.MaxValue;
-    public bool InAttackRange => DistanceToTarget <= config.attackRange;
-    public bool InDetectRange => DistanceToTarget <= config.detectRange;
+    public bool InAttackRange => SqrDistanceToTarget <= config.attackRange * config.attackRange;
+    public bool InDetectRange => SqrDistanceToTarget <= config.detectRange * config.detectRange;
     public bool CanAttack     => Time.time >= nextAttackTime;
 
     // ── 애니메이션 내부 상태 ──────────────────────────────
     private string currentClip;
+    private Vector3 lastDestination;
+    private bool hasDestination;
+    private const float DestinationUpdateThresholdSqr = 0.04f;
+    private int animInfoFrame = -1;
+    private AnimatorStateInfo cachedAnimInfo;
 
     // ════════════════════════════════════════════════════
     //  HP
@@ -59,14 +67,19 @@ public class EnemyAIContext
 
         if (!TurnTowards(position, config.moveTurnSpeed, config.moveStartAngle))
         {
-            agent.isStopped = true;
-            agent.ResetPath();
+            if (!agent.isStopped)
+                agent.isStopped = true;
             return;
         }
 
         agent.isStopped = false;
         agent.speed = speed;
-        agent.SetDestination(position);
+        if (!hasDestination || (position - lastDestination).sqrMagnitude > DestinationUpdateThresholdSqr)
+        {
+            agent.SetDestination(position);
+            lastDestination = position;
+            hasDestination = true;
+        }
     }
 
     public void StopMoving()
@@ -74,6 +87,7 @@ public class EnemyAIContext
         if (agent == null || !agent.isOnNavMesh) return;
         agent.isStopped = true;
         agent.ResetPath();
+        hasDestination = false;
     }
 
     public bool Reached(Vector3 position, float threshold)
@@ -118,24 +132,50 @@ public class EnemyAIContext
     // ════════════════════════════════════════════════════
     //  애니메이션
     // ════════════════════════════════════════════════════
-    public void Play(string clipName, bool restart = false, float speed = 1f)
+    public bool Play(string clipName, bool restart = false, float speed = 1f)
     {
-        if (animator == null) return;
+        if (animator == null) return false;
         animator.speed = speed;
-        if (!restart && currentClip == clipName) return;
+        if (!HasAnimationState(clipName))
+        {
+            Debug.LogWarning($"Animator state '{clipName}' could not be found.", animator);
+            return false;
+        }
+
+        if (!restart && currentClip == clipName) return true;
         currentClip = clipName;
+        animInfoFrame = -1;
 
         if (restart)
             animator.Play(clipName, 0, 0f);
         else
             animator.Play(clipName);
+
+        return true;
+    }
+
+    private bool HasAnimationState(string clipName)
+    {
+        return animator.HasState(0, Animator.StringToHash(clipName)) ||
+               animator.HasState(0, Animator.StringToHash($"Base Layer.{clipName}"));
     }
 
     public bool IsAnimationFinished(string clipName)
     {
         if (animator == null) return true;
-        AnimatorStateInfo info = animator.GetCurrentAnimatorStateInfo(0);
+        AnimatorStateInfo info = GetCurrentAnimInfo();
         return info.IsName(clipName) && info.normalizedTime >= 1f;
+    }
+
+    private AnimatorStateInfo GetCurrentAnimInfo()
+    {
+        if (animInfoFrame != Time.frameCount)
+        {
+            cachedAnimInfo = animator.GetCurrentAnimatorStateInfo(0);
+            animInfoFrame = Time.frameCount;
+        }
+
+        return cachedAnimInfo;
     }
 
     public void ResetAnimSpeed()

@@ -15,6 +15,15 @@ public abstract class EnemyAIController : HFSMRunner<EnemyAIContext>, IEnemy
     public UnityEvent<Transform> OnAttackEvent;
     public UnityEvent            OnDeathEvent;
 
+    [Header("Combat")]
+    [SerializeField] private int   attackDamage = 10;
+    [SerializeField] private float weaponHitboxDuration = 0.15f;
+    [SerializeField] private WeaponHitbox[] weaponHitboxes;
+
+    [Header("Runtime HP")]
+    [SerializeField] private int currentHp;
+    [SerializeField] private int maxHp;
+
     // ── IEnemy 구현 ───────────────────────────────────────
     public GameObject GameObject => gameObject;
     public Vector3    Position   => transform.position;
@@ -41,14 +50,23 @@ public abstract class EnemyAIController : HFSMRunner<EnemyAIContext>, IEnemy
         if (animator == null)
             animator = GetComponentInChildren<Animator>();
 
+        if (weaponHitboxes == null || weaponHitboxes.Length == 0)
+            weaponHitboxes = GetComponentsInChildren<WeaponHitbox>(true);
+
         context.animator = animator;
-        context.onAttack = t  => OnAttackEvent?.Invoke(t);
+        context.onAttack = t =>
+        {
+            OnAttackEvent?.Invoke(t);
+            ActivateWeaponHitboxes();
+        };
         context.onDeath  = () =>
         {
+            SyncInspectorHp();
             OnDeathEvent?.Invoke();
             GoToDead();
         };
         context.hp = config.maxHp;
+        SyncInspectorHp();
 
         // 레지스트리에 등록
         EnemyRegistry.Instance?.Register(this);
@@ -117,11 +135,40 @@ public abstract class EnemyAIController : HFSMRunner<EnemyAIContext>, IEnemy
     public void TakeDamage(int amount)
     {
         if (IsDead) return;
+
         context.TakeDamage(amount);
+        SyncInspectorHp();
+        if (IsDead) return;
+
         OnTakeDamage();
     }
 
     protected virtual void OnTakeDamage() { }
+
+    private void ActivateWeaponHitboxes()
+    {
+        if (weaponHitboxes == null || weaponHitboxes.Length == 0) return;
+
+        for (int i = 0; i < weaponHitboxes.Length; i++)
+        {
+            WeaponHitbox hitbox = weaponHitboxes[i];
+            if (hitbox == null) continue;
+
+            hitbox.Configure(gameObject, HitboxOwnerType.Enemy);
+            hitbox.BeginAttack(attackDamage, weaponHitboxDuration);
+        }
+    }
+
+    private void SyncInspectorHp()
+    {
+        currentHp = context?.hp ?? 0;
+        maxHp = config != null ? config.maxHp : 0;
+    }
+
+    private void OnValidate()
+    {
+        maxHp = config != null ? config.maxHp : 0;
+    }
 
     public void GoToDead()
     {

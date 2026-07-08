@@ -3,22 +3,25 @@ using UnityEngine;
 public class PlayerAIAliveState : State<PlayerAIContext>
 {
     private PlayerAIController runner;
+    private float nextTargetRefreshTime;
+    private float fleeSuppressedUntil;
+    private const float TargetRefreshInterval = 0.15f;
+    private const float FleeSuppressionDuration = 2f;
 
-    // ── 그룹 스테이트 ──────────────────────────────────────
-    public PlayerAIIdleGroupState   idleGroup;
-    public PlayerAIMoveGroupState   moveGroup;
+    public PlayerAIIdleGroupState idleGroup;
+    public PlayerAIMoveGroupState moveGroup;
     public PlayerAIAttackGroupState attackGroup;
-    public PlayerAIBlockGroupState  blockGroup;
+    public PlayerAIBlockGroupState blockGroup;
     public PlayerAICrouchGroupState crouchGroup;
 
     public PlayerAIAliveState(PlayerAIContext context, PlayerAIController runner) : base(context)
     {
         this.runner = runner;
 
-        idleGroup   = new PlayerAIIdleGroupState(context, this);
-        moveGroup   = new PlayerAIMoveGroupState(context, this);
+        idleGroup = new PlayerAIIdleGroupState(context, this);
+        moveGroup = new PlayerAIMoveGroupState(context, this);
         attackGroup = new PlayerAIAttackGroupState(context, this);
-        blockGroup  = new PlayerAIBlockGroupState(context, this);
+        blockGroup = new PlayerAIBlockGroupState(context, this);
         crouchGroup = new PlayerAICrouchGroupState(context, this);
 
         InitSubStateMachine(idleGroup);
@@ -28,10 +31,12 @@ public class PlayerAIAliveState : State<PlayerAIContext>
 
     public override void Update()
     {
-        // 공통: 매 프레임 타겟 갱신
-        context.RefreshTarget();
+        if (Time.time >= nextTargetRefreshTime || (context.target != null && context.target.IsDead))
+        {
+            nextTargetRefreshTime = Time.time + TargetRefreshInterval;
+            context.RefreshTarget();
+        }
 
-        // 공통: 사망 체크
         if (context.IsDead())
         {
             runner.GoToDead();
@@ -44,24 +49,28 @@ public class PlayerAIAliveState : State<PlayerAIContext>
 
     private void UpdateGroupTransitions()
     {
-        // 모션 중인 그룹은 외부 전환 차단
-        if (CurrentSubState == blockGroup  && blockGroup.IsLocked)  return;
+        if (CurrentSubState == blockGroup && blockGroup.IsLocked) return;
         if (CurrentSubState == crouchGroup && crouchGroup.IsLocked) return;
         if (CurrentSubState == attackGroup && attackGroup.IsLocked) return;
 
-        // HP 낮음 + 적 존재 → Move (도주)
-        if (context.IsLowHp() && context.target != null)
+        if (ShouldFlee())
         {
             if (CurrentSubState != moveGroup)
                 GoToMove();
+            else if (!moveGroup.IsFleeing)
+                moveGroup.GoToFlee();
             return;
         }
 
-        // 도주 중 → HP 회복될 때까지 유지
-        if (CurrentSubState == moveGroup && moveGroup.IsFleeing && !context.IsSafeHp())
+        if (CurrentSubState == moveGroup && moveGroup.IsFleeing)
+        {
+            if (context.target != null)
+                GoToCombat();
+            else
+                GoToIdle();
             return;
+        }
 
-        // 적 없음 → Idle
         if (context.target == null)
         {
             if (CurrentSubState != idleGroup)
@@ -69,15 +78,14 @@ public class PlayerAIAliveState : State<PlayerAIContext>
             return;
         }
 
-        float distance = Vector3.Distance(context.transform.position, context.target.Position);
+        float distance = (context.target.Position - context.transform.position).sqrMagnitude;
+        float attackRangeSqr = context.AttackRange * context.AttackRange;
 
-        // 공격 범위 내 → Attack
-        if (distance <= context.AttackRange)
+        if (distance <= attackRangeSqr)
         {
             if (CurrentSubState != attackGroup)
                 GoToAttack();
         }
-        // 공격 범위 밖 → Move (추격)
         else
         {
             if (CurrentSubState != moveGroup)
@@ -87,10 +95,104 @@ public class PlayerAIAliveState : State<PlayerAIContext>
 
     public override void Exit() => base.Exit();
 
-    // ── 그룹 전환 메서드 ───────────────────────────────────
-    public void GoToIdle()   => ChangeSubState(idleGroup);
-    public void GoToMove()   => ChangeSubState(moveGroup);
-    public void GoToAttack() => ChangeSubState(attackGroup);
-    public void GoToBlock()  => ChangeSubState(blockGroup);
-    public void GoToCrouch() => ChangeSubState(crouchGroup);
+    public void GoToIdle()
+    {
+        if (CurrentSubState != idleGroup)
+            ChangeSubState(idleGroup);
+    }
+
+    public void GoToMove()
+    {
+        if (CurrentSubState != moveGroup)
+            ChangeSubState(moveGroup);
+    }
+
+    public void GoToAttack()
+    {
+        if (CurrentSubState != attackGroup)
+            ChangeSubState(attackGroup);
+        else
+            attackGroup.GoToAttack();
+    }
+
+    public void GoToBlock()
+    {
+        if (CurrentSubState != blockGroup)
+            ChangeSubState(blockGroup);
+    }
+
+    public void GoToCrouch()
+    {
+        if (CurrentSubState != crouchGroup)
+            ChangeSubState(crouchGroup);
+    }
+
+    public void GoToFlee()
+    {
+        if (CurrentSubState != moveGroup)
+            ChangeSubState(moveGroup);
+        else if (moveGroup.IsFleeing)
+            return;
+
+        moveGroup.GoToFlee();
+    }
+
+    public void GoToHit()
+    {
+        if (CurrentSubState != attackGroup)
+            ChangeSubState(attackGroup);
+
+        attackGroup.GoToHit();
+    }
+
+    public void FinishHit()
+    {
+        if (ShouldFlee())
+        {
+            GoToFlee();
+            return;
+        }
+
+        if (context.target != null)
+        {
+            GoToCombat();
+            return;
+        }
+
+        GoToIdle();
+    }
+
+    public void FinishFlee()
+    {
+        fleeSuppressedUntil = Time.time + FleeSuppressionDuration;
+
+        if (context.target != null)
+        {
+            GoToCombat();
+            return;
+        }
+
+        GoToIdle();
+    }
+
+    private void GoToCombat()
+    {
+        float distance = (context.target.Position - context.transform.position).sqrMagnitude;
+        float attackRangeSqr = context.AttackRange * context.AttackRange;
+
+        if (distance <= attackRangeSqr)
+            GoToAttack();
+        else
+            GoToMove();
+    }
+
+    public bool ShouldFlee()
+    {
+        return CanFlee() && context.IsLowHp() && context.target != null;
+    }
+
+    private bool CanFlee()
+    {
+        return Time.time >= fleeSuppressedUntil;
+    }
 }

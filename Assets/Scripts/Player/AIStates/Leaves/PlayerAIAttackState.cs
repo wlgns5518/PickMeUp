@@ -5,8 +5,10 @@ public class PlayerAIAttackState : State<PlayerAIContext>
     private PlayerAIAttackGroupState parent;
     private float minMotionEndTime;
     private string currentClip;
+    private bool isAttacking;
 
     private static readonly string[] LightAttackClips = { "LightAttack", "LightAttack2" };
+    private const float AttackDuration = 1f;
 
     public PlayerAIAttackState(PlayerAIContext context, PlayerAIAttackGroupState parent) : base(context)
     {
@@ -17,21 +19,25 @@ public class PlayerAIAttackState : State<PlayerAIContext>
     {
         context.StopMoving();
         minMotionEndTime = 0f;
+        currentClip = null;
+        isAttacking = false;
 
         if (context.target == null) return;
 
         context.Face(context.target.Position);
-        currentClip = LightAttackClips[Random.Range(0, LightAttackClips.Length)];
-        minMotionEndTime = Time.time + context.config.attackMotionDuration;
-        context.nextAttackTime = Time.time + context.AttackCooldown;
-        context.Play(currentClip, true);
-        context.onAttack?.Invoke(context.DirectionTo(context.target.Position), context.target.GameObject);
+        if (Time.time >= context.nextAttackTime)
+            FireAttack();
     }
 
     public override void Update()
     {
-        if (Time.time < minMotionEndTime) return;
-        if (!context.IsAnimationFinished(currentClip)) return;
+        if (isAttacking)
+        {
+            if (Time.time < minMotionEndTime) return;
+            if (!context.IsAnimationFinished(currentClip)) return;
+            currentClip = null;
+            isAttacking = false;
+        }
 
         if (context.target == null) return;
 
@@ -41,14 +47,25 @@ public class PlayerAIAttackState : State<PlayerAIContext>
             return;
         }
 
-        // 재공격
         context.Face(context.target.Position);
-        currentClip = LightAttackClips[Random.Range(0, LightAttackClips.Length)];
-        minMotionEndTime = Time.time + context.config.attackMotionDuration;
-        context.nextAttackTime = Time.time + context.AttackCooldown;
-        context.Play(currentClip, true);
-        context.onAttack?.Invoke(context.DirectionTo(context.target.Position), context.target.GameObject);
+        FireAttack();
     }
 
     public override void Exit() { }
+
+    private void FireAttack()
+    {
+        currentClip = LightAttackClips[Random.Range(0, LightAttackClips.Length)];
+        minMotionEndTime = Time.time + AttackDuration;
+        context.nextAttackTime = minMotionEndTime + Mathf.Max(context.config.postAttackDelay, 1.5f);
+        isAttacking = context.Play(currentClip, true);
+        if (isAttacking)
+        {
+            context.onAttack?.Invoke(context.DirectionTo(context.target.Position), context.target.GameObject);
+        }
+        else
+        {
+            currentClip = null;
+        }
+    }
 }

@@ -37,15 +37,16 @@ public class UtilityAIEvaluator
             if (score > bestScore) { bestScore = score; best = action; }
         }
 
-        float distance   = context.target != null
-            ? Vector3.Distance(context.transform.position, context.target.Position)
+        float distanceSqr = context.target != null
+            ? (context.target.Position - context.transform.position).sqrMagnitude
             : float.MaxValue;
 
         float hpRatio    = context.stats != null && context.stats.MaxHp > 0
             ? (float)context.stats.Hp / context.stats.MaxHp
             : 1f;
 
-        bool inAttackRange  = distance <= context.AttackRange;
+        float attackRange = context.AttackRange;
+        bool inAttackRange = distanceSqr <= attackRange * attackRange;
         bool enemyAttacking = IsEnemyAttacking();
 
         // Flee
@@ -110,11 +111,10 @@ public class UtilityAIEvaluator
             if (p == null || p.TargetObject == null)
                 continue;
 
-            float dist = Vector3.Distance(
-                p.Position,
-                context.transform.position);
+            float distSqr = (p.Position - context.transform.position).sqrMagnitude;
+            float dangerRadius = context.config.dangerSkillRadius;
 
-            if (dist <= context.config.dangerSkillRadius)
+            if (distSqr <= dangerRadius * dangerRadius)
                 return true;
         }
 

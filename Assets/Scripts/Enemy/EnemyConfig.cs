@@ -21,7 +21,7 @@ public class EnemyConfig : ScriptableObject
     public int maxHp            = 100;
 
     [Header("쿨타임 (초)")]
-    public float attackCooldown = 1.2f;
+    public float attackCooldown = 1.5f;
     [Tooltip("피격 경직 지속 시간 (초)")]
     public float hitDuration    = 0.4f;
     [Tooltip("Detect 연출 유지 시간 (초)")]
@@ -39,6 +39,9 @@ public class EnemyConfig : ScriptableObject
     public float stuckThreshold = 1.5f;
 
     [Header("공격 모션")]
+    [Tooltip("공격 애니메이션 시작 후 데미지가 들어가기까지의 시간 (초)")]
+    public float attackHitDelay = 0.25f;
+
     [Tooltip("공격 모션 완료까지 대기 시간 (초)")]
     public float attackMotionDuration = 0.6f;
 }

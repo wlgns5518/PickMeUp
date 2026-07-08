@@ -31,8 +31,29 @@ public class PlayerAIAttackGroupState : State<PlayerAIContext>
     public override void Update() => base.Update();
     public override void Exit()   => base.Exit();
 
-    public void GoToAttack()      => ChangeSubState(attackState);
-    public void GoToHeavyAttack() => ChangeSubState(heavyAttackState);
-    public void GoToKick()        => ChangeSubState(kickState);
-    public void GoToHit()         => ChangeSubState(hitState);
+    public void GoToAttack()
+    {
+        if (CurrentSubState != attackState)
+            ChangeSubState(attackState);
+    }
+
+    public void GoToHeavyAttack()
+    {
+        if (CurrentSubState != heavyAttackState)
+            ChangeSubState(heavyAttackState);
+    }
+
+    public void GoToKick()
+    {
+        if (CurrentSubState != kickState)
+            ChangeSubState(kickState);
+    }
+
+    public void GoToHit()
+    {
+        if (CurrentSubState != hitState)
+            ChangeSubState(hitState);
+    }
+
+    public void FinishHit() => parent.FinishHit();
 }

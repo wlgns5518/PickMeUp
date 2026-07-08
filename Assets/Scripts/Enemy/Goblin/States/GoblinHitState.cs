@@ -4,6 +4,7 @@ public class GoblinHitState : State<EnemyAIContext>
 {
     private GoblinAliveState parent;
     private float hitEndTime;
+    private bool hasHitAnimation;
 
     public GoblinHitState(EnemyAIContext context, GoblinAliveState parent) : base(context)
     {
@@ -14,13 +15,13 @@ public class GoblinHitState : State<EnemyAIContext>
     {
         context.StopMoving();
         hitEndTime = Time.time + context.config.hitDuration;
-        context.Play("Hit", true);
+        hasHitAnimation = context.Play("Hit", true);
     }
 
     public override void Update()
     {
-        if (Time.time >= hitEndTime && context.IsAnimationFinished("Hit"))
-            parent.GoToIdle();
+        if (!hasHitAnimation || (Time.time >= hitEndTime && context.IsAnimationFinished("Hit")))
+            parent.FinishHit();
     }
 
     public override void Exit() { }

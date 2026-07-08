@@ -4,11 +4,13 @@ using UnityEngine.Events;
 public class GoblinAIController : EnemyAIController
 {
     private GoblinUtilityEvaluator goblinEvaluator;
+    private GoblinAliveState aliveState;
 
     protected override IState CreateInitialState(EnemyAIContext context)
     {
         goblinEvaluator = new GoblinUtilityEvaluator(context);
-        return new GoblinAliveState(context, this, goblinEvaluator);
+        aliveState = new GoblinAliveState(context, this, goblinEvaluator);
+        return aliveState;
     }
 
     protected override IState CreateDeadState()
@@ -17,6 +19,6 @@ public class GoblinAIController : EnemyAIController
     protected override void OnTakeDamage()
     {
         goblinEvaluator?.NotifyHit();
-        context.Play("Hit", true);
+        aliveState?.GoToHit();
     }
 }

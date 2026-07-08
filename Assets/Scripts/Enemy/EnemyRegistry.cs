@@ -13,6 +13,7 @@ public class EnemyRegistry : MonoBehaviour
 
     // 읽기 전용으로 외부 노출
     public IReadOnlyList<IEnemy> Enemies => _enemies;
+    public int Version { get; private set; }
 
     private void Awake()
     {
@@ -26,12 +27,15 @@ public class EnemyRegistry : MonoBehaviour
 
     public void Register(IEnemy enemy)
     {
-        if (!_enemies.Contains(enemy))
-            _enemies.Add(enemy);
+        if (_enemies.Contains(enemy)) return;
+
+        _enemies.Add(enemy);
+        Version++;
     }
 
     public void Unregister(IEnemy enemy)
     {
-        _enemies.Remove(enemy);
+        if (_enemies.Remove(enemy))
+            Version++;
     }
 }

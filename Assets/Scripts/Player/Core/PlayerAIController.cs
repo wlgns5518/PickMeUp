@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.Events;
@@ -27,8 +26,15 @@ public class PlayerAIController : HFSMRunner<PlayerAIContext>
     public DodgeEvent  OnDodgeEvent;
     public UnityEvent  OnPotionEvent;
 
+    [Header("Combat")]
+    [SerializeField] private int   attackDamage = 10;
+    [SerializeField] private WeaponHitbox[] weaponHitboxes;
+
+    private const float AttackDuration = 1f;
     private PlayerAIAliveState aliveState;
     private PlayerAIDeadState  deadState;
+    private int enemyRegistryVersion = -1;
+    private int projectileRegistryVersion = -1;
 
     public PlayerAIContext Context => context;
 
@@ -56,9 +62,16 @@ public class PlayerAIController : HFSMRunner<PlayerAIContext>
         if (animator == null)
             animator = GetComponentInChildren<Animator>();
 
+        if (weaponHitboxes == null || weaponHitboxes.Length == 0)
+            weaponHitboxes = GetComponentsInChildren<WeaponHitbox>(true);
+
         context.animator  = animator;
         context.character = character;
-        context.onAttack  = (dir, go) => OnAttackEvent?.Invoke(dir, go);
+        context.onAttack  = (dir, go) =>
+        {
+            OnAttackEvent?.Invoke(dir, go);
+            ActivateWeaponHitboxes();
+        };
         context.onSkill   = (dir, go) => OnSkillEvent?.Invoke(dir, go);
         context.onDodge   = dir       => OnDodgeEvent?.Invoke(dir);
         context.onPotion  = ()        => OnPotionEvent?.Invoke();
@@ -105,33 +118,25 @@ public class PlayerAIController : HFSMRunner<PlayerAIContext>
 
     private void SyncFromRegistry()
     {
-        if (EnemyRegistry.Instance != null)
+        EnemyRegistry enemyRegistry = EnemyRegistry.Instance;
+        if (enemyRegistry != null && enemyRegistryVersion != enemyRegistry.Version)
         {
+            enemyRegistryVersion = enemyRegistry.Version;
             context.enemies.Clear();
-            var enemies = EnemyRegistry.Instance.Enemies;
+            var enemies = enemyRegistry.Enemies;
             for (int i = 0; i < enemies.Count; i++)
                 context.enemies.Add(enemies[i]);
         }
 
-        if (ProjectileRegistry.Instance != null)
+        ProjectileRegistry projectileRegistry = ProjectileRegistry.Instance;
+        if (projectileRegistry != null && projectileRegistryVersion != projectileRegistry.Version)
         {
+            projectileRegistryVersion = projectileRegistry.Version;
             context.projectiles.Clear();
-            var projectiles = ProjectileRegistry.Instance.Projectiles;
+            var projectiles = projectileRegistry.Projectiles;
             for (int i = 0; i < projectiles.Count; i++)
                 context.projectiles.Add(projectiles[i]);
         }
-    }
-
-    public void SetEnemies(List<IEnemy> source)
-    {
-        context.enemies.Clear();
-        if (source != null) context.enemies.AddRange(source);
-    }
-
-    public void SetProjectiles(List<IDangerousProjectile> source)
-    {
-        context.projectiles.Clear();
-        if (source != null) context.projectiles.AddRange(source);
     }
 
     public void SetCharacter(CharacterSO newCharacter)
@@ -142,7 +147,34 @@ public class PlayerAIController : HFSMRunner<PlayerAIContext>
     public void TakeDamage()
     {
         if (aliveState == null || CurrentRootState == deadState) return;
-        aliveState.GoToMove();
+
+        if (context.IsDead())
+        {
+            GoToDead();
+            return;
+        }
+
+        aliveState.GoToHit();
+    }
+
+    public void TakeDamage(int amount)
+    {
+        context.stats?.TakeDamage(amount);
+        TakeDamage();
+    }
+
+    private void ActivateWeaponHitboxes()
+    {
+        if (weaponHitboxes == null || weaponHitboxes.Length == 0) return;
+
+        for (int i = 0; i < weaponHitboxes.Length; i++)
+        {
+            WeaponHitbox hitbox = weaponHitboxes[i];
+            if (hitbox == null) continue;
+
+            hitbox.Configure(gameObject, HitboxOwnerType.Player);
+            hitbox.BeginAttack(attackDamage, AttackDuration);
+        }
     }
 
     public void GoToDead()

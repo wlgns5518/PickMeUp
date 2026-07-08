@@ -4,8 +4,9 @@ public class PlayerAIHitState : State<PlayerAIContext>
 {
     private PlayerAIAttackGroupState parent;
     private string currentClip;
+    private bool hasHitAnimation;
 
-    private static readonly string[] HitClips = { "Hit", "Hit2" };
+    private static readonly string[] HitClips = { "Hit" };
 
     public PlayerAIHitState(PlayerAIContext context, PlayerAIAttackGroupState parent) : base(context)
     {
@@ -16,13 +17,19 @@ public class PlayerAIHitState : State<PlayerAIContext>
     {
         context.StopMoving();
         currentClip = HitClips[Random.Range(0, HitClips.Length)];
-        context.Play(currentClip, true);
+        hasHitAnimation = context.Play(currentClip, true);
     }
 
     public override void Update()
     {
+        if (!hasHitAnimation)
+        {
+            parent.FinishHit();
+            return;
+        }
+
         if (!context.IsAnimationFinished(currentClip)) return;
-        parent.GoToAttack();
+        parent.FinishHit();
     }
 
     public override void Exit() { }

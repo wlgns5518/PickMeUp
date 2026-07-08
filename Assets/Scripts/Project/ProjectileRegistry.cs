@@ -12,6 +12,7 @@ public class ProjectileRegistry : MonoBehaviour
     private readonly List<IDangerousProjectile> _projectiles = new();
 
     public IReadOnlyList<IDangerousProjectile> Projectiles => _projectiles;
+    public int Version { get; private set; }
 
     private void Awake()
     {
@@ -25,12 +26,15 @@ public class ProjectileRegistry : MonoBehaviour
 
     public void Register(IDangerousProjectile projectile)
     {
-        if (!_projectiles.Contains(projectile))
-            _projectiles.Add(projectile);
+        if (_projectiles.Contains(projectile)) return;
+
+        _projectiles.Add(projectile);
+        Version++;
     }
 
     public void Unregister(IDangerousProjectile projectile)
     {
-        _projectiles.Remove(projectile);
+        if (_projectiles.Remove(projectile))
+            Version++;
     }
 }
