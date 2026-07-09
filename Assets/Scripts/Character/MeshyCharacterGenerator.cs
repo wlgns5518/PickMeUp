@@ -93,7 +93,7 @@ public class MeshyCharacterGenerator : MonoBehaviour
         so.job = JobPool[jIdx];
         so.gender = UnityEngine.Random.value < 0.5f ? Gender.Male : Gender.Female;
         so.hairIndex = UnityEngine.Random.Range(0, 2);
-        so.outfit = CharacterRules.OutfitFor(so.job);
+        so.outfit = OutfitFor(so.job);
 
         if (!string.IsNullOrEmpty(presetName))
             so.characterName = presetName;
@@ -103,7 +103,6 @@ public class MeshyCharacterGenerator : MonoBehaviour
         so.description  = $"{Traits[tIdx]} 인간 {CharacterRules.Korean(so.job)}";
         so.constitution = RollConstitution(so.job);
         RollInitialStats(so);
-        so.currentHP = so.stats.vitality * 5 + so.hiddenStats.body * 3;
         so.name = $"{so.characterName} ({so.starCount}★)";
 
         onUpdate?.Invoke(so);
@@ -205,6 +204,21 @@ public class MeshyCharacterGenerator : MonoBehaviour
 
     private static int RollStars() => RollWeightedIndex(StarWeights) + 1;
 
+    private static OutfitSet OutfitFor(JobType job)
+    {
+        switch (job)
+        {
+            case JobType.Melee:
+            case JobType.Tank:
+                return OutfitSet.A;
+            case JobType.Mage:
+            case JobType.Support:
+                return OutfitSet.C;
+            default:
+                return OutfitSet.Base;
+        }
+    }
+
     private static int RollWeightedIndex(int[] weights)
     {
         int total = 0;
@@ -232,11 +246,9 @@ public class MeshyCharacterGenerator : MonoBehaviour
             : (so.gender == Gender.Male ? "long tied back hair" : "long flowing hair");
         string beardEn = so.HasBeard ? "with a short beard, " : "clean shaven, ";
         if (so.gender == Gender.Female) beardEn = "no facial hair, ";
-        string outfitEn = CharacterRules.OutfitPromptEn(so.outfit);
-
         return
             $"A single {TraitsEn[tIdx]} {genderEn} human {JobPromptsEn[jIdx]} character, " +
-            $"{outfitEn}, {hairEn}, {beardEn}" +
+            $"{hairEn}, {beardEn}" +
             "upper body portrait from the waist up, natural relaxed standing pose, " +
             "slight three-quarter view, looking forward, " +
             "semi-realistic mature fantasy illustration, detailed face and costume, " +
