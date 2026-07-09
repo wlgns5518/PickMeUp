@@ -32,6 +32,8 @@ public class UnitStats
     [Header("Defense")]
     public float evadeRange = 2.5f;
     public float blockDuration = 0.8f;
+    public float knockbackDistance = 0.6f;
+    public float knockbackDuration = 0.12f;
     [Range(0f, 1f)] public float blockDamageReduction = 0.5f;
 
     public bool IsDead => currentHp <= 0;

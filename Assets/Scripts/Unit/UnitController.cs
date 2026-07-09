@@ -85,6 +85,8 @@ public class UnitController : MonoBehaviour
     private bool hasAgentDestination;
     private int currentAnimationHash;
     private Vector3 roamDirection;
+    private Vector3 knockbackDirection;
+    private bool hasPendingKnockback;
     private float nextRoamTime;
     private float lastTargetChangeTime = -999f;
 
@@ -320,16 +322,29 @@ public class UnitController : MonoBehaviour
 
     public void TakeDamage(int damage)
     {
-        TakeDamage(damage, null);
+        TakeDamage(damage, null, false);
     }
 
     public void TakeDamage(int damage, UnitController attacker)
+    {
+        TakeDamage(damage, attacker, false);
+    }
+
+    public void TakeDamage(int damage, UnitController attacker, bool applyKnockback)
     {
         stats.TakeDamage(damage, IsBlocking);
 
         if (attacker != null && !attacker.IsDead && attacker.isActiveAndEnabled && UnitRegistry.AreEnemies(this, attacker))
         {
             ForceSetAttackTarget(attacker);
+            if (applyKnockback)
+            {
+                SetKnockbackDirection(attacker.transform.position);
+            }
+            else
+            {
+                ClearKnockback();
+            }
         }
 
         if (stats.IsDead)
@@ -359,7 +374,7 @@ public class UnitController : MonoBehaviour
     public void ApplySkillDamage()
     {
         if (!IsTargetValid()) return;
-        CurrentTarget.TakeDamage(stats.skillDamage, this);
+        CurrentTarget.TakeDamage(stats.skillDamage, this, true);
     }
 
     public void TriggerAttack()
@@ -499,6 +514,24 @@ public class UnitController : MonoBehaviour
         }
     }
 
+    public void ApplyKnockback(float progress)
+    {
+        if (!hasPendingKnockback) return;
+        if (knockbackDirection.sqrMagnitude <= 0.0001f) return;
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
+
+        float distance = stats.knockbackDistance * progress;
+        Vector3 destination = transform.position + knockbackDirection.normalized * distance;
+
+        NavMeshHit hit;
+        if (NavMesh.SamplePosition(destination, out hit, stats.knockbackDistance, NavMesh.AllAreas))
+        {
+            destination = hit.position;
+        }
+
+        agent.Move(destination - transform.position);
+    }
+
     public void DisableCollider()
     {
         if (bodyCollider != null) bodyCollider.enabled = false;
@@ -560,6 +593,24 @@ public class UnitController : MonoBehaviour
 
         AssignTarget(attacker);
         ClearMoveDestination();
+    }
+
+    private void SetKnockbackDirection(Vector3 attackerPosition)
+    {
+        knockbackDirection = transform.position - attackerPosition;
+        knockbackDirection.y = 0f;
+        if (knockbackDirection.sqrMagnitude <= 0.0001f)
+        {
+            knockbackDirection = -transform.forward;
+        }
+
+        hasPendingKnockback = true;
+    }
+
+    private void ClearKnockback()
+    {
+        knockbackDirection = Vector3.zero;
+        hasPendingKnockback = false;
     }
 
     private bool IsTargetChangeLocked()
