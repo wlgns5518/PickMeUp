@@ -34,6 +34,7 @@ public class UnitController : MonoBehaviour
 
     [Header("Animator State Names")]
     [SerializeField] private string idleStateName = "Idle";
+    [SerializeField] private string walkStateName = "Walk";
     [SerializeField] private string runStateName = "Run";
     [SerializeField] private string jumpStateName = "";
     [SerializeField] private string attackStateName = "Attack";
@@ -70,6 +71,7 @@ public class UnitController : MonoBehaviour
     public bool IsDead => stats.IsDead;
     public bool IsBlocking { get; private set; }
     public bool HasMoveDestination { get; private set; }
+    public bool IsRoamingMoveDestination { get; private set; }
     public Vector3 MoveDestination { get; private set; }
     public float RunDistance => runDistance;
     public float DestinationUpdateInterval => destinationUpdateInterval;
@@ -199,13 +201,20 @@ public class UnitController : MonoBehaviour
 
     public void SetMoveDestination(Vector3 destination)
     {
+        SetMoveDestination(destination, false);
+    }
+
+    private void SetMoveDestination(Vector3 destination, bool isRoaming)
+    {
         MoveDestination = destination;
         HasMoveDestination = true;
+        IsRoamingMoveDestination = isRoaming;
     }
 
     public void ClearMoveDestination()
     {
         HasMoveDestination = false;
+        IsRoamingMoveDestination = false;
     }
 
     public bool TrySetRoamDestination()
@@ -238,7 +247,7 @@ public class UnitController : MonoBehaviour
 
         roamDirection = hit.position - transform.position;
         roamDirection.y = 0f;
-        SetMoveDestination(hit.position);
+        SetMoveDestination(hit.position, true);
         return true;
     }
 
@@ -437,7 +446,19 @@ public class UnitController : MonoBehaviour
             return;
         }
 
-        PlayAnimation(speed > 0.01f ? runStateName : idleStateName, false);
+        if (speed <= 0.01f)
+        {
+            PlayAnimation(idleStateName, false);
+            return;
+        }
+
+        if (isRunning)
+        {
+            PlayAnimation(runStateName, false);
+            return;
+        }
+
+        PlayAnimation(CanPlayAnimation(walkStateName) ? walkStateName : runStateName, false);
     }
 
     public void FaceTarget()
@@ -559,6 +580,13 @@ public class UnitController : MonoBehaviour
         float requiredSqrDistance = currentSqrDistance * targetSwitchDistanceRatio * targetSwitchDistanceRatio;
 
         return newSqrDistance < requiredSqrDistance;
+    }
+
+    private bool CanPlayAnimation(string stateName)
+    {
+        if (animator == null || string.IsNullOrEmpty(stateName)) return false;
+
+        return animator.HasState(0, Animator.StringToHash(stateName));
     }
 
     private void PlayAnimation(string stateName, bool forceRestart)

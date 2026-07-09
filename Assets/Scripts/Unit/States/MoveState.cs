@@ -9,6 +9,8 @@ public class MoveState : UnitBattleState
     public override void Enter()
     {
         base.Enter();
+        if (TrySwitchToIdleWhenNoEnemy()) return;
+        if (TrySwitchToDetectedTarget()) return;
         UpdateMovement();
     }
 
@@ -17,13 +19,7 @@ public class MoveState : UnitBattleState
         if (TrySwitchToDead()) return;
         if (TrySwitchToIdleWhenNoEnemy()) return;
 
-        UnitController target = context.Scanner != null ? context.Scanner.Target : null;
-        if (target != null)
-        {
-            if (!context.TrySetTarget(target)) return;
-            context.ChangeState(context.ChaseState);
-            return;
-        }
+        if (TrySwitchToDetectedTarget()) return;
 
         if (!context.HasMoveDestination || context.HasReachedDestination(context.MoveDestination))
         {
@@ -45,10 +41,20 @@ public class MoveState : UnitBattleState
                           context.Agent.enabled &&
                           context.Agent.isOnNavMesh &&
                           context.Agent.isOnOffMeshLink;
-        bool shouldRun = sqrDistance > context.RunDistance * context.RunDistance;
+        bool shouldRun = !context.IsRoamingMoveDestination && sqrDistance > context.RunDistance * context.RunDistance;
         float speed = shouldRun ? context.Stats.runSpeed : context.Stats.walkSpeed;
 
         context.MoveTo(context.MoveDestination, speed);
         context.SetMoveAnimation(speed, shouldRun, shouldJump);
+    }
+
+    private bool TrySwitchToDetectedTarget()
+    {
+        UnitController target = context.Scanner != null ? context.Scanner.Target : null;
+        if (target == null) return false;
+        if (!context.TrySetTarget(target)) return false;
+
+        context.ChangeState(context.ChaseState);
+        return true;
     }
 }

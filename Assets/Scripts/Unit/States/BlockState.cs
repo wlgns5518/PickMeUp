@@ -12,6 +12,13 @@ public class BlockState : UnitBattleState
     {
         base.Enter();
         stateTimer = context.Stats.blockDuration;
+
+        if (!context.HasUsableTarget())
+        {
+            context.ChangeState(context.SearchState);
+            return;
+        }
+
         context.StopMovement();
         context.SetBlocking(true);
     }

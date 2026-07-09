@@ -12,6 +12,19 @@ public class SkillState : UnitBattleState
     {
         base.Enter();
         stateTimer = context.Stats.skillAnimationDuration;
+
+        if (!context.HasUsableTarget())
+        {
+            context.ChangeState(context.SearchState);
+            return;
+        }
+
+        if (!context.IsTargetInAttackRange())
+        {
+            context.ChangeState(context.ChaseState);
+            return;
+        }
+
         context.StopMovement();
         context.TriggerSkill();
     }

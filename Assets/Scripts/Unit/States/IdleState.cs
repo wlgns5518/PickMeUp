@@ -9,6 +9,11 @@ public class IdleState : UnitBattleState
         base.Enter();
         context.StopMovement();
         context.ClearTarget();
+
+        if (UnitRegistry.HasLivingEnemy(context))
+        {
+            context.ChangeState(context.SearchState);
+        }
     }
 
     public override void Update()

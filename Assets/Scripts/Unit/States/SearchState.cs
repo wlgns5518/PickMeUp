@@ -8,10 +8,15 @@ public class SearchState : UnitBattleState
     {
         base.Enter();
         context.StopMovement();
+        if (TrySwitchToIdleWhenNoEnemy()) return;
+
         if (!context.HasUsableTarget())
         {
             context.ClearTarget();
         }
+
+        if (TrySwitchToTarget()) return;
+        TrySwitchToMove();
     }
 
     public override void Update()
@@ -19,6 +24,12 @@ public class SearchState : UnitBattleState
         if (TrySwitchToDead()) return;
         if (TrySwitchToIdleWhenNoEnemy()) return;
 
+        if (TrySwitchToTarget()) return;
+        TrySwitchToMove();
+    }
+
+    private bool TrySwitchToTarget()
+    {
         UnitController target = context.HasUsableTarget() ? context.CurrentTarget : null;
         if (target == null && context.Scanner != null)
         {
@@ -32,33 +43,41 @@ public class SearchState : UnitBattleState
 
         if (target != null)
         {
-            if (!context.TrySetTarget(target)) return;
+            if (!context.TrySetTarget(target)) return false;
 
             if (context.CanEvade())
             {
                 context.ChangeState(context.EvadeState);
-                return;
+                return true;
             }
 
             if (context.CanBlock())
             {
                 context.ChangeState(context.BlockState);
-                return;
+                return true;
             }
 
             context.ChangeState(context.ChaseState);
-            return;
+            return true;
         }
 
+        return false;
+    }
+
+    private bool TrySwitchToMove()
+    {
         if (context.HasMoveDestination)
         {
             context.ChangeState(context.MoveState);
-            return;
+            return true;
         }
 
         if (context.TrySetRoamDestination())
         {
             context.ChangeState(context.MoveState);
+            return true;
         }
+
+        return false;
     }
 }
