@@ -523,12 +523,6 @@ public class UnitController : MonoBehaviour
         float distance = stats.knockbackDistance * progress;
         Vector3 destination = transform.position + knockbackDirection.normalized * distance;
 
-        NavMeshHit hit;
-        if (NavMesh.SamplePosition(destination, out hit, stats.knockbackDistance, NavMesh.AllAreas))
-        {
-            destination = hit.position;
-        }
-
         agent.Move(destination - transform.position);
     }
 

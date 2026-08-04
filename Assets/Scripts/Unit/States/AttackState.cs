@@ -49,7 +49,7 @@ public class AttackState : UnitBattleState
             return true;
         }
 
-        if (context.CanUseSkill())
+        if (!context.IsAttackAnimationLocked && context.CanUseSkill())
         {
             context.ChangeState(context.SkillState);
             return true;
