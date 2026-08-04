@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 public class RhythmGame : MonoBehaviour
@@ -108,7 +109,7 @@ public class RhythmGame : MonoBehaviour
 
         UpdateTimerUI();
 
-        if (Input.GetMouseButtonDown(0))
+        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
             TryHitNote();
         if (!running) return;
 
@@ -371,9 +372,11 @@ public class RhythmGame : MonoBehaviour
     private bool TryGetClickedLane(out int lane)
     {
         lane = -1;
+        if (Mouse.current == null) return false;
+
         Camera uiCamera = GetUiCamera();
         if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                playArea, Input.mousePosition, uiCamera, out Vector2 localPoint))
+                playArea, Mouse.current.position.ReadValue(), uiCamera, out Vector2 localPoint))
         {
             return false;
         }
