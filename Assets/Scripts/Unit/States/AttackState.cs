@@ -2,8 +2,6 @@ using UnityEngine;
 
 public class AttackState : UnitBattleState
 {
-    private float decisionTimer;
-
     public AttackState(UnitController context) : base(context)
     {
     }
@@ -11,7 +9,6 @@ public class AttackState : UnitBattleState
     public override void Enter()
     {
         base.Enter();
-        decisionTimer = 0f;
         context.StopMovement();
 
         if (TrySwitchToBetterState()) return;
@@ -28,9 +25,6 @@ public class AttackState : UnitBattleState
         context.FaceTarget();
 
         if (context.IsAttackAnimationLocked) return;
-
-        decisionTimer -= Time.deltaTime;
-        if (decisionTimer > 0f) return;
 
         TryAttack();
     }
@@ -69,7 +63,6 @@ public class AttackState : UnitBattleState
         if (context.CanAttack())
         {
             context.TriggerAttack();
-            decisionTimer = context.Stats.attackCooldown;
         }
     }
 }

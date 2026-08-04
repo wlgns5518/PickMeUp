@@ -12,7 +12,7 @@ public class HitState : UnitBattleState
     public override void Enter()
     {
         base.Enter();
-        stateTimer = context.Stats.hitAnimationDuration;
+        stateTimer = context.HitAnimationDuration;
         previousKnockbackProgress = 0f;
         context.InterruptCurrentAction();
         context.TriggerHit();
@@ -40,7 +40,7 @@ public class HitState : UnitBattleState
     {
         if (context.Stats.knockbackDistance <= 0f || context.Stats.knockbackDuration <= 0f) return;
 
-        float elapsed = context.Stats.hitAnimationDuration - stateTimer;
+        float elapsed = context.HitAnimationDuration - stateTimer;
         float knockbackProgress = Mathf.Clamp01(elapsed / context.Stats.knockbackDuration);
         float deltaProgress = knockbackProgress - previousKnockbackProgress;
         if (deltaProgress <= 0f) return;

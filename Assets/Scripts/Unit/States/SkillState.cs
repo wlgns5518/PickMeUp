@@ -11,7 +11,7 @@ public class SkillState : UnitBattleState
     public override void Enter()
     {
         base.Enter();
-        stateTimer = context.Stats.skillAnimationDuration;
+        stateTimer = context.SkillAnimationDuration;
 
         if (!context.HasUsableTarget())
         {

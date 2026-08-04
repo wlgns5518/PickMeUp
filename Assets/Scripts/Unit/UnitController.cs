@@ -76,7 +76,6 @@ public class UnitController : MonoBehaviour
     public float RunDistance => runDistance;
     public float DestinationUpdateInterval => destinationUpdateInterval;
 
-    private float lastAttackTime = -999f;
     private float lastSkillTime = -999f;
     private float lastBlockTime = -999f;
     private float attackLockedUntil;
@@ -101,6 +100,14 @@ public class UnitController : MonoBehaviour
     private int hitAnimationHash;
     private int deathAnimationHash;
     private bool hasWalkAnimationState;
+
+    private float attackAnimationDuration;
+    private float skillAnimationDuration;
+    private float hitAnimationDuration;
+
+    public float AttackAnimationDuration => attackAnimationDuration;
+    public float SkillAnimationDuration => skillAnimationDuration;
+    public float HitAnimationDuration => hitAnimationDuration;
 
     private void Awake()
     {
@@ -129,11 +136,31 @@ public class UnitController : MonoBehaviour
         hasWalkAnimationState = animator != null &&
                                  !string.IsNullOrEmpty(walkStateName) &&
                                  animator.HasState(0, walkAnimationHash);
+
+        attackAnimationDuration = GetAnimationClipDuration(attackStateName, 1f);
+        skillAnimationDuration = GetAnimationClipDuration(skillStateName, 1f);
+        hitAnimationDuration = GetAnimationClipDuration(hitStateName, 0.35f);
     }
 
     private static int ToHash(string stateName)
     {
         return string.IsNullOrEmpty(stateName) ? 0 : Animator.StringToHash(stateName);
+    }
+
+    private float GetAnimationClipDuration(string stateName, float fallback)
+    {
+        if (animator == null || animator.runtimeAnimatorController == null || string.IsNullOrEmpty(stateName))
+        {
+            return fallback;
+        }
+
+        foreach (AnimationClip clip in animator.runtimeAnimatorController.animationClips)
+        {
+            if (clip != null && clip.name == stateName) return clip.length;
+        }
+
+        if (debugLogs) Debug.LogWarning($"[UnitController] {name} could not find animation clip named '{stateName}' to derive duration. Using fallback {fallback}s.");
+        return fallback;
     }
 
     private void OnEnable()
@@ -329,8 +356,7 @@ public class UnitController : MonoBehaviour
         return !string.IsNullOrEmpty(attackStateName) &&
                IsTargetValid() &&
                IsTargetInAttackRange() &&
-               !IsAttackAnimationLocked &&
-               Time.time >= lastAttackTime + stats.attackCooldown;
+               !IsAttackAnimationLocked;
     }
 
     public bool IsAttackAnimationLocked => Time.time < attackLockedUntil;
@@ -430,8 +456,7 @@ public class UnitController : MonoBehaviour
 
     public void TriggerAttack()
     {
-        lastAttackTime = Time.time;
-        attackLockedUntil = Time.time + stats.attackAnimationDuration;
+        attackLockedUntil = Time.time + attackAnimationDuration;
         PlayAnimation(attackAnimationHash, true);
     }
 

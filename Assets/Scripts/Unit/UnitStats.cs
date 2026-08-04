@@ -23,11 +23,7 @@ public class UnitStats
     public int skillDamage = 24;
 
     [Header("Cooldowns")]
-    public float attackCooldown = 0.8f;
-    public float attackAnimationDuration = 1.0f;
     public float skillCooldown = 5.0f;
-    public float skillAnimationDuration = 1.0f;
-    public float hitAnimationDuration = 0.35f;
 
     [Header("Defense")]
     public float evadeRange = 2.5f;
