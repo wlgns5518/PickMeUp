@@ -36,11 +36,6 @@ public class SearchState : UnitBattleState
             target = context.Scanner.Target;
         }
 
-        if (target == null && context.Scanner != null)
-        {
-            target = context.Scanner.FindTargetNow();
-        }
-
         if (target != null)
         {
             if (!context.TrySetTarget(target)) return false;

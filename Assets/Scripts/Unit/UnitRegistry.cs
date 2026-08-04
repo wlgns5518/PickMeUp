@@ -34,18 +34,39 @@ public static class UnitRegistry
         UnitController requester,
         float range,
         float viewAngle,
-        float closeVisibleRange = 0f)
+        float closeVisibleRange = 0f,
+        float eyeHeight = 0f,
+        LayerMask obstacleMask = default)
     {
         if (requester == null) return null;
 
         float bestSqrDistance = range * range;
         UnitController best = null;
 
-        SearchNearestInList(requester, allies, range, viewAngle, closeVisibleRange, ref bestSqrDistance, ref best);
-        SearchNearestInList(requester, enemies, range, viewAngle, closeVisibleRange, ref bestSqrDistance, ref best);
-        SearchNearestInList(requester, neutrals, range, viewAngle, closeVisibleRange, ref bestSqrDistance, ref best);
+        SearchNearestInList(requester, allies, range, viewAngle, closeVisibleRange, eyeHeight, obstacleMask, ref bestSqrDistance, ref best);
+        SearchNearestInList(requester, enemies, range, viewAngle, closeVisibleRange, eyeHeight, obstacleMask, ref bestSqrDistance, ref best);
+        SearchNearestInList(requester, neutrals, range, viewAngle, closeVisibleRange, eyeHeight, obstacleMask, ref bestSqrDistance, ref best);
 
         return best;
+    }
+
+    public static bool HasLineOfSight(Vector3 from, Vector3 to, float eyeHeight, LayerMask obstacleMask)
+    {
+        if (obstacleMask == 0) return true;
+
+        Vector3 origin = from + Vector3.up * eyeHeight;
+        Vector3 destination = to + Vector3.up * eyeHeight;
+        Vector3 offset = destination - origin;
+        float distance = offset.magnitude;
+        if (distance <= 0.01f) return true;
+
+        if (!Physics.Raycast(origin, offset / distance, out RaycastHit hit, distance - 0.05f, obstacleMask, QueryTriggerInteraction.Ignore))
+        {
+            return true;
+        }
+
+        // Other units' bodies shouldn't block line of sight - only static level geometry (walls) should.
+        return hit.collider.GetComponentInParent<UnitController>() != null;
     }
 
     public static void AlertTeam(UnitController spotter, UnitController target)
@@ -129,6 +150,8 @@ public static class UnitRegistry
         float range,
         float viewAngle,
         float closeVisibleRange,
+        float eyeHeight,
+        LayerMask obstacleMask,
         ref float bestSqrDistance,
         ref UnitController best)
     {
@@ -139,12 +162,15 @@ public static class UnitRegistry
             if (!AreEnemies(requester, candidate)) continue;
             if (!IsVisibleTo(requester, candidate, range, viewAngle, closeVisibleRange)) continue;
 
+            // Distance check before the raycast so line-of-sight (the expensive part) only
+            // runs for candidates that would actually improve on the current best.
             float sqrDistance = (candidate.transform.position - requester.transform.position).sqrMagnitude;
-            if (sqrDistance < bestSqrDistance)
-            {
-                bestSqrDistance = sqrDistance;
-                best = candidate;
-            }
+            if (sqrDistance >= bestSqrDistance) continue;
+
+            if (!HasLineOfSight(requester.transform.position, candidate.transform.position, eyeHeight, obstacleMask)) continue;
+
+            bestSqrDistance = sqrDistance;
+            best = candidate;
         }
     }
 

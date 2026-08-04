@@ -78,6 +78,7 @@ public class UnitController : MonoBehaviour
 
     private float lastAttackTime = -999f;
     private float lastSkillTime = -999f;
+    private float lastBlockTime = -999f;
     private float attackLockedUntil;
     private float nextDestinationUpdateTime;
     private Vector3 lastAgentDestination;
@@ -90,6 +91,17 @@ public class UnitController : MonoBehaviour
     private float nextRoamTime;
     private float lastTargetChangeTime = -999f;
 
+    private int idleAnimationHash;
+    private int walkAnimationHash;
+    private int runAnimationHash;
+    private int jumpAnimationHash;
+    private int attackAnimationHash;
+    private int skillAnimationHash;
+    private int blockAnimationHash;
+    private int hitAnimationHash;
+    private int deathAnimationHash;
+    private bool hasWalkAnimationState;
+
     private void Awake()
     {
         if (agent == null) agent = GetComponent<NavMeshAgent>();
@@ -99,6 +111,29 @@ public class UnitController : MonoBehaviour
 
         if (scanner != null) scanner.Initialize(this);
         ApplyAgentSpeed(stats.runSpeed);
+        CacheAnimationHashes();
+    }
+
+    private void CacheAnimationHashes()
+    {
+        idleAnimationHash = ToHash(idleStateName);
+        walkAnimationHash = ToHash(walkStateName);
+        runAnimationHash = ToHash(runStateName);
+        jumpAnimationHash = ToHash(jumpStateName);
+        attackAnimationHash = ToHash(attackStateName);
+        skillAnimationHash = ToHash(skillStateName);
+        blockAnimationHash = ToHash(blockStateName);
+        hitAnimationHash = ToHash(hitStateName);
+        deathAnimationHash = ToHash(deathStateName);
+
+        hasWalkAnimationState = animator != null &&
+                                 !string.IsNullOrEmpty(walkStateName) &&
+                                 animator.HasState(0, walkAnimationHash);
+    }
+
+    private static int ToHash(string stateName)
+    {
+        return string.IsNullOrEmpty(stateName) ? 0 : Animator.StringToHash(stateName);
     }
 
     private void OnEnable()
@@ -312,7 +347,15 @@ public class UnitController : MonoBehaviour
     {
         return !string.IsNullOrEmpty(blockStateName) &&
                IsTargetValid() &&
-               stats.currentHp < stats.maxHp * 0.45f;
+               Time.time >= lastBlockTime + stats.blockCooldown &&
+               IsTargetTelegraphingAttack();
+    }
+
+    private bool IsTargetTelegraphingAttack()
+    {
+        return CurrentTarget != null &&
+               CurrentTarget.IsAttackAnimationLocked &&
+               CurrentTarget.CurrentTarget == this;
     }
 
     public bool CanEvade()
@@ -332,6 +375,7 @@ public class UnitController : MonoBehaviour
 
     public void TakeDamage(int damage, UnitController attacker, bool applyKnockback)
     {
+        bool wasBlocking = IsBlocking;
         stats.TakeDamage(damage, IsBlocking);
 
         if (attacker != null && !attacker.IsDead && attacker.isActiveAndEnabled && UnitRegistry.AreEnemies(this, attacker))
@@ -354,6 +398,13 @@ public class UnitController : MonoBehaviour
         }
 
         InterruptCurrentAction();
+
+        if (wasBlocking)
+        {
+            ChangeState(AttackState);
+            return;
+        }
+
         ChangeState(HitState);
     }
 
@@ -381,13 +432,13 @@ public class UnitController : MonoBehaviour
     {
         lastAttackTime = Time.time;
         attackLockedUntil = Time.time + stats.attackAnimationDuration;
-        PlayAnimation(attackStateName, true);
+        PlayAnimation(attackAnimationHash, true);
     }
 
     public void TriggerSkill()
     {
         lastSkillTime = Time.time;
-        PlayAnimation(skillStateName, true);
+        PlayAnimation(skillAnimationHash, true);
     }
 
     public void SetBlocking(bool isBlocking)
@@ -395,11 +446,12 @@ public class UnitController : MonoBehaviour
         IsBlocking = isBlocking;
         if (isBlocking)
         {
-            PlayAnimation(blockStateName, true);
+            lastBlockTime = Time.time;
+            PlayAnimation(blockAnimationHash, true);
         }
         else
         {
-            PlayAnimation(idleStateName, false);
+            PlayAnimation(idleAnimationHash, false);
         }
     }
 
@@ -457,23 +509,23 @@ public class UnitController : MonoBehaviour
     {
         if (isJumping && !string.IsNullOrEmpty(jumpStateName))
         {
-            PlayAnimation(jumpStateName, false);
+            PlayAnimation(jumpAnimationHash, false);
             return;
         }
 
         if (speed <= 0.01f)
         {
-            PlayAnimation(idleStateName, false);
+            PlayAnimation(idleAnimationHash, false);
             return;
         }
 
         if (isRunning)
         {
-            PlayAnimation(runStateName, false);
+            PlayAnimation(runAnimationHash, false);
             return;
         }
 
-        PlayAnimation(CanPlayAnimation(walkStateName) ? walkStateName : runStateName, false);
+        PlayAnimation(hasWalkAnimationState ? walkAnimationHash : runAnimationHash, false);
     }
 
     public void FaceTarget()
@@ -493,12 +545,12 @@ public class UnitController : MonoBehaviour
 
     public void TriggerDead()
     {
-        PlayAnimation(deathStateName, true);
+        PlayAnimation(deathAnimationHash, true);
     }
 
     public void TriggerHit()
     {
-        PlayAnimation(hitStateName, true);
+        PlayAnimation(hitAnimationHash, true);
     }
 
     public void InterruptCurrentAction()
@@ -627,28 +679,20 @@ public class UnitController : MonoBehaviour
         return newSqrDistance < requiredSqrDistance;
     }
 
-    private bool CanPlayAnimation(string stateName)
-    {
-        if (animator == null || string.IsNullOrEmpty(stateName)) return false;
-
-        return animator.HasState(0, Animator.StringToHash(stateName));
-    }
-
-    private void PlayAnimation(string stateName, bool forceRestart)
+    private void PlayAnimation(int stateHash, bool forceRestart)
     {
         if (animator == null)
         {
-            if (debugLogs) Debug.LogWarning($"[UnitController] {name} cannot play '{stateName}': Animator is null.");
+            if (debugLogs) Debug.LogWarning($"[UnitController] {name} cannot play animation: Animator is null.");
             return;
         }
 
-        if (string.IsNullOrEmpty(stateName))
+        if (stateHash == 0)
         {
             if (debugLogs) Debug.LogWarning($"[UnitController] {name} cannot play animation: state name is empty.");
             return;
         }
 
-        int stateHash = Animator.StringToHash(stateName);
         if (!forceRestart && currentAnimationHash == stateHash) return;
 
         currentAnimationHash = stateHash;

@@ -5,6 +5,8 @@ public class TargetScanner : MonoBehaviour
     [SerializeField] private float scanInterval = 0.2f;
     [SerializeField] private float viewAngle = 120f;
     [SerializeField] private float closeVisibleRange = 2f;
+    [SerializeField] private float eyeHeight = 1.2f;
+    [SerializeField] private LayerMask obstacleMask = ~0;
 
     private UnitController owner;
     private UnitController target;
@@ -35,9 +37,21 @@ public class TargetScanner : MonoBehaviour
         if (scanTimer > 0f && IsCurrentTargetValid()) return;
 
         scanTimer = scanInterval;
+
         if (!IsCurrentTargetValid())
         {
-            target = UnitRegistry.FindNearestVisibleEnemy(owner, owner.Stats.detectRange, viewAngle, GetCloseVisibleRange());
+            target = null;
+        }
+        // Line-of-sight is a raycast, so it's only re-checked here at the scan cadence
+        // rather than every frame in IsCurrentTargetValid.
+        else if (!HasLineOfSight(target))
+        {
+            target = null;
+        }
+
+        if (target == null)
+        {
+            target = UnitRegistry.FindNearestVisibleEnemy(owner, owner.Stats.detectRange, viewAngle, GetCloseVisibleRange(), eyeHeight, obstacleMask);
         }
 
         if (target != null)
@@ -51,7 +65,7 @@ public class TargetScanner : MonoBehaviour
         if (owner == null) return null;
 
         scanTimer = scanInterval;
-        target = UnitRegistry.FindNearestVisibleEnemy(owner, owner.Stats.detectRange, viewAngle, GetCloseVisibleRange());
+        target = UnitRegistry.FindNearestVisibleEnemy(owner, owner.Stats.detectRange, viewAngle, GetCloseVisibleRange(), eyeHeight, obstacleMask);
         if (target != null)
         {
             UnitRegistry.AlertTeam(owner, target);
@@ -70,6 +84,12 @@ public class TargetScanner : MonoBehaviour
     {
         if (target == null || target.IsDead) return false;
         return IsVisible(target);
+    }
+
+    private bool HasLineOfSight(UnitController candidate)
+    {
+        if (owner == null || candidate == null) return false;
+        return UnitRegistry.HasLineOfSight(owner.transform.position, candidate.transform.position, eyeHeight, obstacleMask);
     }
 
     private float GetCloseVisibleRange()
