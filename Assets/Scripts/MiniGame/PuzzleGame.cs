@@ -47,6 +47,21 @@ public class PuzzleGame : MonoBehaviour
     [Header("UI")]
     [SerializeField] private TMP_Text timerText;
 
+    [Header("Visual Polish")]
+    [Tooltip("완성될 그림을 흐릿하게 미리 보여주는 가이드")]
+    [Range(0f, 1f)] [SerializeField] private float referenceGhostAlpha = 0.14f;
+    [SerializeField] private Vector2 pieceShadowOffset = new Vector2(4f, -4f);
+    [SerializeField] private Color pieceShadowColor = new Color(0f, 0f, 0f, 0.35f);
+    [SerializeField] private float dragLiftScale = 1.08f;
+    [SerializeField] private float snapPunchScale = 1.18f;
+    [SerializeField] private float snapPunchDuration = 0.18f;
+    [SerializeField] private float lowTimeThreshold = 10f;
+    [SerializeField] private Color timerNormalColor = Color.white;
+    [SerializeField] private Color timerLowColor = new Color(1f, 0.3f, 0.3f, 1f);
+    [SerializeField] private float bannerDuration = 1.1f;
+    [SerializeField] private Color successBannerColor = new Color(0.4f, 0.95f, 0.55f, 1f);
+    [SerializeField] private Color failBannerColor = new Color(1f, 0.35f, 0.4f, 1f);
+
     [Header("Events")]
     public UnityEvent onSuccess;
     public UnityEvent onFail;
@@ -55,10 +70,35 @@ public class PuzzleGame : MonoBehaviour
     // 각 조각이 속한 그룹(리스트 참조 공유). 같은 그룹이면 같은 List 인스턴스
     private readonly Dictionary<PuzzlePiece, List<PuzzlePiece>> groupOf =
         new Dictionary<PuzzlePiece, List<PuzzlePiece>>();
+    // 격자 좌표 → 조각. logicalNeighbors 구성 시에만 사용.
+    private readonly Dictionary<Vector2Int, PuzzlePiece> pieceByGrid =
+        new Dictionary<Vector2Int, PuzzlePiece>();
+    // 조각별 스냅 후보(8방향, 투명 조각으로 인한 격자 빈칸은 건너뛰고 다음 실제 조각까지 탐색).
+    // SlicePieces에서 한 번만 구성해 TrySnap이 O(1)에 가깝게 후보를 얻도록 함.
+    private readonly Dictionary<PuzzlePiece, List<PuzzlePiece>> logicalNeighbors =
+        new Dictionary<PuzzlePiece, List<PuzzlePiece>>();
 
     private float remainingTime;
     private int   lastShownSecond = -1;
     private bool  running;
+    private int   gridN;
+
+    // 완성 그림 미리보기 (조각들 뒤에 흐릿하게 표시)
+    private Image referenceGhost;
+
+    // 스냅 성공 시 조각들의 "팝" 스케일 애니메이션 (조각 → 남은 시간)
+    private readonly Dictionary<PuzzlePiece, float> punchTimers = new Dictionary<PuzzlePiece, float>();
+    private readonly List<PuzzlePiece> punchKeysBuffer = new List<PuzzlePiece>();
+
+    // 진행률 텍스트 (최대 그룹 크기 / 전체 조각 수)
+    private TMP_Text progressText;
+
+    // 성공/실패 배너 (배너가 사라진 뒤에 실제로 숨김 처리)
+    private TMP_Text bannerText;
+    private RectTransform bannerRect;
+    private CanvasGroup bannerGroup;
+    private float bannerTimer;
+    private bool pendingEndHide;
 
     private void Start()
     {
@@ -67,6 +107,9 @@ public class PuzzleGame : MonoBehaviour
 
     private void Update()
     {
+        UpdateSnapPunches();
+        UpdateBanner();
+
         if (!running) return;
 
         remainingTime -= Time.deltaTime;
@@ -89,14 +132,20 @@ public class PuzzleGame : MonoBehaviour
 
         if (puzzleRoot != null) puzzleRoot.SetActive(true);
 
+        EnsureProgressText();
+        EnsureBanner();
+        HideBannerImmediate();
+
         ClearPieces();
         SlicePieces();
+        UpdateReferenceGhost();
         ScatterPieces();
 
         remainingTime = timeLimit;
         lastShownSecond = -1;
         running = true;
         UpdateTimerUI();
+        UpdateProgressUI();
     }
 
     public void StopPuzzle()
@@ -119,11 +168,15 @@ public class PuzzleGame : MonoBehaviour
             if (pieces[i] != null) Destroy(pieces[i].gameObject);
         pieces.Clear();
         groupOf.Clear();
+        pieceByGrid.Clear();
+        logicalNeighbors.Clear();
+        punchTimers.Clear();
     }
 
     private void SlicePieces()
     {
         int n = (int)difficulty;
+        gridN = n;
         Texture2D tex = sourceSprite.texture;
         Rect fullRect = sourceSprite.textureRect;
 
@@ -169,10 +222,10 @@ public class PuzzleGame : MonoBehaviour
                 }
 
                 Sprite pieceSprite = Sprite.Create(tex, pieceRect, new Vector2(0.5f, 0.5f), 100f);
-                PuzzlePiece piece = CreatePiece(pieceSprite, currentPieceSize, currentPieceSize);
-                piece.Init(col, row, this);
+                PuzzlePiece piece = CreatePiece(pieceSprite, currentPieceSize, currentPieceSize, col, row);
 
                 pieces.Add(piece);
+                pieceByGrid[new Vector2Int(col, row)] = piece;
 
                 // 자기 자신으로 그룹 초기화
                 var group = new List<PuzzlePiece> { piece };
@@ -182,6 +235,39 @@ public class PuzzleGame : MonoBehaviour
 
         if (skipped > 0) Debug.Log($"[Puzzle] 투명 조각 {skipped}개 생략 → 실제 {pieces.Count}개");
         cachedPixels = null;
+
+        BuildLogicalNeighbors(n);
+    }
+
+    // 각 조각의 8방향 스냅 후보를 미리 계산. 투명 조각으로 격자에 빈칸이 있어도
+    // 그 방향으로 계속 나아가 처음 만나는 실제 조각을 후보로 삼는다 (끊긴 연결 방지).
+    private void BuildLogicalNeighbors(int n)
+    {
+        for (int idx = 0; idx < pieces.Count; idx++)
+        {
+            PuzzlePiece piece = pieces[idx];
+            var candidates = new List<PuzzlePiece>(NeighborOffsets.Length);
+
+            for (int d = 0; d < NeighborOffsets.Length; d++)
+            {
+                Vector2Int dir = NeighborOffsets[d];
+                int col = piece.gridCol + dir.x;
+                int row = piece.gridRow + dir.y;
+
+                while (col >= 0 && col < n && row >= 0 && row < n)
+                {
+                    if (pieceByGrid.TryGetValue(new Vector2Int(col, row), out PuzzlePiece found))
+                    {
+                        candidates.Add(found);
+                        break;
+                    }
+                    col += dir.x;
+                    row += dir.y;
+                }
+            }
+
+            logicalNeighbors[piece] = candidates;
+        }
     }
 
 #if UNITY_EDITOR
@@ -268,23 +354,45 @@ public class PuzzleGame : MonoBehaviour
         return opaque < needed;
     }
 
-    private PuzzlePiece CreatePiece(Sprite sprite, float w, float h)
+    private PuzzlePiece CreatePiece(Sprite sprite, float w, float h, int col, int row)
     {
-        var go = new GameObject("Piece", typeof(RectTransform), typeof(CanvasRenderer),
-                                typeof(Image), typeof(CanvasGroup), typeof(PuzzlePiece));
+        var go = new GameObject("Piece", typeof(RectTransform), typeof(CanvasGroup), typeof(PuzzlePiece));
         go.transform.SetParent(playArea, false);
-
-        var img = go.GetComponent<Image>();
-        img.sprite = sprite;
-        img.raycastTarget = true;
-        img.preserveAspect = true;
 
         var rt = (RectTransform)go.transform;
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
         rt.sizeDelta = new Vector2(w, h);
 
-        return go.GetComponent<PuzzlePiece>();
+        // 그림자 (같은 스프라이트를 검게 물들여 살짝 오프셋 — 조각 실루엣과 정확히 일치)
+        var shadowGo = new GameObject("Shadow", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        shadowGo.transform.SetParent(go.transform, false);
+        var shadowImg = shadowGo.GetComponent<Image>();
+        shadowImg.sprite = sprite;
+        shadowImg.raycastTarget = false;
+        shadowImg.preserveAspect = true;
+        shadowImg.color = pieceShadowColor;
+        var shadowRt = (RectTransform)shadowGo.transform;
+        shadowRt.anchorMin = Vector2.zero;
+        shadowRt.anchorMax = Vector2.one;
+        shadowRt.offsetMin = shadowRt.offsetMax = Vector2.zero;
+        shadowRt.anchoredPosition = pieceShadowOffset;
+
+        // 본체 (그림자보다 나중에 그려져 위에 표시됨)
+        var coreGo = new GameObject("Core", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        coreGo.transform.SetParent(go.transform, false);
+        var coreImg = coreGo.GetComponent<Image>();
+        coreImg.sprite = sprite;
+        coreImg.raycastTarget = true;
+        coreImg.preserveAspect = true;
+        var coreRt = (RectTransform)coreGo.transform;
+        coreRt.anchorMin = Vector2.zero;
+        coreRt.anchorMax = Vector2.one;
+        coreRt.offsetMin = coreRt.offsetMax = Vector2.zero;
+
+        var piece = go.GetComponent<PuzzlePiece>();
+        piece.Init(col, row, this, coreImg);
+        return piece;
     }
 
     private void ScatterPieces()
@@ -310,6 +418,7 @@ public class PuzzleGame : MonoBehaviour
         {
             group[i].CG.blocksRaycasts = false;
             group[i].transform.SetAsLastSibling();
+            group[i].RT.localScale = Vector3.one * dragLiftScale; // 집어 든 느낌
         }
     }
 
@@ -325,17 +434,36 @@ public class PuzzleGame : MonoBehaviour
     {
         if (!running) return;
         if (!groupOf.TryGetValue(p, out var group)) return;
+        int sizeBefore = group.Count;
         for (int i = 0; i < group.Count; i++)
             group[i].CG.blocksRaycasts = true;
 
-        TrySnap(p);
+        TrySnap(p); // group(List) 내부 항목이 그대로 병합되어 갱신됨 (같은 리스트 인스턴스)
+
+        for (int i = 0; i < group.Count; i++)
+            group[i].RT.localScale = Vector3.one; // 들어올림 스케일 원복
+
+        if (group.Count > sizeBefore)
+            TriggerSnapPunch(group);
+
+        UpdateProgressUI();
 
         // 모든 조각이 하나의 그룹이면 성공
         if (pieces.Count > 0 && groupOf[pieces[0]].Count == pieces.Count)
             Succeed();
     }
 
-    // 드래그된 조각의 그룹과 다른 모든 그룹 간 페어 검사 → 위치 정합 시 병합.
+    // 인접 격자 오프셋 (상/하/좌/우 + 대각선 4방향, 총 8칸)
+    private static readonly Vector2Int[] NeighborOffsets =
+    {
+        new Vector2Int(1, 0),  new Vector2Int(-1, 0),
+        new Vector2Int(0, 1),  new Vector2Int(0, -1),
+        new Vector2Int(1, 1),  new Vector2Int(1, -1),
+        new Vector2Int(-1, 1), new Vector2Int(-1, -1),
+    };
+
+    // 드래그된 조각의 그룹과 격자상 인접한 조각만 검사 → 위치 정합 시 병합.
+    // pieceByGrid로 O(1) 이웃 조회 (전체 조각 스캔 대신).
     // 한 번 병합되면 새 그룹으로 다시 검사 (체인 스냅 지원).
     private void TrySnap(PuzzlePiece dragged)
     {
@@ -345,7 +473,6 @@ public class PuzzleGame : MonoBehaviour
         {
             snapped = false;
             var myGroup = groupOf[dragged];
-            int piecesCount = pieces.Count;
             int myCount = myGroup.Count;
 
             for (int a = 0; a < myCount && !snapped; a++)
@@ -355,9 +482,10 @@ public class PuzzleGame : MonoBehaviour
                 int myCol = my.gridCol;
                 int myRow = my.gridRow;
 
-                for (int b = 0; b < piecesCount; b++)
+                var candidates = logicalNeighbors[my];
+                for (int c = 0; c < candidates.Count; c++)
                 {
-                    PuzzlePiece other = pieces[b];
+                    PuzzlePiece other = candidates[c];
                     var otherGroup = groupOf[other];
                     if (otherGroup == myGroup) continue;
 
@@ -393,12 +521,191 @@ public class PuzzleGame : MonoBehaviour
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // 완성 그림 미리보기 (조각들 뒤에 흐릿하게 표시)
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void UpdateReferenceGhost()
+    {
+        if (referenceGhost == null)
+        {
+            var go = new GameObject("ReferenceGhost", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            go.transform.SetParent(playArea, false);
+            referenceGhost = go.GetComponent<Image>();
+            referenceGhost.raycastTarget = false;
+            referenceGhost.preserveAspect = true;
+
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+        }
+
+        referenceGhost.sprite = sourceSprite;
+        referenceGhost.color = new Color(1f, 1f, 1f, referenceGhostAlpha);
+        float side = gridN * currentPieceSize;
+        var ghostRt = (RectTransform)referenceGhost.transform;
+        ghostRt.sizeDelta = new Vector2(side, side);
+        ghostRt.anchoredPosition = Vector2.zero;
+        ghostRt.SetAsFirstSibling(); // 조각들보다 뒤에 표시
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 스냅 "팝" 애니메이션
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void TriggerSnapPunch(List<PuzzlePiece> group)
+    {
+        for (int i = 0; i < group.Count; i++)
+            punchTimers[group[i]] = snapPunchDuration;
+    }
+
+    private void UpdateSnapPunches()
+    {
+        if (punchTimers.Count == 0) return;
+
+        punchKeysBuffer.Clear();
+        punchKeysBuffer.AddRange(punchTimers.Keys);
+
+        for (int i = 0; i < punchKeysBuffer.Count; i++)
+        {
+            PuzzlePiece piece = punchKeysBuffer[i];
+            if (piece == null || piece.RT == null)
+            {
+                punchTimers.Remove(piece);
+                continue;
+            }
+
+            float timer = punchTimers[piece] - Time.deltaTime;
+            if (timer <= 0f)
+            {
+                piece.RT.localScale = Vector3.one;
+                punchTimers.Remove(piece);
+            }
+            else
+            {
+                punchTimers[piece] = timer;
+                float t = timer / snapPunchDuration;
+                float scale = Mathf.Lerp(1f, snapPunchScale, t);
+                piece.RT.localScale = new Vector3(scale, scale, 1f);
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 진행률 UI
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void EnsureProgressText()
+    {
+        if (progressText != null) return;
+
+        var go = new GameObject("ProgressText", typeof(RectTransform));
+        go.transform.SetParent(playArea, false);
+
+        progressText = go.AddComponent<TextMeshProUGUI>();
+        progressText.alignment = TextAlignmentOptions.TopLeft;
+        progressText.fontSize = 32f;
+        progressText.fontStyle = FontStyles.Bold;
+        progressText.color = Color.white;
+        progressText.raycastTarget = false;
+
+        var rt = (RectTransform)go.transform;
+        rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+        rt.pivot = new Vector2(0f, 1f);
+        rt.anchoredPosition = new Vector2(20f, -20f);
+        rt.sizeDelta = new Vector2(300f, 50f);
+    }
+
+    private void UpdateProgressUI()
+    {
+        if (progressText == null) return;
+
+        int total = pieces.Count;
+        int maxGroup = 0;
+        for (int i = 0; i < pieces.Count; i++)
+        {
+            int c = groupOf[pieces[i]].Count;
+            if (c > maxGroup) maxGroup = c;
+        }
+
+        progressText.text = $"{maxGroup} / {total}";
+        progressText.transform.SetAsLastSibling();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 성공/실패 배너
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void EnsureBanner()
+    {
+        if (bannerText != null) return;
+
+        var go = new GameObject("Banner", typeof(RectTransform));
+        go.transform.SetParent(playArea, false);
+
+        bannerText = go.AddComponent<TextMeshProUGUI>();
+        bannerText.alignment = TextAlignmentOptions.Center;
+        bannerText.fontSize = 56f;
+        bannerText.fontStyle = FontStyles.Bold;
+        bannerText.raycastTarget = false;
+        bannerText.text = "";
+
+        bannerRect = (RectTransform)go.transform;
+        bannerRect.anchorMin = bannerRect.anchorMax = new Vector2(0.5f, 0.5f);
+        bannerRect.pivot = new Vector2(0.5f, 0.5f);
+        bannerRect.sizeDelta = new Vector2(700f, 120f);
+
+        bannerGroup = go.AddComponent<CanvasGroup>();
+        bannerGroup.alpha = 0f;
+    }
+
+    private void HideBannerImmediate()
+    {
+        bannerTimer = 0f;
+        pendingEndHide = false;
+        if (bannerGroup != null) bannerGroup.alpha = 0f;
+    }
+
+    private void ShowBanner(string text, Color color)
+    {
+        EnsureBanner();
+        bannerText.text = text;
+        bannerText.color = color;
+        bannerRect.localScale = Vector3.one * 1.3f;
+        bannerRect.transform.SetAsLastSibling();
+        bannerGroup.alpha = 1f;
+        bannerTimer = bannerDuration;
+        pendingEndHide = true;
+    }
+
+    private void UpdateBanner()
+    {
+        if (bannerTimer <= 0f) return;
+
+        bannerTimer = Mathf.Max(0f, bannerTimer - Time.deltaTime);
+        float t = 1f - (bannerTimer / bannerDuration);
+
+        float scale = Mathf.Lerp(1.3f, 1f, Mathf.Clamp01(t * 4f));
+        bannerRect.localScale = Vector3.one * scale;
+        bannerGroup.alpha = t < 0.7f ? 1f : 1f - Mathf.InverseLerp(0.7f, 1f, t);
+
+        if (bannerTimer <= 0f && pendingEndHide)
+        {
+            pendingEndHide = false;
+            EndAndHide();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // 타이머 / 종료
     // ─────────────────────────────────────────────────────────────────────
 
     private void UpdateTimerUI()
     {
         if (timerText == null) return;
+
+        bool low = remainingTime <= lowTimeThreshold;
+        timerText.color = low ? timerLowColor : timerNormalColor;
+
         int totalSec = Mathf.CeilToInt(Mathf.Max(0f, remainingTime));
         if (totalSec == lastShownSecond) return; // 같은 초면 string alloc 회피
         lastShownSecond = totalSec;
@@ -413,7 +720,7 @@ public class PuzzleGame : MonoBehaviour
         running = false;
         Debug.Log($"[Puzzle] 성공! ({difficulty}, 남은 시간 {remainingTime:0.0}s)");
         onSuccess?.Invoke();
-        EndAndHide();
+        ShowBanner("COMPLETE!", successBannerColor);
     }
 
     private void Fail()
@@ -422,7 +729,7 @@ public class PuzzleGame : MonoBehaviour
         running = false;
         Debug.Log("[Puzzle] 실패 (시간 초과)");
         onFail?.Invoke();
-        EndAndHide();
+        ShowBanner("TIME OVER", failBannerColor);
     }
 
     private void EndAndHide()
