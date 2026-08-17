@@ -16,7 +16,11 @@ public class UnitController : MonoBehaviour
     [SerializeField] private TargetScanner scanner;
     [SerializeField] private Collider bodyCollider;
 
-    [Header("Movement")]
+[Header("Blood VFX")]
+    [SerializeField] private GameObject[] bloodEffectPrefabs;
+    [SerializeField] private Vector3 bloodEffectOffset = new Vector3(0f, 1f, 0f);
+
+        [Header("Movement")]
     [SerializeField] private float runDistance = 4f;
     [SerializeField] private float destinationUpdateInterval = 0.15f;
     [SerializeField] private float chasePredictionTime = 0.25f;
@@ -403,6 +407,8 @@ public class UnitController : MonoBehaviour
     {
         bool wasBlocking = IsBlocking;
         stats.TakeDamage(damage, IsBlocking);
+        if (!wasBlocking) SpawnBloodEffect(attacker);
+
 
         if (attacker != null && !attacker.IsDead && attacker.isActiveAndEnabled && UnitRegistry.AreEnemies(this, attacker))
         {
@@ -432,6 +438,21 @@ public class UnitController : MonoBehaviour
         }
 
         ChangeState(HitState);
+    }
+
+    private void SpawnBloodEffect(UnitController attacker)
+    {
+        if (bloodEffectPrefabs == null || bloodEffectPrefabs.Length == 0) return;
+
+        GameObject prefab = bloodEffectPrefabs[Random.Range(0, bloodEffectPrefabs.Length)];
+        if (prefab == null) return;
+
+        Vector3 spawnPosition = (bodyCollider != null ? bodyCollider.bounds.center : transform.position) + bloodEffectOffset;
+        Vector3 lookDirection = attacker != null ? transform.position - attacker.transform.position : transform.forward;
+        lookDirection.y = 0f;
+        Quaternion rotation = lookDirection.sqrMagnitude > 0.0001f ? Quaternion.LookRotation(lookDirection.normalized) : transform.rotation;
+
+        BloodEffectPool.Instance.Spawn(prefab, spawnPosition, rotation);
     }
 
     public void Die()
