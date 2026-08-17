@@ -30,17 +30,6 @@ public enum WeaponType
 
 public enum OffHandType { None, Shield }
 
-// 캐릭터 의상 세트 (프리팹의 GameObject와 대응)
-public enum OutfitSet
-{
-    A,     // 전사 갑옷
-    C,     // 마법사 로브
-    Base,  // 꾸질꾸질한 천옷
-    No,    // 아무것도 안 입음
-}
-
-public enum Gender { Male, Female }
-
 [Flags]
 public enum EmotionState
 {

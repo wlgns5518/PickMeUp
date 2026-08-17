@@ -21,9 +21,6 @@ MonoBehaviour:
   exp: 0
   expToNext: 10
   job: 0
-  gender: 0
-  hairIndex: 1
-  outfit: 0
   constitution:
     name: "\uADFC\uC721\uC9C8"
     strengthGrowth: 1.3720919

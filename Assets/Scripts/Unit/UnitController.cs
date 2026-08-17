@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -47,11 +48,19 @@ public class UnitController : MonoBehaviour
     [SerializeField] private string hitStateName = "Hit";
     [SerializeField] private string deathStateName = "Death";
     [SerializeField] private float animationFadeDuration = 0.08f;
+    [Tooltip("화면 밖 유닛의 애니메이션 계산량을 줄인다. AlwaysAnimate는 보이지 않아도 전부 계산한다.")]
+    [SerializeField] private AnimatorCullingMode animatorCullingMode = AnimatorCullingMode.CullUpdateTransforms;
+    [Tooltip("사망 애니메이션이 끝나면 Animator를 꺼서 시체가 계속 애니메이션되지 않도록 한다.")]
+    [SerializeField] private bool disableAnimatorAfterDeath = true;
 
     [Header("Debug")]
     [SerializeField] private bool debugLogs;
+#if UNITY_EDITOR
+    // 인스펙터 확인용. GetType().Name / GameObject.name은 호출할 때마다 문자열을 새로 만들기 때문에
+    // 상태·타깃이 바뀔 때마다 GC 쓰레기가 쌓인다. 빌드에는 포함하지 않는다.
     [SerializeField] private string currentStateName;
     [SerializeField] private string currentTargetName;
+#endif
 
     private StateMachine<UnitController> stateMachine;
 
@@ -108,10 +117,29 @@ public class UnitController : MonoBehaviour
     private float attackAnimationDuration;
     private float skillAnimationDuration;
     private float hitAnimationDuration;
+    private float deathAnimationDuration;
 
     public float AttackAnimationDuration => attackAnimationDuration;
     public float SkillAnimationDuration => skillAnimationDuration;
     public float HitAnimationDuration => hitAnimationDuration;
+    public float DeathAnimationDuration => deathAnimationDuration;
+
+    // 스포너가 Instantiate 직후 팀/스탯을 덮어쓸 때 사용. 이미 OnEnable로 UnitRegistry에
+    // 등록된 상태에서 팀이 바뀌면 기존 리스트에서 빼고 새 팀 리스트로 다시 등록해준다.
+    public void Configure(UnitTeam newTeam, UnitStats newStats)
+    {
+        bool teamChanged = newTeam != team;
+        if (teamChanged && isActiveAndEnabled) UnitRegistry.Unregister(this);
+
+        team = newTeam;
+        if (newStats != null) stats = newStats;
+        stats.ResetHp();
+        ApplyAgentSpeed(stats.runSpeed);
+        // 죽은 유닛을 재사용하는 경우를 대비해 FinalizeDeath가 껐던 Animator를 되살린다.
+        if (animator != null) animator.enabled = true;
+
+        if (teamChanged && isActiveAndEnabled) UnitRegistry.Register(this);
+    }
 
     private void Awake()
     {
@@ -123,6 +151,7 @@ public class UnitController : MonoBehaviour
         if (scanner != null) scanner.Initialize(this);
         ApplyAgentSpeed(stats.runSpeed);
         CacheAnimationHashes();
+        ApplyAnimatorCulling();
     }
 
     private void CacheAnimationHashes()
@@ -144,11 +173,51 @@ public class UnitController : MonoBehaviour
         attackAnimationDuration = GetAnimationClipDuration(attackStateName, 1f);
         skillAnimationDuration = GetAnimationClipDuration(skillStateName, 1f);
         hitAnimationDuration = GetAnimationClipDuration(hitStateName, 0.35f);
+        deathAnimationDuration = GetAnimationClipDuration(deathStateName, 1.5f);
+    }
+
+    // 프로파일러 확인 결과 Animators.Update가 스크립트 전체(0.08ms)의 14배인 1.1ms로,
+    // 실제 CPU 비용의 대부분을 차지했다. AlwaysAnimate는 화면 밖 유닛도 리타게팅/IK/본 트랜스폼을
+    // 전부 계산하므로, 화면에 보이지 않는 동안은 트랜스폼 기록을 건너뛰도록 바꾼다.
+    // (상태머신은 계속 진행되므로 다시 보일 때 애니메이션이 튀지 않는다.)
+    private void ApplyAnimatorCulling()
+    {
+        if (animator == null) return;
+        animator.cullingMode = animatorCullingMode;
     }
 
     private static int ToHash(string stateName)
     {
         return string.IsNullOrEmpty(stateName) ? 0 : Animator.StringToHash(stateName);
+    }
+
+    // runtimeAnimatorController.animationClips는 접근할 때마다 배열을 새로 만들어 반환한다.
+    // 유닛 하나당 3번(공격/스킬/피격) 호출되므로 스폰이 많아지면 그대로 GC 부담이 된다.
+    // 컨트롤러 에셋 단위로 클립 길이를 한 번만 만들어 모든 유닛이 공유한다.
+    private static readonly Dictionary<RuntimeAnimatorController, Dictionary<string, float>> ClipDurationCache =
+        new Dictionary<RuntimeAnimatorController, Dictionary<string, float>>();
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetClipDurationCache()
+    {
+        // 도메인 리로드를 끈 에디터에서 파괴된 컨트롤러 참조가 남지 않도록 플레이 시작마다 비운다.
+        ClipDurationCache.Clear();
+    }
+
+    private static Dictionary<string, float> GetClipDurations(RuntimeAnimatorController controller)
+    {
+        if (ClipDurationCache.TryGetValue(controller, out Dictionary<string, float> cached)) return cached;
+
+        AnimationClip[] clips = controller.animationClips;
+        var durations = new Dictionary<string, float>(clips.Length);
+        for (int i = 0; i < clips.Length; i++)
+        {
+            AnimationClip clip = clips[i];
+            if (clip != null) durations[clip.name] = clip.length;
+        }
+
+        ClipDurationCache[controller] = durations;
+        return durations;
     }
 
     private float GetAnimationClipDuration(string stateName, float fallback)
@@ -158,9 +227,9 @@ public class UnitController : MonoBehaviour
             return fallback;
         }
 
-        foreach (AnimationClip clip in animator.runtimeAnimatorController.animationClips)
+        if (GetClipDurations(animator.runtimeAnimatorController).TryGetValue(stateName, out float length))
         {
-            if (clip != null && clip.name == stateName) return clip.length;
+            return length;
         }
 
         if (debugLogs) Debug.LogWarning($"[UnitController] {name} could not find animation clip named '{stateName}' to derive duration. Using fallback {fallback}s.");
@@ -183,7 +252,9 @@ public class UnitController : MonoBehaviour
         stateMachine = new StateMachine<UnitController>();
         IState<UnitController> initialState = UnitRegistry.HasLivingEnemy(this) ? SearchState : IdleState;
         stateMachine.Initialize(initialState);
+#if UNITY_EDITOR
         currentStateName = initialState.GetType().Name;
+#endif
     }
 
     private void Update()
@@ -192,15 +263,12 @@ public class UnitController : MonoBehaviour
         stateMachine?.Update();
     }
 
-    private void FixedUpdate()
-    {
-        // The current HFSM core exposes Update only. Add a FixedTick method to the core if physics-state ticks are needed later.
-    }
-
     public void ChangeState(IState<UnitController> state)
     {
         stateMachine?.ChangeState(state);
+#if UNITY_EDITOR
         currentStateName = state != null ? state.GetType().Name : "";
+#endif
     }
 
     public void SetTarget(UnitController target)
@@ -211,7 +279,9 @@ public class UnitController : MonoBehaviour
     public void ClearTarget()
     {
         CurrentTarget = null;
+#if UNITY_EDITOR
         currentTargetName = "";
+#endif
     }
 
     public bool TrySetTarget(UnitController target)
@@ -594,6 +664,24 @@ public class UnitController : MonoBehaviour
         PlayAnimation(deathAnimationHash, true);
     }
 
+    // 실제로 재생 중인 사망 상태의 길이를 읽는다.
+    // deathStateName(상태 이름)과 클립 이름이 다른 경우가 있어서(예: 상태 "Death" / 클립 "PlayerDeath")
+    // 이름 매칭 기반인 deathAnimationDuration은 fallback으로 떨어질 수 있다. 그대로 쓰면
+    // 사망 애니메이션 도중에 Animator를 꺼서 시체가 넘어지다 만 자세로 굳는다.
+    // 전이가 끝나고 사망 상태에 실제로 진입한 뒤에만 true를 돌려준다.
+    public bool TryGetDeathStateLength(out float length)
+    {
+        length = 0f;
+        if (animator == null || !animator.enabled || !animator.isActiveAndEnabled) return false;
+        if (deathAnimationHash == 0 || animator.IsInTransition(0)) return false;
+
+        AnimatorStateInfo info = animator.GetCurrentAnimatorStateInfo(0);
+        if (info.shortNameHash != deathAnimationHash || info.length <= 0f) return false;
+
+        length = info.length;
+        return true;
+    }
+
     public void TriggerHit()
     {
         PlayAnimation(hitAnimationHash, true);
@@ -629,19 +717,27 @@ public class UnitController : MonoBehaviour
         if (bodyCollider != null) bodyCollider.enabled = false;
     }
 
-    public void DisableUnitAfterDeath()
+    // 사망 즉시 처리 — 이동 관련만 끈다. 사망 애니메이션은 아직 재생 중이어야 하므로
+    // Animator와 이 컴포넌트는 여기서 끄지 않는다(FinalizeDeath에서 처리).
+    public void DisableAgentAfterDeath()
     {
-        if (agent != null)
-        {
-            if (agent.enabled && agent.isOnNavMesh)
-            {
-                agent.isStopped = true;
-                agent.ResetPath();
-            }
+        if (agent == null) return;
 
-            agent.enabled = false;
+        if (agent.enabled && agent.isOnNavMesh)
+        {
+            agent.isStopped = true;
+            agent.ResetPath();
         }
 
+        agent.enabled = false;
+    }
+
+    // 사망 애니메이션이 끝난 뒤 호출. Animator를 끄지 않으면 시체가 늘어날수록
+    // Animators.Update 비용이 그대로 쌓인다(프로파일러에서 시체 128구가 살아있는 유닛과
+    // 동일한 1.0ms를 계속 소비하는 것을 확인). 마지막 프레임 포즈는 그대로 유지된다.
+    public void FinalizeDeath()
+    {
+        if (disableAnimatorAfterDeath && animator != null) animator.enabled = false;
         enabled = false;
     }
 
@@ -667,8 +763,10 @@ public class UnitController : MonoBehaviour
     private void AssignTarget(UnitController target)
     {
         CurrentTarget = target;
-        currentTargetName = CurrentTarget != null ? CurrentTarget.name : "";
         lastTargetChangeTime = Time.time;
+#if UNITY_EDITOR
+        currentTargetName = CurrentTarget != null ? CurrentTarget.name : "";
+#endif
     }
 
     private bool ForceSetSharedTarget(UnitController target)

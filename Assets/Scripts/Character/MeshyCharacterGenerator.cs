@@ -91,9 +91,6 @@ public class MeshyCharacterGenerator : MonoBehaviour
         so.starCount = RollStars();
         so.level = 1; so.exp = 0; so.expToNext = 10;
         so.job = JobPool[jIdx];
-        so.gender = UnityEngine.Random.value < 0.5f ? Gender.Male : Gender.Female;
-        so.hairIndex = UnityEngine.Random.Range(0, 2);
-        so.outfit = OutfitFor(so.job);
 
         if (!string.IsNullOrEmpty(presetName))
             so.characterName = presetName;
@@ -204,21 +201,6 @@ public class MeshyCharacterGenerator : MonoBehaviour
 
     private static int RollStars() => RollWeightedIndex(StarWeights) + 1;
 
-    private static OutfitSet OutfitFor(JobType job)
-    {
-        switch (job)
-        {
-            case JobType.Melee:
-            case JobType.Tank:
-                return OutfitSet.A;
-            case JobType.Mage:
-            case JobType.Support:
-                return OutfitSet.C;
-            default:
-                return OutfitSet.Base;
-        }
-    }
-
     private static int RollWeightedIndex(int[] weights)
     {
         int total = 0;
@@ -240,15 +222,8 @@ public class MeshyCharacterGenerator : MonoBehaviour
 
     private string BuildPortraitPrompt(int jIdx, int tIdx, CharacterSO so)
     {
-        string genderEn = so.gender == Gender.Male ? "male" : "female";
-        string hairEn = so.hairIndex == 0
-            ? (so.gender == Gender.Male ? "short messy hair" : "shoulder-length hair")
-            : (so.gender == Gender.Male ? "long tied back hair" : "long flowing hair");
-        string beardEn = so.HasBeard ? "with a short beard, " : "clean shaven, ";
-        if (so.gender == Gender.Female) beardEn = "no facial hair, ";
         return
-            $"A single {TraitsEn[tIdx]} {genderEn} human {JobPromptsEn[jIdx]} character, " +
-            $"{hairEn}, {beardEn}" +
+            $"A single {TraitsEn[tIdx]} human {JobPromptsEn[jIdx]} character, " +
             "upper body portrait from the waist up, natural relaxed standing pose, " +
             "slight three-quarter view, looking forward, " +
             "semi-realistic mature fantasy illustration, detailed face and costume, " +

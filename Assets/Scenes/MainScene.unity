@@ -302,7 +302,7 @@ MonoBehaviour:
   m_linkedTextComponent: {fileID: 0}
   parentLinkedComponent: {fileID: 0}
   m_enableKerning: 1
-  m_ActiveFontFeatures: 00000000
+  m_ActiveFontFeatures: 6e72656b
   m_enableExtraPadding: 0
   checkPaddingRequired: 0
   m_isRichText: 1
@@ -552,7 +552,7 @@ MonoBehaviour:
   m_linkedTextComponent: {fileID: 0}
   parentLinkedComponent: {fileID: 0}
   m_enableKerning: 1
-  m_ActiveFontFeatures: 00000000
+  m_ActiveFontFeatures: 6e72656b
   m_enableExtraPadding: 0
   checkPaddingRequired: 0
   m_isRichText: 1
@@ -1373,7 +1373,7 @@ MonoBehaviour:
   m_linkedTextComponent: {fileID: 0}
   parentLinkedComponent: {fileID: 0}
   m_enableKerning: 1
-  m_ActiveFontFeatures: 00000000
+  m_ActiveFontFeatures: 6e72656b
   m_enableExtraPadding: 0
   checkPaddingRequired: 0
   m_isRichText: 1
@@ -1728,7 +1728,7 @@ MonoBehaviour:
   sourceSprite: {fileID: 21300000, guid: 1636822c9981d44469537f15efc7aa9c, type: 3}
   playArea: {fileID: 1140965369}
   puzzleRoot: {fileID: 1140965368}
-  difficulty: 7
+  difficulty: 10
   timeLimit: 60
   hellPieceSize: 50
   pieceSnapDistance: 30
@@ -1737,6 +1737,18 @@ MonoBehaviour:
   alphaThreshold: 0.05
   minOpaqueRatio: 0.05
   timerText: {fileID: 707157850}
+  referenceGhostAlpha: 0.14
+  pieceShadowOffset: {x: 4, y: -4}
+  pieceShadowColor: {r: 0, g: 0, b: 0, a: 0.35}
+  dragLiftScale: 1.08
+  snapPunchScale: 1.18
+  snapPunchDuration: 0.18
+  lowTimeThreshold: 10
+  timerNormalColor: {r: 1, g: 1, b: 1, a: 1}
+  timerLowColor: {r: 1, g: 0.3, b: 0.3, a: 1}
+  bannerDuration: 1.1
+  successBannerColor: {r: 0.4, g: 0.95, b: 0.55, a: 1}
+  failBannerColor: {r: 1, g: 0.35, b: 0.4, a: 1}
   onSuccess:
     m_PersistentCalls:
       m_Calls: []
@@ -1772,12 +1784,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   playArea: {fileID: 295198374}
   rhythmRoot: {fileID: 2102741766}
-  difficulty: 15
+  difficulty: 7
   autoStart: 0
   laneCount: 4
   referenceResolution: {x: 1920, y: 1080}
-  noteWidth: 480
-  noteHeight: 24
+  noteHeight: 84
   noteTravelTime: 1.6
   beatInterval: 0.75
   firstBeatDelay: 1
@@ -1788,13 +1799,26 @@ MonoBehaviour:
   targetLineHeight: 14
   targetLineColor: {r: 0.1, g: 0.9, b: 1, a: 0.85}
   clickLineTolerance: 20
-  laneFlashDuration: 0.14
-  laneFlashColor: {r: 1, g: 1, b: 1, a: 0.35}
   requiredHitRatio: 0.5
   maxMisses: 4
   timerText: {fileID: 771242787}
   scoreText: {fileID: 4242564}
   comboText: {fileID: 45984280}
+  laneBackgroundColorA: {r: 0.1, g: 0.1, b: 0.17, a: 0.55}
+  laneBackgroundColorB: {r: 0.06, g: 0.06, b: 0.11, a: 0.55}
+  laneDividerColor: {r: 1, g: 1, b: 1, a: 0.07}
+  receptorIdleAlpha: 0.35
+  receptorPunchScale: 1.55
+  receptorPunchDuration: 0.22
+  judgmentPopupDuration: 0.55
+  judgmentPopupRise: 60
+  comboPunchDuration: 0.16
+  comboPunchScale: 1.35
+  scoreRollSpeed: 8
+  perfectColor: {r: 1, g: 0.85, b: 0.25, a: 1}
+  goodColor: {r: 0.45, g: 0.95, b: 0.55, a: 1}
+  missColor: {r: 1, g: 0.35, b: 0.4, a: 1}
+  noteAccentSaturation: 0.55
   onSuccess:
     m_PersistentCalls:
       m_Calls: []

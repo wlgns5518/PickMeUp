@@ -82,6 +82,7 @@ public class PuzzleGame : MonoBehaviour
     private int   lastShownSecond = -1;
     private bool  running;
     private int   gridN;
+    private bool  isTimerLow;
 
     // 완성 그림 미리보기 (조각들 뒤에 흐릿하게 표시)
     private Image referenceGhost;
@@ -118,9 +119,11 @@ public class PuzzleGame : MonoBehaviour
         if (remainingTime <= 0f) Fail();
     }
 
+    // Forge의 난이도 버튼처럼 sprite를 넘기지 않는 호출도 있다. null을 그대로 대입하면
+    // 인스펙터에 지정해둔 이미지까지 날아가 시작 자체가 실패하므로, 넘어온 값이 있을 때만 교체한다.
     public void StartPuzzle(Sprite sprite, PuzzleDifficulty diff)
     {
-        sourceSprite = sprite;
+        if (sprite != null) sourceSprite = sprite;
         difficulty = diff;
         StartPuzzle();
     }
@@ -144,6 +147,10 @@ public class PuzzleGame : MonoBehaviour
         remainingTime = timeLimit;
         lastShownSecond = -1;
         running = true;
+
+        isTimerLow = false;
+        if (timerText != null) timerText.color = timerNormalColor;
+
         UpdateTimerUI();
         UpdateProgressUI();
     }
@@ -703,8 +710,13 @@ public class PuzzleGame : MonoBehaviour
     {
         if (timerText == null) return;
 
+        // 색상 대입은 TMP 정점을 다시 만들게 하므로 실제로 바뀔 때만 건드린다.
         bool low = remainingTime <= lowTimeThreshold;
-        timerText.color = low ? timerLowColor : timerNormalColor;
+        if (low != isTimerLow)
+        {
+            isTimerLow = low;
+            timerText.color = low ? timerLowColor : timerNormalColor;
+        }
 
         int totalSec = Mathf.CeilToInt(Mathf.Max(0f, remainingTime));
         if (totalSec == lastShownSecond) return; // 같은 초면 string alloc 회피

@@ -11,6 +11,51 @@ public static class UnitRegistry
     public static IReadOnlyList<UnitController> Enemies => enemies;
     public static IReadOnlyList<UnitController> Neutrals => neutrals;
 
+    // 시야 판정에 필요한 값(시야각 cos, 제곱 거리, 정규화된 전방 벡터)을 스캔 1회당 한 번만
+    // 계산해두는 구조체. 후보마다 Cos/normalize를 다시 돌던 비용을 없앤다.
+    private readonly struct VisionQuery
+    {
+        private readonly Vector3 position;
+        private readonly Vector3 forward; // XZ 평면으로 눕힌 정규화 전방
+        private readonly float rangeSqr;
+        private readonly float closeRangeSqr;
+        private readonly float minDot;
+        private readonly bool hasForward;
+        private readonly bool ignoreAngle;
+
+        public Vector3 Position => position;
+
+        public VisionQuery(UnitController requester, float range, float viewAngle, float closeVisibleRange)
+        {
+            position = requester.transform.position;
+            rangeSqr = range * range;
+            closeRangeSqr = closeVisibleRange * closeVisibleRange;
+            ignoreAngle = viewAngle >= 359f;
+
+            Vector3 flatForward = requester.transform.forward;
+            flatForward.y = 0f;
+            hasForward = flatForward.sqrMagnitude > 0.0001f;
+            forward = hasForward ? flatForward.normalized : Vector3.zero;
+
+            float halfAngle = Mathf.Clamp(viewAngle * 0.5f, 0f, 180f);
+            minDot = Mathf.Cos(halfAngle * Mathf.Deg2Rad);
+        }
+
+        // 보이면 true, 그리고 판정에 쓴 제곱 거리를 함께 돌려준다(호출자가 거리 비교에 재사용).
+        public bool CanSee(Vector3 targetPosition, out float sqrDistance)
+        {
+            Vector3 toTarget = targetPosition - position;
+            toTarget.y = 0f;
+
+            sqrDistance = toTarget.sqrMagnitude;
+            if (sqrDistance > rangeSqr || sqrDistance <= 0.0001f) return false;
+            if (closeRangeSqr > 0f && sqrDistance <= closeRangeSqr) return true;
+            if (ignoreAngle || !hasForward) return true;
+
+            return Vector3.Dot(forward, toTarget / Mathf.Sqrt(sqrDistance)) >= minDot;
+        }
+    }
+
     public static void Register(UnitController unit)
     {
         if (unit == null) return;
@@ -40,12 +85,13 @@ public static class UnitRegistry
     {
         if (requester == null) return null;
 
+        var query = new VisionQuery(requester, range, viewAngle, closeVisibleRange);
         float bestSqrDistance = range * range;
         UnitController best = null;
 
-        SearchNearestInList(requester, allies, range, viewAngle, closeVisibleRange, eyeHeight, obstacleMask, ref bestSqrDistance, ref best);
-        SearchNearestInList(requester, enemies, range, viewAngle, closeVisibleRange, eyeHeight, obstacleMask, ref bestSqrDistance, ref best);
-        SearchNearestInList(requester, neutrals, range, viewAngle, closeVisibleRange, eyeHeight, obstacleMask, ref bestSqrDistance, ref best);
+        GetHostileLists(requester.Team, out List<UnitController> first, out List<UnitController> second);
+        SearchNearestInList(requester, first, query, eyeHeight, obstacleMask, ref bestSqrDistance, ref best);
+        SearchNearestInList(requester, second, query, eyeHeight, obstacleMask, ref bestSqrDistance, ref best);
 
         return best;
     }
@@ -90,9 +136,9 @@ public static class UnitRegistry
 
         if (requester == null) return;
 
-        AddEnemiesInRange(requester, allies, range, results);
-        AddEnemiesInRange(requester, enemies, range, results);
-        AddEnemiesInRange(requester, neutrals, range, results);
+        GetHostileLists(requester.Team, out List<UnitController> first, out List<UnitController> second);
+        AddEnemiesInRange(requester, first, range, results);
+        AddEnemiesInRange(requester, second, range, results);
     }
 
     // Idle/Search/Move 상태가 매 프레임 모든 유닛에서 호출하는 핫패스.
@@ -127,35 +173,35 @@ public static class UnitRegistry
     {
         if (!IsValidTarget(requester, target)) return false;
 
-        Vector3 requesterPosition = requester.transform.position;
-        Vector3 toTarget = target.transform.position - requesterPosition;
-        toTarget.y = 0f;
+        var query = new VisionQuery(requester, range, viewAngle, closeVisibleRange);
+        return query.CanSee(target.transform.position, out _);
+    }
 
-        float sqrDistance = toTarget.sqrMagnitude;
-        float rangeSqr = range * range;
-        if (sqrDistance > rangeSqr || sqrDistance <= 0.0001f) return false;
-
-        float closeVisibleRangeSqr = closeVisibleRange * closeVisibleRange;
-        if (closeVisibleRange > 0f && sqrDistance <= closeVisibleRangeSqr) return true;
-
-        if (viewAngle >= 359f) return true;
-
-        Vector3 forward = requester.transform.forward;
-        forward.y = 0f;
-        if (forward.sqrMagnitude <= 0.0001f) return true;
-
-        float dot = Vector3.Dot(forward.normalized, toTarget.normalized);
-        float halfAngle = Mathf.Clamp(viewAngle * 0.5f, 0f, 180f);
-        float minDot = Mathf.Cos(halfAngle * Mathf.Deg2Rad);
-        return dot >= minDot;
+    // 요청자 팀에 적대적인 리스트만 돌려준다. 예전에는 세 리스트를 모두 훑고 AreEnemies로
+    // 걸러냈는데, 자기 팀 리스트(보통 가장 큰 리스트)를 통째로 헛도는 셈이었다.
+    private static void GetHostileLists(UnitTeam team, out List<UnitController> first, out List<UnitController> second)
+    {
+        switch (team)
+        {
+            case UnitTeam.Ally:
+                first = enemies;
+                second = neutrals;
+                break;
+            case UnitTeam.Enemy:
+                first = allies;
+                second = neutrals;
+                break;
+            default: // Neutral은 비-중립 전체가 적
+                first = allies;
+                second = enemies;
+                break;
+        }
     }
 
     private static void SearchNearestInList(
         UnitController requester,
         List<UnitController> list,
-        float range,
-        float viewAngle,
-        float closeVisibleRange,
+        in VisionQuery query,
         float eyeHeight,
         LayerMask obstacleMask,
         ref float bestSqrDistance,
@@ -166,14 +212,13 @@ public static class UnitRegistry
             UnitController candidate = list[i];
             if (!IsValidTarget(requester, candidate)) continue;
             if (!AreEnemies(requester, candidate)) continue;
-            if (!IsVisibleTo(requester, candidate, range, viewAngle, closeVisibleRange)) continue;
+            if (!query.CanSee(candidate.transform.position, out float sqrDistance)) continue;
 
             // Distance check before the raycast so line-of-sight (the expensive part) only
             // runs for candidates that would actually improve on the current best.
-            float sqrDistance = (candidate.transform.position - requester.transform.position).sqrMagnitude;
             if (sqrDistance >= bestSqrDistance) continue;
 
-            if (!HasLineOfSight(requester.transform.position, candidate.transform.position, eyeHeight, obstacleMask)) continue;
+            if (!HasLineOfSight(query.Position, candidate.transform.position, eyeHeight, obstacleMask)) continue;
 
             bestSqrDistance = sqrDistance;
             best = candidate;

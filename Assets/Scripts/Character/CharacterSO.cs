@@ -31,14 +31,6 @@ public class CharacterSO : ScriptableObject
     [Header("Job")]
     public JobType job;
 
-    // Appearance --------------------------------------------------------
-    [Header("Appearance")]
-    public Gender gender;
-    [Range(0, 1)] public int hairIndex; // 0 or 1
-    public OutfitSet outfit;
-
-    public bool HasBeard => gender == Gender.Male;
-
     // Constitution ------------------------------------------------------
     [Header("Constitution")]
     public Constitution constitution = new Constitution();

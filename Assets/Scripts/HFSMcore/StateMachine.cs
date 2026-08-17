@@ -40,7 +40,8 @@ public class StateMachine<TContext>
         currentState?.Update();
     }
 
-    public void Clear()
+    // 재초기화 시 이전 상태의 Exit을 보장하기 위한 내부 정리.
+    private void Clear()
     {
         currentState?.Exit();
         currentState = null;

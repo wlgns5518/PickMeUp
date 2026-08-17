@@ -22,9 +22,6 @@ MonoBehaviour:
   exp: 0
   expToNext: 10
   job: 7
-  gender: 1
-  hairIndex: 0
-  outfit: 2
   constitution:
     name: "\uC628\uD654"
     strengthGrowth: 0.8273802

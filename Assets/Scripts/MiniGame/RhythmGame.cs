@@ -64,6 +64,10 @@ public class RhythmGame : MonoBehaviour
     public UnityEvent onSuccess;
     public UnityEvent onFail;
 
+    [Header("Debug")]
+    [Tooltip("노트마다 판정 로그 출력. 프레임 끊김의 원인이 되므로 디버깅할 때만 켠다.")]
+    [SerializeField] private bool debugLogs;
+
     private readonly List<float> noteHitTimes = new List<float>();
     private readonly List<RhythmNote> activeNotes = new List<RhythmNote>();
     private readonly List<RhythmNote> notePool = new List<RhythmNote>();
@@ -993,22 +997,28 @@ public class RhythmGame : MonoBehaviour
                 : $"{lastJudgmentText}\n{combo} Combo";
     }
 
+    // enum.ToString()은 호출할 때마다 박싱 + 문자열 할당이 일어난다. 노트를 칠 때마다 도는
+    // 경로이므로 미리 만들어둔 문자열을 재사용한다.
+    private const string PerfectLabel = "Perfect";
+    private const string GoodLabel = "Good";
+    private const string MissLabel = "Miss";
+
     private void ShowJudgment(Judgment judgment, int lane)
     {
-        lastJudgmentText = judgment.ToString();
-
         Color flashColor;
         switch (judgment)
         {
-            case Judgment.Perfect: flashColor = perfectColor; break;
-            case Judgment.Good: flashColor = goodColor; break;
-            default: flashColor = missColor; break;
+            case Judgment.Perfect: flashColor = perfectColor; lastJudgmentText = PerfectLabel; break;
+            case Judgment.Good: flashColor = goodColor; lastJudgmentText = GoodLabel; break;
+            default: flashColor = missColor; lastJudgmentText = MissLabel; break;
         }
 
         PunchReceptor(lane, flashColor);
         ShowJudgmentPopup(judgment, lane);
 
-        Debug.Log($"[Rhythm] {judgment}");
+        // 판정 로그는 노트마다 발생한다. Debug.Log는 스택 트레이스를 수집하느라 비싸서
+        // 리듬게임 판정 타이밍에 그대로 프레임 끊김으로 나타나므로 기본은 꺼둔다.
+        if (debugLogs) Debug.Log($"[Rhythm] {lastJudgmentText}");
     }
 
     private void FinishByResult()
