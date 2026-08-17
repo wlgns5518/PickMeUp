@@ -95,13 +95,19 @@ public static class UnitRegistry
         AddEnemiesInRange(requester, neutrals, range, results);
     }
 
+    // Idle/Search/Move 상태가 매 프레임 모든 유닛에서 호출하는 핫패스.
+    // allies/enemies/neutrals 리스트는 죽거나 비활성화된 유닛이 OnDisable→Unregister로
+    // 즉시 제거되므로 항상 "살아있는 유닛만" 담고 있다 → 리스트 순회 없이 개수만으로 판단 가능(O(1)).
     public static bool HasLivingEnemy(UnitController requester)
     {
         if (requester == null) return false;
 
-        return HasLivingEnemyInList(requester, allies) ||
-               HasLivingEnemyInList(requester, enemies) ||
-               HasLivingEnemyInList(requester, neutrals);
+        switch (requester.Team)
+        {
+            case UnitTeam.Ally: return enemies.Count > 0;
+            case UnitTeam.Enemy: return allies.Count > 0;
+            default: return allies.Count > 0 || enemies.Count > 0; // Neutral의 적은 비-중립 전체
+        }
     }
 
     public static bool AreEnemies(UnitController a, UnitController b)
@@ -172,18 +178,6 @@ public static class UnitRegistry
             bestSqrDistance = sqrDistance;
             best = candidate;
         }
-    }
-
-    private static bool HasLivingEnemyInList(UnitController requester, List<UnitController> list)
-    {
-        for (int i = list.Count - 1; i >= 0; i--)
-        {
-            UnitController candidate = list[i];
-            if (!IsValidTarget(requester, candidate)) continue;
-            if (AreEnemies(requester, candidate)) return true;
-        }
-
-        return false;
     }
 
     private static void AddEnemiesInRange(
