@@ -17,6 +17,16 @@ public class CharacterBattleSpawner : MonoBehaviour
     [SerializeField] private Vector3 enemySpawnFallbackOffset = new Vector3(2.5f, 0f, 0f);
     [SerializeField] private int dummyEnemyCount = 1;
 
+    [Header("Floor Scaling")]
+    [Tooltip("고른 층이 하나 높아질 때마다 늘어나는 적의 수.")]
+    [SerializeField] private int enemiesPerFloor = 2;
+    [Tooltip("층당 적 체력 증가 비율.")]
+    [SerializeField] private float enemyHpPerFloor = 0.18f;
+    [Tooltip("층당 적 공격력 증가 비율.")]
+    [SerializeField] private float enemyDamagePerFloor = 0.12f;
+    [Tooltip("스폰 지점이 모자랄 때 적을 흩뿌리는 반경.")]
+    [SerializeField] private float enemyScatterRadius = 12f;
+
     [Header("Stat Mapping (임시 공식 — 추후 밸런싱 예정)")]
     [SerializeField] private int baseHp = 60;
     [SerializeField] private int hpPerVitality = 6;
@@ -49,7 +59,14 @@ public class CharacterBattleSpawner : MonoBehaviour
             }
 
             Vector3 position = GetSpawnPosition(allySpawnPoints, i, allySpawnFallbackOffset);
-            SpawnUnit(allyUnitPrefab, UnitTeam.Ally, MapStats(so), position, so.characterName, so);
+            UnitController unit = SpawnUnit(allyUnitPrefab, UnitTeam.Ally, MapStats(so), position, so.characterName, so);
+
+            // HP와 마나는 Configure가 만회복시키지만 스트레스만은 이어진다.
+            // Configure가 hiddenStats 값으로 되돌려 놓으므로 반드시 그 뒤에 덮어써야 한다.
+            if (unit != null && unit.Emotion != null)
+            {
+                unit.Emotion.Profile.stress = CharacterStress.Get(so);
+            }
         }
     }
 
@@ -57,12 +74,41 @@ public class CharacterBattleSpawner : MonoBehaviour
     {
         if (enemyUnitPrefab == null) return;
 
-        int count = enemySpawnPoints != null && enemySpawnPoints.Length > 0 ? enemySpawnPoints.Length : dummyEnemyCount;
+        // 메인 씬에서 고른 층이 난이도를 정한다.
+        int floor = Mathf.Max(FloorProgress.FirstFloor, FloorProgress.SelectedFloor);
+        int baseCount = enemySpawnPoints != null && enemySpawnPoints.Length > 0 ? enemySpawnPoints.Length : dummyEnemyCount;
+        int count = baseCount + enemiesPerFloor * (floor - FloorProgress.FirstFloor);
+
         for (int i = 0; i < count; i++)
         {
-            Vector3 position = GetSpawnPosition(enemySpawnPoints, i, enemySpawnFallbackOffset);
-            SpawnUnit(enemyUnitPrefab, UnitTeam.Enemy, null, position, $"Goblin_{i + 1}");
+            Vector3 position = GetEnemySpawnPosition(i);
+            SpawnUnit(enemyUnitPrefab, UnitTeam.Enemy, BuildEnemyStats(floor), position, "Goblin_" + (i + 1));
         }
+    }
+
+    // 층이 높아지면 스폰 지점 수를 금방 넘어선다. 남는 적은 배치 중심 둘레에 흩뿌린다.
+    private Vector3 GetEnemySpawnPosition(int index)
+    {
+        if (enemySpawnPoints != null && index < enemySpawnPoints.Length && enemySpawnPoints[index] != null)
+            return enemySpawnPoints[index].position;
+
+        Vector3 origin = transform.position + enemySpawnFallbackOffset;
+        Vector2 circle = Random.insideUnitCircle * enemyScatterRadius;
+        return origin + new Vector3(circle.x, 0f, circle.y);
+    }
+
+    // 프리팹 스탯을 복사해 층 보정을 얹는다. 원본을 그대로 쓰면 모든 적이 같은 객체를 공유해
+    // 한 마리가 맞은 피해가 전부에게 반영된다.
+    private UnitStats BuildEnemyStats(int floor)
+    {
+        UnitStats source = enemyUnitPrefab != null ? enemyUnitPrefab.Stats : null;
+        UnitStats stats = source != null ? source.Clone() : new UnitStats();
+
+        int steps = Mathf.Max(0, floor - FloorProgress.FirstFloor);
+        stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * (1f + enemyHpPerFloor * steps)));
+        stats.attackDamage = Mathf.Max(1, Mathf.RoundToInt(stats.attackDamage * (1f + enemyDamagePerFloor * steps)));
+        stats.skillDamage = Mathf.Max(1, Mathf.RoundToInt(stats.skillDamage * (1f + enemyDamagePerFloor * steps)));
+        return stats;
     }
 
     private Vector3 GetSpawnPosition(Transform[] points, int index, Vector3 fallbackOffset)
@@ -73,7 +119,7 @@ public class CharacterBattleSpawner : MonoBehaviour
         return transform.position + fallbackOffset * (index + 1);
     }
 
-    private void SpawnUnit(UnitController prefab, UnitTeam team, UnitStats stats, Vector3 position, string unitName, CharacterSO source = null)
+    private UnitController SpawnUnit(UnitController prefab, UnitTeam team, UnitStats stats, Vector3 position, string unitName, CharacterSO source = null)
     {
         if (NavMesh.SamplePosition(position, out NavMeshHit hit, 5f, NavMesh.AllAreas))
             position = hit.position;
@@ -81,6 +127,7 @@ public class CharacterBattleSpawner : MonoBehaviour
         UnitController instance = Instantiate(prefab, position, Quaternion.identity);
         instance.Configure(team, stats, source);
         if (!string.IsNullOrEmpty(unitName)) instance.name = unitName;
+        return instance;
     }
 
     // CharacterSO 스탯 → UnitStats 매핑.

@@ -835,7 +835,8 @@ PlayerSettings:
   webGLCloseOnQuit: 0
   webWasm2023: 1
   webEnableSubmoduleStrippingCompatibility: 0
-  scriptingDefineSymbols: {}
+  scriptingDefineSymbols:
+    Standalone: GAIA_INPUT_SYSTEM;UPPipeline;GAIA_2023;GAIA_MESH_PRESENT
   additionalCompilerArguments: {}
   platformArchitecture: {}
   scriptingBackend: {}

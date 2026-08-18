@@ -16,6 +16,16 @@ public class BattleManager : MonoBehaviour
     [Tooltip("전멸 판정 후 결과를 알리기까지의 여유. 사망 애니메이션이 끝나기 전에 결과창이 뜨는 것을 막는다.")]
     [SerializeField] private float endDelay = 1.5f;
 
+    [Header("Roster")]
+    [Tooltip("저장 범위가 되는 보유 캐릭터 명단. 출전하지 않은 캐릭터의 진행도까지 함께 남긴다.")]
+    [SerializeField] private CharacterRosterSO roster;
+
+    [Header("Return")]
+    [Tooltip("전투가 끝난 뒤 메인 씬으로 돌아가기까지의 시간. 결과창을 읽을 여유를 준다.")]
+    [SerializeField] private float returnDelay = 5f;
+    [Tooltip("돌아갈 메인 씬 이름. Build Settings에 등록돼 있어야 한다.")]
+    [SerializeField] private string mainSceneName = "MainScene";
+
     [Header("Reward")]
     [SerializeField] private BattleRewardSettings rewardSettings = new BattleRewardSettings();
 
@@ -47,6 +57,9 @@ public class BattleManager : MonoBehaviour
     private float elapsed;
     private float pendingEndTimer;
     private BattleOutcome pendingOutcome = BattleOutcome.InProgress;
+    private readonly List<CharacterSO> rosterBuffer = new List<CharacterSO>();
+    private bool returningToMain;
+    private float returnTimer;
 
     public BattleResult Result => result;
     public IReadOnlyList<UnitController> AllyRoster => allyRoster;
@@ -77,6 +90,13 @@ public class BattleManager : MonoBehaviour
 
     private void Update()
     {
+        if (returningToMain)
+        {
+            returnTimer -= Time.deltaTime;
+            if (returnTimer <= 0f) ReturnToMain();
+            return;
+        }
+
         elapsed += Time.deltaTime;
 
         if (!started)
@@ -179,7 +199,58 @@ public class BattleManager : MonoBehaviour
                       $"(생존 {result.AllySurvivors}, 아군 사망 {result.AllyDeaths}, 처치 {result.EnemyDeaths}, {result.Duration:F1}초)");
         }
 
+        // 이긴 층은 해금 상태에 남긴다. 층은 자동으로 이어지지 않고,
+        // 플레이어가 메인 씬에서 다시 고르는 구조라 여기서는 기록만 한다.
+        if (outcome == BattleOutcome.Victory) FloorProgress.MarkCleared(FloorProgress.SelectedFloor);
+
+        CaptureStress();
+        SaveRoster();
         OnBattleEnded?.Invoke(result);
+
+        returnTimer = returnDelay;
+        returningToMain = true;
+    }
+
+    // 성장과 영구 사망을 파일에 남긴다. 이게 없으면 플레이를 멈추는 순간 사망 기록이 사라져
+    // "영구 죽음"이 실제로는 성립하지 않는다.
+    private void ReturnToMain()
+    {
+        returningToMain = false;
+
+        if (string.IsNullOrEmpty(mainSceneName))
+        {
+            Debug.LogWarning("[BattleManager] 메인 씬 이름이 비어 있어 돌아갈 수 없습니다.");
+            return;
+        }
+
+        UnityEngine.SceneManagement.SceneManager.LoadScene(mainSceneName);
+    }
+
+    // 전투에서 쌓인 스트레스만 전투 밖으로 들고 나간다.
+    // 나머지 스탯은 다음 전투에 만회복되므로 굳이 옮기지 않는다.
+    private void CaptureStress()
+    {
+        for (int i = 0; i < allyRoster.Count; i++)
+        {
+            UnitController unit = allyRoster[i];
+            if (unit == null || unit.SourceCharacter == null || unit.Emotion == null) continue;
+
+            CharacterStress.Set(unit.SourceCharacter, unit.Emotion.Profile.stress);
+        }
+    }
+
+    private void SaveRoster()
+    {
+        rosterBuffer.Clear();
+        for (int i = 0; i < allyRoster.Count; i++)
+        {
+            UnitController unit = allyRoster[i];
+            if (unit != null && unit.SourceCharacter != null) rosterBuffer.Add(unit.SourceCharacter);
+        }
+
+        // 로스터 에셋이 있으면 그쪽을 우선한다. 출전하지 않은 캐릭터의 진행도가 지워지지 않도록.
+        if (roster != null) SaveSystem.Save(roster.Members);
+        else SaveSystem.Save(rosterBuffer);
     }
 
     // 참전한 아군 전원의 기여도를 결과로 옮겨 담는다.

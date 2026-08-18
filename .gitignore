@@ -80,3 +80,8 @@ crashlytics-build.properties
 /[Aa]ssets/[Ss]tructure/**
 /[Aa]ssets/[Ss]tructure.meta
 /[Aa]ssets/[Ss]tructure/**/*.meta
+
+# Gaia (Asset Store package) - reinstallable, ~5.5GB
+# The terrain data under "Gaia User Data" is the actual map content, so it stays tracked.
+/[Aa]ssets/[Pp]rocedural [Ww]orlds/
+/[Aa]ssets/[Pp]rocedural [Ww]orlds.meta

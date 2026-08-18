@@ -84,6 +84,13 @@ public class UnitStats
     }
     public float HpRatio => currentHp / Mathf.Max(1f, maxHp);
 
+    // 프리팹의 stats는 모든 인스턴스가 공유하는 하나의 객체다.
+    // 층별로 값을 키우려면 반드시 복사본을 만들어 써야 원본이 오염되지 않는다.
+    public UnitStats Clone()
+    {
+        return (UnitStats)MemberwiseClone();
+    }
+
     public void ResetHp()
     {
         currentHp = Mathf.Max(1, maxHp);
