@@ -136,8 +136,8 @@ public class CharacterBattleSpawner : MonoBehaviour
     private UnitStats MapStats(CharacterSO so)
     {
         JobCombatProfile job = JobProfile.For(so.job);
-        WeaponCombatProfile weapon = JobProfile.For(so.mainHand);
-        bool hasShield = so.offHand == OffHandType.Shield && so.CanEquipShield;
+        WeaponCombatProfile weapon = JobProfile.For(so.MainHandType);
+        bool hasShield = so.HasShield;
 
         var stats = new UnitStats
         {

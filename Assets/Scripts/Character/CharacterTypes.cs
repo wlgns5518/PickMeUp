@@ -18,6 +18,8 @@ public enum JobType
     Tanner,
 }
 
+// 값은 CharacterSO 에셋에 정수로 직렬화된다. 순서를 바꾸면 기존 캐릭터가 들고 있던 무기가
+// 통째로 바뀌므로 새 종류는 반드시 끝에만 덧붙인다.
 public enum WeaponType
 {
     None,
@@ -26,9 +28,16 @@ public enum WeaponType
     Bow,
     Spear,
     Dagger,
+    Axe,      // 도끼 — 한손. 검보다 무겁고 느리다.
+    Blunt,    // 둔기 — 망치/철퇴. 가장 아프고 가장 느리다.
+    Polearm,  // 장병기 — 할버드/폴액스/전투낫. 두손이고 사거리가 길다.
+    Shield,   // 보조 손 전용. 주무기 자리에 오면 맨손으로 취급된다.
 }
 
 public enum OffHandType { None, Shield }
+
+// WeaponDefinition이 어느 손에 들어가는지. 방패만 보조 손을 쓴다.
+public enum EquipSlot { MainHand, OffHand }
 
 [Flags]
 public enum EmotionState
@@ -103,7 +112,10 @@ public static class CharacterRules
     public static int StatPointsPerLevel(int stars) => 3 + Mathf.Clamp(stars, 1, 7);
 
     public static bool IsTwoHanded(WeaponType w) =>
-        w == WeaponType.SwordTwoHand || w == WeaponType.Bow || w == WeaponType.Spear;
+        w == WeaponType.SwordTwoHand || w == WeaponType.Bow || w == WeaponType.Spear ||
+        w == WeaponType.Polearm;
+
+    public static bool IsShield(WeaponType w) => w == WeaponType.Shield;
 
     // 1~2성은 멘탈이 약함 — 첫 전투 100% 공포/패닉
     public static bool IsFragileMental(int stars) => stars <= 2;
@@ -121,6 +133,8 @@ public static class CharacterRules
         { WeaponType.None, "없음" },
         { WeaponType.SwordOneHand, "검(한손)" }, { WeaponType.SwordTwoHand, "검(두손)" },
         { WeaponType.Bow, "활" }, { WeaponType.Spear, "창" }, { WeaponType.Dagger, "단검" },
+        { WeaponType.Axe, "도끼" }, { WeaponType.Blunt, "둔기" },
+        { WeaponType.Polearm, "장병기" }, { WeaponType.Shield, "방패" },
     };
 
     public static string Korean(JobType t) => JobKr.TryGetValue(t, out var v) ? v : t.ToString();

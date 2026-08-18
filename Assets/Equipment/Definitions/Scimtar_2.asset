@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ac4266020fb0ab40ab6cc2d249a77ce, type: 3}
+  m_Name: Scimtar_2
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponDefinition
+  displayName: "\uACE1\uB3C4"
+  description: 
+  type: 1
+  slot: 0
+  representsType: 0
+  model: {fileID: 7503091383395108759, guid: 82032eaa55499af438f13cc17fe41473, type: 3}
+  gripPosition: {x: 0.0034329654, y: 0.041201107, z: 7.226656e-10}
+  gripRotation: {x: -0, y: 0, z: 180}
+  gripScale: 1

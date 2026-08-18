@@ -20,6 +20,7 @@ public class UnitController : MonoBehaviour
     [SerializeField] private TargetScanner scanner;
     [SerializeField] private Collider bodyCollider;
     [SerializeField] private UnitEmotion emotion;
+    [SerializeField] private WeaponEquipper equipment;
 
 [Header("Blood VFX")]
     [SerializeField] private GameObject[] bloodEffectPrefabs;
@@ -178,6 +179,9 @@ public class UnitController : MonoBehaviour
         {
             emotion.Configure(source.hiddenStats, source.starCount);
         }
+
+        // 스탯은 이미 MapStats에서 장비 보정을 받았다. 여기서는 화면에 보이는 쪽만 맞춘다.
+        if (equipment != null) equipment.Equip(source);
     }
 
     public void Configure(UnitTeam newTeam, UnitStats newStats)
@@ -205,6 +209,7 @@ public class UnitController : MonoBehaviour
         if (bodyCollider == null) bodyCollider = GetComponent<Collider>();
 
         if (emotion == null) emotion = GetComponent<UnitEmotion>();
+        if (equipment == null) equipment = GetComponent<WeaponEquipper>();
 
         if (scanner != null) scanner.Initialize(this);
 

@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ac4266020fb0ab40ab6cc2d249a77ce, type: 3}
+  m_Name: RustedDagger
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponDefinition
+  displayName: "\uB179\uC2A8 \uB2E8\uAC80"
+  description: "Y Bot \uD504\uB9AC\uD339\uC5D0 \uC9C1\uC811 \uBD99\uC5B4 \uC788\uB358
+    \uB2E8\uAC80. \uC190\uC73C\uB85C \uB9DE\uCDB0 \uB454 \uC790\uC138\uB97C \uADF8\uB300\uB85C
+    \uC62E\uACBC\uB2E4."
+  type: 5
+  slot: 0
+  model: {fileID: 1766970699319641989, guid: 9b855d6cac7ef454789420815afdeaef, type: 3}
+  gripPosition: {x: 0.0019893423, y: 0.3302502, z: 0.010472499}
+  gripRotation: {x: 352.56155, y: 179.39728, z: 197.92393}
+  gripScale: 50.000027

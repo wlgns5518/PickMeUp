@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 94b5cb84c30883a4790e556f4dc7fc56
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 11500000, guid: 625f186215c104763be7675aa2d941aa, type: 3}
+AssetOrigin:
+  serializedVersion: 1
+  productId: 268122
+  packageName: Medieval Weapons Bundle (Weapons, Weapon, Medieval Weapons, Fantasy
+    Weapons)
+  packageVersion: 1.0
+  assetPath: Assets/Hivemind/MedievalWeapons/Art/Shaders/HDRP_Lit_ORM.shadergraph
+  uploadId: 649355

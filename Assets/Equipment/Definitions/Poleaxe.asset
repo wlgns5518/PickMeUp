@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ac4266020fb0ab40ab6cc2d249a77ce, type: 3}
+  m_Name: Poleaxe
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponDefinition
+  displayName: "\uD3F4\uC561\uC2A4"
+  description: 
+  type: 8
+  slot: 0
+  representsType: 0
+  model: {fileID: 7940356061271680678, guid: 2743960658acae64c9e3816a7bd395af, type: 3}
+  gripPosition: {x: 0.0013565203, y: 0.5412735, z: -0.000043000207}
+  gripRotation: {x: -0, y: 0, z: 0}
+  gripScale: 1

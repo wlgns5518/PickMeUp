@@ -88,8 +88,14 @@ public static class JobProfile
             case WeaponType.SwordTwoHand: return new WeaponCombatProfile(1.30f, 1.10f, 0f, 0.80f);
             case WeaponType.Spear:        return new WeaponCombatProfile(1.05f, 1.60f, 0f, 0.90f);
             case WeaponType.Dagger:       return new WeaponCombatProfile(0.85f, 0.90f, 0f, 1.35f);
+            case WeaponType.Axe:          return new WeaponCombatProfile(1.15f, 0.95f, 0f, 0.90f);
+            case WeaponType.Blunt:        return new WeaponCombatProfile(1.25f, 0.95f, 0f, 0.75f);
+            // 장병기는 창보다 무겁지만 사거리는 비슷하게 가져간다.
+            case WeaponType.Polearm:      return new WeaponCombatProfile(1.20f, 1.55f, 0f, 0.80f);
             // 활은 직업과 무관하게 원거리를 보장한다.
             case WeaponType.Bow:          return new WeaponCombatProfile(1.00f, 1.00f, 9f, 0.85f);
+            // 방패가 주무기 자리에 오는 건 설계상 없어야 하지만, 와도 맨손과 같게 둔다.
+            case WeaponType.Shield:       return new WeaponCombatProfile(0.80f, 1.00f, 0f, 1.00f);
             default:                      return new WeaponCombatProfile(0.80f, 1.00f, 0f, 1.00f); // 맨손
         }
     }

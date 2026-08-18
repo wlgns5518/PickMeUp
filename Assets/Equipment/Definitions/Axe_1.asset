@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ac4266020fb0ab40ab6cc2d249a77ce, type: 3}
+  m_Name: Axe_1
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponDefinition
+  displayName: "\uC804\uD22C\uB3C4\uB07C"
+  description: 
+  type: 6
+  slot: 0
+  representsType: 1
+  model: {fileID: 3220647899348371584, guid: 05bbda29985464646a69eba9edacb7ed, type: 3}
+  gripPosition: {x: -0.0021828967, y: -0.026075013, z: 0.0006133733}
+  gripRotation: {x: -0, y: 0, z: 0}
+  gripScale: 1

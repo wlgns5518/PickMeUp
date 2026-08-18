@@ -140,8 +140,10 @@ public class FloorSelectUI : MonoBehaviour
             floorButtons[i].interactable = unlocked;
 
             TMP_Text label = floorLabels[i];
+            // 체크표시(U+2713)를 쓰면 NotoSansKR에 글리프가 없어 매번 경고를 뱉고 □로 그려진다.
+            // 폰트가 Static 아틀라스라 동적으로 추가할 수도 없으니, 잠김 표기와 같은 한국어로 맞춘다.
             if (!unlocked) label.text = floor + "층  (잠김)";
-            else if (cleared) label.text = floor + "층  ✓";
+            else if (cleared) label.text = floor + "층  (클리어)";
             else label.text = floor + "층";
 
             label.color = unlocked ? BattleHudPalette.PanelText : BattleHudPalette.Dying;

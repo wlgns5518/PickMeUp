@@ -1123,7 +1123,6 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 2747639337961141357}
-  - {fileID: 2521095612557651023}
   m_Father: {fileID: 5947166808820118546}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &3872498313480954537
@@ -1650,6 +1649,7 @@ GameObject:
   - component: {fileID: 1154188040963072202}
   - component: {fileID: 380708866839357895}
   - component: {fileID: 6204127898441601742}
+  - component: {fileID: 7608228464112898524}
   m_Layer: 0
   m_Name: Y Bot
   m_TagString: Untagged
@@ -1755,6 +1755,15 @@ MonoBehaviour:
   stats:
     maxHp: 100
     currentHp: 100
+    maxMana: 50
+    currentMana: 50
+    skillManaCost: 20
+    potionCount: 0
+    potionHealHpRatio: 0.4
+    potionHealManaRatio: 0.5
+    potionHpThreshold: 0.35
+    potionManaTriggerHpRatio: 0.8
+    potionCooldown: 6
     walkSpeed: 2
     runSpeed: 4
     jumpPower: 5
@@ -1770,11 +1779,19 @@ MonoBehaviour:
     knockbackDistance: 0.6
     knockbackDuration: 0.12
     blockDamageReduction: 0.5
+    damageReduction: 0
+    canHealAllies: 0
+    healAmount: 25
+    healRange: 8
+    healCooldown: 6
+    healManaCost: 15
+    healTargetHpRatio: 0.7
   agent: {fileID: 0}
   animator: {fileID: 0}
   scanner: {fileID: 0}
   bodyCollider: {fileID: 0}
   emotion: {fileID: 0}
+  equipment: {fileID: 7608228464112898524}
   bloodEffectPrefabs:
   - {fileID: 2656253210798625995, guid: a78e9ef18b366424b84e0c7410d2fe72, type: 3}
   - {fileID: 5865290276592450837, guid: 42a28376f729c864a81abf66add7a418, type: 3}
@@ -1796,6 +1813,8 @@ MonoBehaviour:
   destinationUpdateInterval: 0.15
   chasePredictionTime: 0.25
   rotationSpeed: 720
+  minKeepDistanceRange: 4
+  keepDistanceRatio: 0.5
   targetChangeInterval: 0.5
   targetSwitchDistanceRatio: 0.75
   roamWhenSearching: 1
@@ -1809,6 +1828,7 @@ MonoBehaviour:
   attackStateName: Attack
   skillStateName: Kick
   blockStateName: Block
+  potionStateName: 
   hitStateName: Hit
   deathStateName: Death
   animationFadeDuration: 0.08
@@ -1857,6 +1877,24 @@ MonoBehaviour:
     fragileFirstBattle: 0
   currentEmotion: 
   fearGaugeDebug: 0
+--- !u!114 &7608228464112898524
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5603326327895470372}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2896bb6335b9f7c4fb9083fcabd4be5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponEquipper
+  animator: {fileID: 8160989353832506121}
+  mainHandSocket: {fileID: 0}
+  offHandSocket: {fileID: 0}
+  defaultMainHand: {fileID: 11400000, guid: 0e8f6f2931d6579409ae6da1f2e1d490, type: 2}
+  defaultOffHand: {fileID: 0}
+  debugLogs: 0
 --- !u!1 &5772722272943569221
 GameObject:
   m_ObjectHideFlags: 0
@@ -2596,97 +2634,3 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1142023893287346084}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1001 &2699347669435157412
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 1818823823983784560}
-    m_Modifications:
-    - target: {fileID: -8679921383154817045, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: m_LocalScale.x
-      value: 50
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: m_LocalScale.y
-      value: 50
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: m_LocalScale.z
-      value: 50
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: m_LocalPosition.x
-      value: -0.26408646
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 0.08481986
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: m_LocalPosition.z
-      value: -0.0369491
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: m_LocalRotation.w
-      value: 0.57313687
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: m_LocalRotation.x
-      value: -0.20469743
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: m_LocalRotation.y
-      value: -0.17860886
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: m_LocalRotation.z
-      value: -0.7731184
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 329.28217
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: 7.470661
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 251.04672
-      objectReference: {fileID: 0}
-    - target: {fileID: -7511558181221131132, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: 'm_Materials.Array.data[0]'
-      value: 
-      objectReference: {fileID: 2100000, guid: 48dfc5ebf5114354ca814736f1dfd571, type: 2}
-    - target: {fileID: 919132149155446097, guid: 957de959f01e81e4ba39e0e577b0b0db,
-        type: 3}
-      propertyPath: m_Name
-      value: Meshy_AI_Rusted_Dagger_0707111951_texture
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: 957de959f01e81e4ba39e0e577b0b0db, type: 3}
---- !u!4 &2521095612557651023 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 957de959f01e81e4ba39e0e577b0b0db,
-    type: 3}
-  m_PrefabInstance: {fileID: 2699347669435157412}
-  m_PrefabAsset: {fileID: 0}

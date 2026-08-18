@@ -48,19 +48,44 @@ public class CharacterSO : ScriptableObject
     public WeaponType mainHand = WeaponType.None;
     public OffHandType offHand = OffHandType.None;
 
+    [Tooltip("실제로 손에 들리는 무기 에셋. 비워두면 mainHand 종류의 대표 모델을 카탈로그에서 찾는다.")]
+    public WeaponDefinition mainHandWeapon;
+    [Tooltip("보조 손 방패. 비워둔 채 offHand만 Shield면 카탈로그의 기본 방패가 들린다.")]
+    public WeaponDefinition offHandWeapon;
+
     // Relationships -----------------------------------------------------
     [Header("Relationships")]
     public List<FriendshipEntry> friendships = new List<FriendshipEntry>();
 
     // Utility -----------------------------------------------------------
 
-    public bool CanEquipShield => !CharacterRules.IsTwoHanded(mainHand);
+    // 장착한 무기 에셋이 있으면 그쪽이 정답이다. mainHand enum은 에셋을 아직 안 고른
+    // 캐릭터(그리고 무기 없이 싸우는 생산직)를 위한 값으로만 남는다.
+    public WeaponType MainHandType => mainHandWeapon != null ? mainHandWeapon.type : mainHand;
+
+    public bool CanEquipShield => !CharacterRules.IsTwoHanded(MainHandType);
+
+    public bool HasShield => CanEquipShield && (offHandWeapon != null || offHand == OffHandType.Shield);
 
     // Change equipment. Equipping a two-handed weapon automatically removes the shield.
     public void EquipMainHand(WeaponType w)
     {
         mainHand = w;
-        if (CharacterRules.IsTwoHanded(w)) offHand = OffHandType.None;
+        // 종류를 직접 바꾸면 들고 있던 모델과 어긋난다. 같은 종류가 아니면 모델을 내려놓는다.
+        if (mainHandWeapon != null && mainHandWeapon.type != w) mainHandWeapon = null;
+        if (CharacterRules.IsTwoHanded(w)) UnequipOffHand();
+    }
+
+    // 무기 에셋을 그대로 장착한다. 전투 수치용 enum도 함께 맞춰 둔다.
+    public bool EquipMainHand(WeaponDefinition weapon)
+    {
+        if (weapon == null) { mainHandWeapon = null; mainHand = WeaponType.None; return true; }
+        if (weapon.slot != EquipSlot.MainHand) return false;
+
+        mainHandWeapon = weapon;
+        mainHand = weapon.type;
+        if (weapon.IsTwoHanded) UnequipOffHand();
+        return true;
     }
 
     public bool EquipShield()
@@ -68,6 +93,22 @@ public class CharacterSO : ScriptableObject
         if (!CanEquipShield) return false;
         offHand = OffHandType.Shield;
         return true;
+    }
+
+    public bool EquipOffHand(WeaponDefinition shield)
+    {
+        if (shield == null) { UnequipOffHand(); return true; }
+        if (shield.slot != EquipSlot.OffHand || !CanEquipShield) return false;
+
+        offHandWeapon = shield;
+        offHand = OffHandType.Shield;
+        return true;
+    }
+
+    public void UnequipOffHand()
+    {
+        offHand = OffHandType.None;
+        offHandWeapon = null;
     }
 
     // Gain experience. Level-ups increase visible stats using constitution growth weights.

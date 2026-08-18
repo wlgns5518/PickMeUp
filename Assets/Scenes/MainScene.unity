@@ -769,7 +769,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 043884c0c731e1b428a071a99334c2de, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FloorSelectUI
-  battleScenePrefix: Floor
+  battleSceneName: Floor1
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   visibleFloorCount: 9
   panelMargin: {x: 40, y: 40}

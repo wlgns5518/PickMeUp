@@ -114,7 +114,9 @@ public class BattleResultPanel
                 CharacterSO fallen = result.FallenCharacters[i];
                 if (fallen == null) continue;
 
-                Builder.Append("  · ");
+                // NotoSansKR 아틀라스에는 ASCII와 한글밖에 없다. 가운뎃점(U+00B7)을 쓰면
+                // 동료가 죽을 때마다 글리프 없음 경고가 뜨고 □로 그려진다.
+                Builder.Append("  - ");
                 Builder.Append(string.IsNullOrEmpty(fallen.characterName) ? "이름 없음" : fallen.characterName);
                 Builder.Append("  ").Append(fallen.starCount).Append('성');
                 Builder.Append("  Lv.").Append(fallen.level).Append('\n');

@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ac4266020fb0ab40ab6cc2d249a77ce, type: 3}
+  m_Name: Sword_1
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponDefinition
+  displayName: "\uB871\uC18C\uB4DC"
+  description: 
+  type: 1
+  slot: 0
+  representsType: 1
+  model: {fileID: 2595516706622967940, guid: 3ae97afcc1f5422408827ff9b3697715, type: 3}
+  gripPosition: {x: 3.0702943e-10, y: 0.3525317, z: 1.6031093e-11}
+  gripRotation: {x: -0, y: 0, z: 0}
+  gripScale: 1
