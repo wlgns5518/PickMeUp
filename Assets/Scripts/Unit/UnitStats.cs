@@ -14,8 +14,13 @@ public class UnitStats
     [Tooltip("스킬 자원. 전투 중 회복되지 않는다. 0이면 스킬을 아예 쓸 수 없으니 주의.")]
     public int maxMana = 50;
     public int currentMana = 50;
-    [Tooltip("스킬 1회 소모량. 쿨다운과 별개로 이 값이 모자라면 그 전투에서는 더 쓸 수 없다.")]
-    public int skillManaCost = 20;
+    // 지금 유닛이 쓰는 동작(무기 콤보, 발차기)은 전부 기본공격이라 마나를 쓰지 않는다.
+    // 마나를 소비하는 진짜 스킬이 생기면 그때 이 값을 올리면 되고, 소모 로직 자체는 그대로 살아 있다.
+    // 아군 스탯은 CharacterBattleSpawner.MapStats가 새 UnitStats를 만들어 쓰므로
+    // 프리팹이 아니라 여기 기본값이 실제로 적용되는 값이다.
+    [Tooltip("스킬 1회 소모량. 쿨다운과 별개로 이 값이 모자라면 그 전투에서는 더 쓸 수 없다. " +
+             "0이면 소모 없이 쿨다운만으로 쓴다(현재 모든 공격이 기본공격이라 0).")]
+    public int skillManaCost;
 
     [Header("Potion")]
     // HP도 마나도 저절로 차지 않는다. 전투 중 회복 수단은 회복약뿐이다.
@@ -59,6 +64,10 @@ public class UnitStats
     [Range(0f, 1f)] public float blockDamageReduction = 0.5f;
     [Tooltip("상시 피해 경감. 방어 자세와 별개로 항상 적용된다. 탱커와 방패가 올려준다.")]
     [Range(0f, 0.9f)] public float damageReduction;
+
+    [Header("Retreat")]
+    [Tooltip("HP가 이 비율 이하로 떨어지면 거리를 벌리려 한다. 회복 수단이 없는 적도 이걸로 무작정 맞아 죽지 않는다.")]
+    [Range(0f, 1f)] public float retreatHpThreshold = 0.25f;
 
     [Header("Heal (Support)")]
     [Tooltip("서포터 직업만 켜진다. 부상당한 아군을 회복시킬 수 있는지 여부.")]

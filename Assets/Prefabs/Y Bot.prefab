@@ -1757,7 +1757,7 @@ MonoBehaviour:
     currentHp: 100
     maxMana: 50
     currentMana: 50
-    skillManaCost: 20
+    skillManaCost: 0
     potionCount: 0
     potionHealHpRatio: 0.4
     potionHealManaRatio: 0.5
@@ -1826,6 +1826,7 @@ MonoBehaviour:
   runStateName: Run
   jumpStateName: 
   attackStateName: Attack
+  attackComboLength: 6
   skillStateName: Kick
   blockStateName: Block
   potionStateName: 

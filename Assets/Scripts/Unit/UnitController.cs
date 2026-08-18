@@ -53,7 +53,10 @@ public class UnitController : MonoBehaviour
     [SerializeField] private string walkStateName = "Walk";
     [SerializeField] private string runStateName = "Run";
     [SerializeField] private string jumpStateName = "";
+    [Tooltip("공격 애니메이션 상태 이름의 접두어. 콤보 길이가 1보다 크면 뒤에 1,2,3...이 붙는다(Attack1, Attack2...).")]
     [SerializeField] private string attackStateName = "Attack";
+    [Tooltip("공격 콤보 단계 수. 무기별 Override Controller가 Attack1~N 상태를 모두 갖고 있어야 한다.")]
+    [SerializeField, Min(1)] private int attackComboLength = 3;
     [SerializeField] private string skillStateName = "Kick";
     [SerializeField] private string blockStateName = "Block";
     [Tooltip("회복약을 마시는 모션. 비워두면 Idle로 대체된다.")]
@@ -147,7 +150,9 @@ public class UnitController : MonoBehaviour
     private int walkAnimationHash;
     private int runAnimationHash;
     private int jumpAnimationHash;
-    private int attackAnimationHash;
+    private int[] attackAnimationHashes;
+    private float[] attackAnimationDurationsPerStep;
+    private int attackComboIndex;
     private int skillAnimationHash;
     private int blockAnimationHash;
     private int potionAnimationHash;
@@ -210,6 +215,7 @@ public class UnitController : MonoBehaviour
 
         if (emotion == null) emotion = GetComponent<UnitEmotion>();
         if (equipment == null) equipment = GetComponent<WeaponEquipper>();
+        if (equipment != null) equipment.WeaponAnimatorChanged += RefreshAttackAnimations;
 
         if (scanner != null) scanner.Initialize(this);
 
@@ -228,7 +234,7 @@ public class UnitController : MonoBehaviour
         walkAnimationHash = ToHash(walkStateName);
         runAnimationHash = ToHash(runStateName);
         jumpAnimationHash = ToHash(jumpStateName);
-        attackAnimationHash = ToHash(attackStateName);
+        CacheAttackComboAnimations();
         skillAnimationHash = ToHash(skillStateName);
         blockAnimationHash = ToHash(blockStateName);
         potionAnimationHash = ToHash(potionStateName);
@@ -239,12 +245,43 @@ public class UnitController : MonoBehaviour
                                  !string.IsNullOrEmpty(walkStateName) &&
                                  animator.HasState(0, walkAnimationHash);
 
-        attackAnimationDuration = GetAnimationClipDuration(attackStateName, 1f);
         skillAnimationDuration = GetAnimationClipDuration(skillStateName, 1f);
         potionAnimationDuration = GetAnimationClipDuration(potionStateName, 0.8f);
         hitAnimationDuration = GetAnimationClipDuration(hitStateName, 0.35f);
         deathAnimationDuration = GetAnimationClipDuration(deathStateName, 1.5f);
     }
+
+    // 무기를 갈아 끼우면 Attack1~N 클립이 다른 Override Controller로 바뀐다. 상태 이름(해시)은
+    // 그대로지만 클립 길이는 무기마다 다르므로, WeaponEquipper.WeaponAnimatorChanged를 받을 때마다
+    // 다시 재 보아야 attackLockedUntil이 실제 재생 시간과 어긋나지 않는다.
+    private void CacheAttackComboAnimations()
+    {
+        // 무기마다 원본 팩이 주는 공격 클립 수가 다르다(단검 3 ~ 양손검 11).
+        // 무기 컨트롤러가 물려 있으면 그 개수를 그대로 쓰고, 없으면(맨손이거나 이 리그가
+        // 무기 컨트롤러를 안 쓰는 유닛) 프리팹에 적힌 기본값을 쓴다.
+        int steps = equipment != null && equipment.WeaponAttackCount > 0
+            ? equipment.WeaponAttackCount
+            : Mathf.Max(1, attackComboLength);
+
+        if (attackAnimationHashes == null || attackAnimationHashes.Length != steps)
+        {
+            attackAnimationHashes = new int[steps];
+            attackAnimationDurationsPerStep = new float[steps];
+        }
+
+        for (int i = 0; i < steps; i++)
+        {
+            string name = steps > 1 ? attackStateName + (i + 1) : attackStateName;
+            attackAnimationHashes[i] = ToHash(name);
+            attackAnimationDurationsPerStep[i] = GetAnimationClipDuration(name, 1f);
+        }
+
+        attackComboIndex = 0;
+    }
+
+    // WeaponEquipper가 무기를 갈아 끼운 뒤 호출. Awake는 장비가 붙기 전에 한 번 끝나므로
+    // 처음 캐시된 길이는 맨손 기준이라 무기 장착 후 다시 계산해야 한다.
+    public void RefreshAttackAnimations() => CacheAttackComboAnimations();
 
     // 프로파일러 확인 결과 Animators.Update가 스크립트 전체(0.08ms)의 14배인 1.1ms로,
     // 실제 CPU 비용의 대부분을 차지했다. AlwaysAnimate는 화면 밖 유닛도 리타게팅/IK/본 트랜스폼을
@@ -663,6 +700,34 @@ public class UnitController : MonoBehaviour
         return IsTargetValid() && SqrDistanceToTarget() < stats.attackRange * stats.attackRange * 0.5f;
     }
 
+    // HP가 위험 수위인데 회복 수단(회복약/치료)이 없거나 이미 바닥났을 때 거리를 벌린다.
+    // 적은 CanRecoverHp가 항상 false라 회복약이 없으면 이게 유일한 생존 수단이다.
+    // 쿨다운으로 한 번만 물러나게 막으면, 여전히 위험한데도 한 박자 쉬고 다시 근접전으로
+    // 걸어 들어가 버린다(맞다가 죽는 원인). HP가 임계치 아래인 동안은 매 프레임 계속 true를 줘서
+    // EvadeState가 안전해질 때까지 반복해서 물러나게 한다.
+    private bool ShouldRetreatForSurvival()
+    {
+        // 적은 체력이 바닥나도 물러서지 않는다. 회복 수단이 없는 쪽(CanRecoverHp)이 도망까지 다니면
+        // 죽지도 싸우지도 않고 맵을 배회하게 되어 전투가 끝나지 않는다.
+        // 밸런스 수치가 아니라 설계 규칙이라 데이터가 아니라 코드에 둔다.
+        if (team == UnitTeam.Enemy) return false;
+
+        if (!IsTargetValid()) return false;
+        if (stats.HpRatio > stats.retreatHpThreshold) return false;
+
+        // 회복약으로 이번 프레임에 살아날 수 있으면 굳이 등을 보이지 않는다 — TryDrinkPotion이 먼저 처리한다.
+        if (CanUsePotion()) return false;
+
+        return true;
+    }
+
+    // 전투 중 거리를 벌려야 하는 모든 상황(원거리 유닛의 근접 회피 + 위기 후퇴)을 한데 묶는다.
+    // ChaseState/AttackState/EvadeState가 매 프레임 이거 하나만 물어보면 된다.
+    public bool ShouldEvade()
+    {
+        return ShouldKeepDistance() || ShouldRetreatForSurvival();
+    }
+
     public void TakeDamage(int damage)
     {
         TakeDamage(damage, null, false);
@@ -791,8 +856,11 @@ public class UnitController : MonoBehaviour
 
     public void TriggerAttack()
     {
+        int step = attackComboIndex % attackAnimationHashes.Length;
+        attackAnimationDuration = attackAnimationDurationsPerStep[step];
         attackLockedUntil = Time.time + attackAnimationDuration;
-        PlayAnimation(attackAnimationHash, true);
+        PlayAnimation(attackAnimationHashes[step], true);
+        attackComboIndex = (step + 1) % attackAnimationHashes.Length;
     }
 
     public void TriggerSkill()

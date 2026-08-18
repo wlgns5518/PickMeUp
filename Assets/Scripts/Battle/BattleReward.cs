@@ -38,6 +38,9 @@ public class BattleRewardSettings
     [Min(1)] public int damagePerExp = 10;
     [Tooltip("MVP 추가 경험치.")]
     [Min(0)] public int mvpExpBonus = 15;
+    [Tooltip("전투 중 쓰러진 참가자가 받는 경험치 비율. 영구 죽음이 아니면 이들도 다음 전투에 다시 나오므로, " +
+             "0으로 두면 한 번 쓰러진 캐릭터만 성장이 영영 멈춰 파티 레벨이 벌어진다.")]
+    [Range(0f, 1f)] public float expRatioWhenDown = 0.5f;
 
     [Header("MVP 점수")]
     [Tooltip("처치 1회의 환산 점수. 가한 피해는 1점으로 계산된다.")]

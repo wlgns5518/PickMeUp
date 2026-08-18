@@ -59,6 +59,11 @@ public class EmotionProfile
     public float stress;
     [Tooltip("이 값을 넘으면 정신이 붕괴(Broken)해 전투를 지속할 수 없다.")]
     public float stressLimit = 100f;
+    [Tooltip("붕괴가 지속되는 시간. 스트레스는 전투 중 줄어들지 않으므로 이 시간이 없으면 " +
+             "한 번 한계치에 닿은 캐릭터가 남은 전투 내내 행동불능으로 굳는다.")]
+    public float brokenDuration = 8f;
+    [Tooltip("붕괴에서 벗어난 직후 남는 스트레스. stressLimit보다 낮아야 즉시 다시 무너지지 않는다.")]
+    public float brokenExitStress = 70f;
     // 붕괴는 회복되지 않는 영구 행동불능이라 한 전투에서 여러 명이 무너지면 게임이 성립하지 않는다.
     // 실플레이 검증에서 25초 전투에 5명 중 2명이 붕괴해 값을 낮췄다 — 붕괴는 소모전 끝에만 나와야 한다.
     public float stressPerPanic = 5f;

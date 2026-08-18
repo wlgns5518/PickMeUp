@@ -169,12 +169,12 @@ public class BattleManager : MonoBehaviour
         {
             result.AllyDeaths++;
 
-            // 영구 죽음 — 이 캐릭터는 다음 전투에 다시 나올 수 없다.
-            if (PartyRoster.MarkFallen(unit.SourceCharacter))
-            {
-                result.FallenCharacters.Add(unit.SourceCharacter);
-                if (debugLogs) Debug.Log($"[BattleManager] 영구 사망: {unit.SourceCharacter.characterName}");
-            }
+            // TODO: 테스트를 위해 영구 죽음(PartyRoster.MarkFallen) 임시 비활성화. 테스트 후 복구할 것.
+            // if (PartyRoster.MarkFallen(unit.SourceCharacter))
+            // {
+            //     result.FallenCharacters.Add(unit.SourceCharacter);
+            //     if (debugLogs) Debug.Log($"[BattleManager] 영구 사망: {unit.SourceCharacter.characterName}");
+            // }
         }
         else if (unit.Team == UnitTeam.Enemy)
         {
@@ -309,8 +309,11 @@ public class BattleManager : MonoBehaviour
                + (reward.Survived ? rewardSettings.mvpSurvivalBonus : 0f);
     }
 
-    // 경험치는 살아남은 유닛에게만 준다. 영구 사망한 캐릭터는 다시 출전하지 않으므로
-    // 경험치를 넣어봐야 쓰이지 않고, 죽은 캐릭터가 레벨업하는 이상한 결과만 남는다.
+    // 쓰러진 참가자도 경험치를 받는다(비율은 expRatioWhenDown).
+    //
+    // 예전에는 생존자에게만 주고 쓰러진 쪽은 통째로 건너뛰었다. 영구 사망이 켜져 있을 때는
+    // 다시 출전하지 않으니 문제가 없었지만, 영구 사망이 꺼진 지금은 쓰러진 캐릭터도 다음 전투에
+    // 그대로 나온다. 그래서 한 번 쓰러진 캐릭터만 레벨이 영영 멈춘 채 계속 출전하게 됐다.
     private void GrantExp(BattleOutcome outcome)
     {
         int baseExp = outcome == BattleOutcome.Victory
@@ -320,12 +323,18 @@ public class BattleManager : MonoBehaviour
         for (int i = 0; i < result.Rewards.Count; i++)
         {
             BattleReward reward = result.Rewards[i];
-            if (!reward.Survived || reward.Character == null) continue;
+            if (reward.Character == null) continue;
 
             int exp = baseExp
                       + reward.Kills * rewardSettings.expPerKill
                       + reward.DamageDealt / Mathf.Max(1, rewardSettings.damagePerExp);
             if (reward.IsMvp) exp += rewardSettings.mvpExpBonus;
+
+            // 끝까지 버틴 쪽이 더 받는다는 규칙은 남긴다.
+            if (!reward.Survived)
+            {
+                exp = Mathf.RoundToInt(exp * Mathf.Clamp01(rewardSettings.expRatioWhenDown));
+            }
 
             reward.ExpGained = exp;
             reward.LevelBefore = reward.Character.level;

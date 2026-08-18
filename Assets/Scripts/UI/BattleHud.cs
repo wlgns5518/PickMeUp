@@ -1,5 +1,7 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 // 전투 HUD의 단일 진입점. 씬에 이 컴포넌트 하나만 올려두면
@@ -26,6 +28,7 @@ public class BattleHud : MonoBehaviour
     private PartyStatusPanel partyPanel;
     private BattleResultPanel resultPanel;
     private TMP_FontAsset resolvedFont;
+    private PartyFollowCamera followCamera;
 
     private void Awake()
     {
@@ -46,9 +49,28 @@ public class BattleHud : MonoBehaviour
         Transform stale = transform.Find("BattleHudCanvas");
         if (stale != null) DestroyImmediate(stale.gameObject);
 
+        EnsureEventSystem();
         BuildCanvas();
         partyPanel = PartyStatusPanel.Create(canvasRect, resolvedFont, partyPanelMargin);
+        partyPanel.UnitClicked += HandlePartySlotClicked;
         resultPanel = BattleResultPanel.Create(canvasRect, resolvedFont);
+    }
+
+    // 파티 슬롯을 누르면 그 캐릭터로 시점을 옮긴다.
+    private void HandlePartySlotClicked(UnitController unit)
+    {
+        PartyFollowCamera cam = ResolveCamera();
+        if (cam == null) return;
+
+        cam.Focus(unit);
+        partyPanel?.SetSelected(unit);
+    }
+
+    // 카메라는 씬에 하나뿐이고 HUD보다 먼저 사라질 수 있어 매번 유효성을 확인한다.
+    private PartyFollowCamera ResolveCamera()
+    {
+        if (followCamera == null) followCamera = FindAnyObjectByType<PartyFollowCamera>();
+        return followCamera;
     }
 
     // 둘 다 정적 이벤트라 BattleManager 인스턴스를 찾을 필요가 없다.
@@ -72,6 +94,10 @@ public class BattleHud : MonoBehaviour
 
     private void LateUpdate()
     {
+        // 카메라가 스스로 잡은 대상(전투 시작 시 첫 아군)도 강조에 반영되도록 매 프레임 맞춰준다.
+        PartyFollowCamera cam = ResolveCamera();
+        if (cam != null) partyPanel?.SetSelected(cam.FocusTarget);
+
         // 유닛이 이번 프레임의 피해/감정 변화를 모두 반영한 뒤에 읽는다.
         // 슬롯은 파티 인원수(보통 5명)뿐이라 매 프레임 훑어도 부담이 없다.
         partyPanel?.Refresh();
@@ -94,9 +120,24 @@ public class BattleHud : MonoBehaviour
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
         scaler.matchWidthOrHeight = 0.5f;
 
-        // GraphicRaycaster를 일부러 붙이지 않는다. HUD는 클릭 대상이 아니고,
-        // 붙이면 화면 전체를 덮는 결과창이 아래쪽 UI 입력을 가로챈다.
+        // 파티 슬롯을 눌러 카메라를 옮기려면 레이캐스터가 필요하다.
+        // 예전에는 결과창이 아래쪽 UI 입력을 가로챌까 봐 붙이지 않았는데, HudFactory가 만드는
+        // 이미지/텍스트는 전부 raycastTarget=false라 실제로 클릭을 받는 건 파티 슬롯의
+        // 판정용 이미지 하나뿐이다. 결과창은 여전히 입력을 가로채지 않는다.
+        canvasGo.AddComponent<GraphicRaycaster>();
+
         canvasRect = (RectTransform)canvasGo.transform;
+    }
+
+    // UI 클릭은 EventSystem이 있어야 전달된다. 씬마다 배치를 챙기면 한 곳만 빠져도
+    // "클릭이 안 되는" 증상으로 나타나므로, HUD를 코드로 짓는 것과 같은 이유로 여기서 보장한다.
+    private static void EnsureEventSystem()
+    {
+        if (EventSystem.current != null) return;
+        if (FindAnyObjectByType<EventSystem>() != null) return;
+
+        var go = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
+        go.transform.SetParent(null);
     }
 
     // 전투 시작 시점의 아군 목록을 그대로 슬롯에 고정한다.

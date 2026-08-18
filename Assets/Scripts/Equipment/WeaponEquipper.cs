@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 // 전투 유닛의 손에 무기 모델을 실제로 붙이는 쪽.
@@ -17,6 +18,10 @@ public class WeaponEquipper : MonoBehaviour
     [SerializeField] private Transform mainHandSocket;
     [SerializeField] private Transform offHandSocket;
 
+    [Tooltip("손목에서 중지 밑동까지를 1로 봤을 때 소켓을 손바닥 쪽으로 밀어내는 비율. " +
+             "0이면 손목 관절(Hand 본 원점)에 그대로 붙어 무기가 손목에 매달린 것처럼 보인다.")]
+    [SerializeField, Range(0f, 1f)] private float palmGripRatio = 0.6f;
+
     [Header("Default Loadout")]
     [Tooltip("CharacterSO 없이 스폰되는 유닛(적 등)이 기본으로 드는 장비.")]
     [SerializeField] private WeaponDefinition defaultMainHand;
@@ -28,10 +33,21 @@ public class WeaponEquipper : MonoBehaviour
     public WeaponDefinition MainHand { get; private set; }
     public WeaponDefinition OffHand { get; private set; }
 
+    // 주무기가 바뀔 때마다 Attack1~N 클립이 바뀐 컨트롤러로 갈아 끼운다.
+    // UnitController가 캐시해 둔 공격 애니메이션 길이는 이 이벤트를 구독해 다시 계산한다.
+    public event Action WeaponAnimatorChanged;
+
+    // 현재 물려 있는 무기 컨트롤러가 가진 공격 단계 수. 0이면 무기 컨트롤러가 적용되지 않은 상태라
+    // (맨손이거나, 애초에 이 리그가 무기 컨트롤러를 쓰지 않는 유닛) 호출 쪽이 자기 기본값을 쓴다.
+    public int WeaponAttackCount { get; private set; }
+
     private GameObject mainHandInstance;
     private GameObject offHandInstance;
     private bool socketsResolved;
     private bool appliedOnce;
+    private RuntimeAnimatorController defaultController;
+    private bool defaultControllerCaptured;
+    private WeaponType appliedAnimatorWeapon = (WeaponType)(-1);
 
     private void Awake()
     {
@@ -90,6 +106,32 @@ public class WeaponEquipper : MonoBehaviour
         ResolveSockets();
         mainHandInstance = Respawn(mainHandInstance, main, mainHandSocket);
         offHandInstance = Respawn(offHandInstance, off, offHandSocket);
+
+        ApplyWeaponAnimator(main != null ? main.type : WeaponType.None);
+    }
+
+    // 주무기 종류에 맞는 Attack1~3 Override Controller로 갈아 끼운다.
+    // 등록된 게 없으면(None, Shield 등) 프리팹에 원래 물려 있던 컨트롤러(맨손)로 되돌린다.
+    private void ApplyWeaponAnimator(WeaponType type)
+    {
+        if (ResolveAnimator() == null) return;
+
+        if (!defaultControllerCaptured)
+        {
+            defaultController = animator.runtimeAnimatorController;
+            defaultControllerCaptured = true;
+        }
+
+        if (type == appliedAnimatorWeapon) return;
+        appliedAnimatorWeapon = type;
+
+        WeaponAnimationLibrary.Entry entry = WeaponAnimationLibrary.FindEntry(type);
+        RuntimeAnimatorController weaponController = entry != null ? entry.controller : null;
+
+        animator.runtimeAnimatorController = weaponController != null ? weaponController : defaultController;
+        WeaponAttackCount = weaponController != null ? Mathf.Max(1, entry.attackCount) : 0;
+
+        WeaponAnimatorChanged?.Invoke();
     }
 
     public void Unequip() => Equip(null, null);
@@ -137,10 +179,22 @@ public class WeaponEquipper : MonoBehaviour
 
         var socket = new GameObject(socketName).transform;
         socket.SetParent(hand, false);
-        socket.localPosition = Vector3.zero;
+        socket.localPosition = PalmOffset(rightHand);
         socket.localRotation = GripRotation(rightHand);
         socket.localScale = Vector3.one;
         return socket;
+    }
+
+    // 휴머노이드 리그에서 Hand 본의 원점은 손바닥이 아니라 손목 관절이다(이 리그는 손목~중지 밑동이 12.8cm).
+    // 소켓을 원점에 그대로 두면 무기가 손목에 매달린 것처럼 보이므로, 주먹이 자루를 쥐는 지점까지 밀어준다.
+    // 손가락 뼈가 매핑되지 않은 리그에서는 기준을 잡을 수 없으니 손목 그대로 둔다(예전 동작).
+    private Vector3 PalmOffset(bool rightHand)
+    {
+        Transform hand = animator.GetBoneTransform(rightHand ? HumanBodyBones.RightHand : HumanBodyBones.LeftHand);
+        Transform middle = animator.GetBoneTransform(rightHand ? HumanBodyBones.RightMiddleProximal : HumanBodyBones.LeftMiddleProximal);
+        if (hand == null || middle == null) return Vector3.zero;
+
+        return hand.InverseTransformPoint(middle.position) * palmGripRatio;
     }
 
     // 소켓의 자세를 손 모양에서 직접 뽑는다.

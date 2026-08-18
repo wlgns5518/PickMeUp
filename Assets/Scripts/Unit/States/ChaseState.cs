@@ -48,6 +48,13 @@ public class ChaseState : UnitBattleState
 
     private bool TrySwitchToActionState()
     {
+        // 쫓아가는 도중에도 위기면 방향을 바꾼다 — 사거리 안까지 들어갈 때까지 기다리지 않는다.
+        if (context.ShouldEvade())
+        {
+            context.ChangeState(context.EvadeState);
+            return true;
+        }
+
         if (context.CanUseSkill())
         {
             context.ChangeState(context.SkillState);

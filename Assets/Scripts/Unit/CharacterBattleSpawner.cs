@@ -24,14 +24,22 @@ public class CharacterBattleSpawner : MonoBehaviour
     [SerializeField] private float enemyHpPerFloor = 0.18f;
     [Tooltip("층당 적 공격력 증가 비율.")]
     [SerializeField] private float enemyDamagePerFloor = 0.12f;
-    [Tooltip("스폰 지점이 모자랄 때 적을 흩뿌리는 반경.")]
-    [SerializeField] private float enemyScatterRadius = 12f;
+
+    [Header("Spawn Formation")]
+    [Tooltip("아군이 뭉쳐서 소환될 중심. 비워두면 스포너 위치 + allySpawnFallbackOffset을 쓴다.")]
+    [SerializeField] private Transform allySpawnCenter;
+    [Tooltip("적이 뭉쳐서 소환될 중심. 비워두면 스포너 위치 + enemySpawnFallbackOffset을 쓴다.")]
+    [SerializeField] private Transform enemySpawnCenter;
+    [Tooltip("같은 팀 유닛 사이의 간격. 중심을 둘러싸는 고리의 반지름이 이 값의 배수로 커진다.")]
+    [SerializeField] private float clusterSpacing = 1.6f;
 
     [Header("Stat Mapping (임시 공식 — 추후 밸런싱 예정)")]
     [SerializeField] private int baseHp = 60;
     [SerializeField] private int hpPerVitality = 6;
     [SerializeField] private int hpPerLevel = 3;
-    [SerializeField] private int baseAttackDamage = 6;
+    // 적을 1~2방에 정리하도록 맞춘 값. 이 수치에 직업/무기 배율이 곱해지므로
+    // 공격력이 가장 낮은 생산직(요리사)도 2방, 근접직은 1방이 나온다.
+    [SerializeField] private int baseAttackDamage = 200;
     [Tooltip("마나 = baseMana + 지능 x manaPerIntelligence. 지능이 높을수록 스킬을 자주 쓴다.")]
     [SerializeField] private int baseMana = 30;
     [SerializeField] private int manaPerIntelligence = 4;
@@ -86,15 +94,40 @@ public class CharacterBattleSpawner : MonoBehaviour
         }
     }
 
-    // 층이 높아지면 스폰 지점 수를 금방 넘어선다. 남는 적은 배치 중심 둘레에 흩뿌린다.
+    // 층이 높아지면 스폰 지점 수를 금방 넘어선다. 남는 적은 배치 중심을 둘러싸고 뭉친다.
     private Vector3 GetEnemySpawnPosition(int index)
     {
         if (enemySpawnPoints != null && index < enemySpawnPoints.Length && enemySpawnPoints[index] != null)
             return enemySpawnPoints[index].position;
 
-        Vector3 origin = transform.position + enemySpawnFallbackOffset;
-        Vector2 circle = Random.insideUnitCircle * enemyScatterRadius;
-        return origin + new Vector3(circle.x, 0f, circle.y);
+        Vector3 origin = enemySpawnCenter != null
+            ? enemySpawnCenter.position
+            : transform.position + enemySpawnFallbackOffset;
+        return origin + FormationOffset(index, clusterSpacing);
+    }
+
+    // 중심 주위를 한 겹씩 둘러싸는 배치. 0번이 중앙에 서고 1번부터 고리를 채운다.
+    //
+    // 예전에는 아군을 한 줄로 늘어놓고(offset x (index+1)) 적은 반경 12m에 무작위로 흩뿌렸다.
+    // 그러면 인원이 늘수록 팀이 맵 전체로 퍼져 서로를 찾아 헤매느라 전투가 시작되지 않는다.
+    // 고리 배치는 인원이 몇이든 지름이 천천히 커져서 한 덩어리로 남는다.
+    private static Vector3 FormationOffset(int index, float spacing)
+    {
+        if (index <= 0) return Vector3.zero;
+
+        int ring = 1;
+        int consumed = 1; // 중앙 한 자리
+        while (consumed + ring * 6 <= index)
+        {
+            consumed += ring * 6;
+            ring++;
+        }
+
+        int slotsInRing = ring * 6;
+        int slot = index - consumed;
+        float angle = slot / (float)slotsInRing * Mathf.PI * 2f;
+        float radius = ring * Mathf.Max(0.1f, spacing);
+        return new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
     }
 
     // 프리팹 스탯을 복사해 층 보정을 얹는다. 원본을 그대로 쓰면 모든 적이 같은 객체를 공유해
@@ -116,7 +149,10 @@ public class CharacterBattleSpawner : MonoBehaviour
         if (points != null && index < points.Length && points[index] != null)
             return points[index].position;
 
-        return transform.position + fallbackOffset * (index + 1);
+        Vector3 origin = allySpawnCenter != null
+            ? allySpawnCenter.position
+            : transform.position + fallbackOffset;
+        return origin + FormationOffset(index, clusterSpacing);
     }
 
     private UnitController SpawnUnit(UnitController prefab, UnitTeam team, UnitStats stats, Vector3 position, string unitName, CharacterSO source = null)

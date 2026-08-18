@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 // 화면 왼쪽에 세로로 쌓이는 아군 파티 패널 — 원작 게임 화면의 그 UI.
@@ -24,11 +26,17 @@ public class PartyStatusPanel
 
     private static readonly StringBuilder LabelBuilder = new StringBuilder(24);
 
+    // 평소에는 거의 보이지 않는 판(클릭 판정을 받으려면 완전 투명이면 안 된다),
+    // 선택된 슬롯만 옅게 밝혀 지금 카메라가 누구를 보고 있는지 드러낸다.
+    private static readonly Color SlotIdleColor = new Color(1f, 1f, 1f, 0.01f);
+    private static readonly Color SlotSelectedColor = new Color(1f, 0.95f, 0.6f, 0.22f);
+
     // 한 명분 슬롯. 전투가 시작될 때 아군 수만큼 만들어지고 그 뒤로는 값만 갱신된다.
     private class Slot
     {
         public UnitController Unit;
         public RectTransform Root;
+        public Image SelectionHighlight;
         public Image PortraitFrame;
         public Image Portrait;
         public Image HpFill;
@@ -39,12 +47,20 @@ public class PartyStatusPanel
         public float AppliedManaRatio = -1f;
         public EmotionState AppliedEmotion = (EmotionState)(-1);
         public bool AppliedDead;
+        public bool AppliedSelected;
         public bool HasAppliedState;
     }
 
     private readonly RectTransform root;
     private readonly TMP_FontAsset font;
     private readonly List<Slot> slots = new List<Slot>();
+
+    // 슬롯을 누르면 그 유닛을 넘긴다. 카메라 이동은 이 패널이 직접 하지 않는다 —
+    // UI는 "누가 선택됐는지"만 알리고, 그걸로 무엇을 할지는 BattleHud가 정한다.
+    public event Action<UnitController> UnitClicked;
+
+    // 지금 선택된 유닛. 슬롯 강조 표시에만 쓴다.
+    private UnitController selectedUnit;
 
     private PartyStatusPanel(RectTransform parent, TMP_FontAsset font, Vector2 margin)
     {
@@ -97,6 +113,23 @@ public class PartyStatusPanel
         }
     }
 
+    // 카메라가 실제로 잡은 대상을 UI에 되비춘다. 클릭이 아니라 카메라 쪽에서 시작된
+    // 선택(전투 시작 시 첫 아군)도 같은 경로로 강조되도록 이 메서드를 단일 출처로 둔다.
+    public void SetSelected(UnitController unit)
+    {
+        selectedUnit = unit;
+    }
+
+    private void HandleSlotClicked(int index)
+    {
+        if (index < 0 || index >= slots.Count) return;
+
+        UnitController unit = slots[index].Unit;
+        if (unit == null) return;
+
+        UnitClicked?.Invoke(unit);
+    }
+
     private void RefreshSlot(Slot slot)
     {
         UnitController unit = slot.Unit;
@@ -136,6 +169,13 @@ public class PartyStatusPanel
             slot.PortraitFrame.color = isDead
                 ? BattleHudPalette.DeadTint * BattleHudPalette.PortraitFrame
                 : BattleHudPalette.PortraitFrame;
+        }
+
+        bool selected = unit == selectedUnit;
+        if (!slot.HasAppliedState || selected != slot.AppliedSelected)
+        {
+            slot.AppliedSelected = selected;
+            slot.SelectionHighlight.color = selected ? SlotSelectedColor : SlotIdleColor;
         }
 
         slot.HasAppliedState = true;
@@ -209,6 +249,20 @@ public class PartyStatusPanel
         slot.Root.pivot = new Vector2(0f, 1f);
         slot.Root.sizeDelta = new Vector2(GaugeLeft + GaugeWidth, RowHeight);
         slot.Root.anchoredPosition = new Vector2(0f, -index * (RowHeight + RowSpacing));
+
+        // 선택 강조. 클릭 판정도 이 이미지가 받는다 — 행 전체를 덮으므로 초상화든 게이지든
+        // 어디를 눌러도 같은 슬롯이 선택된다. HudFactory 기본값이 raycastTarget=false이므로
+        // 여기서만 명시적으로 켜서, 나머지 HUD는 여전히 클릭을 가로채지 않게 둔다.
+        slot.SelectionHighlight = HudFactory.CreateImage(slot.Root, "SelectionHighlight", SlotIdleColor);
+        SetTopLeft(slot.SelectionHighlight.rectTransform, new Vector2(GaugeLeft + GaugeWidth, RowHeight), Vector2.zero);
+        slot.SelectionHighlight.raycastTarget = true;
+
+        // 클릭을 슬롯 인덱스로 되돌려 받는다. 슬롯은 재사용되므로 유닛이 아니라 인덱스를 넘긴다.
+        var trigger = slot.SelectionHighlight.gameObject.AddComponent<EventTrigger>();
+        var entry = new EventTrigger.Entry { eventID = EventTriggerType.PointerClick };
+        int captured = index;
+        entry.callback.AddListener(_ => HandleSlotClicked(captured));
+        trigger.triggers.Add(entry);
 
         slot.PortraitFrame = HudFactory.CreateImage(slot.Root, "PortraitFrame", BattleHudPalette.PortraitFrame);
         SetTopLeft(slot.PortraitFrame.rectTransform, new Vector2(PortraitSize, PortraitSize), Vector2.zero);

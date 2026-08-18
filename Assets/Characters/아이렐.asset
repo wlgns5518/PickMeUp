@@ -40,6 +40,8 @@ MonoBehaviour:
     skill: 4
     body: 6
     sanity: 6
-  mainHand: 0
+  mainHand: 4
   offHand: 0
+  mainHandWeapon: {fileID: 11400000, guid: fce812370fdcb074281c3caad25f3352, type: 2}
+  offHandWeapon: {fileID: 0}
   friendships: []

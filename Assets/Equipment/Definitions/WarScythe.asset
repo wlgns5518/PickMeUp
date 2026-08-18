@@ -19,5 +19,5 @@ MonoBehaviour:
   representsType: 0
   model: {fileID: 4793757039892472523, guid: 28fffe1b4226ddc41b5547e80b3827c3, type: 3}
   gripPosition: {x: 0.032611173, y: 0.3451657, z: 0.000001157311}
-  gripRotation: {x: -0, y: 0, z: 180}
+  gripRotation: {x: 0, y: 0, z: 0}
   gripScale: 1

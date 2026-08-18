@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a6d55bba73b0f10439ba7cfc513b1760, type: 3}
+  m_Name: WeaponAnimationLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponAnimationLibrary
+  entries:
+  - type: 1
+    controller: {fileID: 22100000, guid: cc7f50da8c6ffb846b972b8903c98aaa, type: 2}
+    attackCount: 10
+  - type: 2
+    controller: {fileID: 22100000, guid: 11cfa17218caeca44bdb399703658de4, type: 2}
+    attackCount: 11
+  - type: 3
+    controller: {fileID: 22100000, guid: 9dad7e86336b73b418dd773969086992, type: 2}
+    attackCount: 6
+  - type: 4
+    controller: {fileID: 22100000, guid: 8c0e17e7e22727e4983de71b3107b1a1, type: 2}
+    attackCount: 11
+  - type: 5
+    controller: {fileID: 22100000, guid: 0afde08c5da76474fa375d0a192a8655, type: 2}
+    attackCount: 3
+  - type: 6
+    controller: {fileID: 22100000, guid: 5fb0d563708968d4d9e4e0289af677ea, type: 2}
+    attackCount: 6
+  - type: 7
+    controller: {fileID: 22100000, guid: ff713e625e2413f489be35b209ea48f5, type: 2}
+    attackCount: 3
+  - type: 8
+    controller: {fileID: 22100000, guid: ed161e9e265d5504fb943edcab97431c, type: 2}
+    attackCount: 6

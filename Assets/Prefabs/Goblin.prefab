@@ -1792,7 +1792,7 @@ MonoBehaviour:
     currentHp: 100
     maxMana: 50
     currentMana: 50
-    skillManaCost: 20
+    skillManaCost: 0
     potionCount: 0
     potionHealHpRatio: 0.4
     potionHealManaRatio: 0.5
@@ -1805,7 +1805,7 @@ MonoBehaviour:
     moveStopDistance: 0.25
     attackRange: 1.2
     detectRange: 8
-    attackDamage: 8
+    attackDamage: 40
     skillDamage: 24
     skillCooldown: 5
     evadeRange: 2.5
@@ -1861,7 +1861,8 @@ MonoBehaviour:
   runStateName: Run
   jumpStateName: 
   attackStateName: Attack
-  skillStateName: 
+  attackComboLength: 1
+  skillStateName:
   blockStateName: 
   potionStateName: 
   hitStateName: Hit

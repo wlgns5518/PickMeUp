@@ -22,6 +22,7 @@ public class UnitEmotion : MonoBehaviour
     private UnitController owner;
     private float fearGauge;
     private float panicTimer;
+    private float brokenTimer;
     private float bleedRemaining;
     private float bleedTickTimer;
     private EmotionState state;
@@ -72,6 +73,7 @@ public class UnitEmotion : MonoBehaviour
     {
         fearGauge = profile.fragileFirstBattle ? profile.fearThreshold : 0f;
         panicTimer = 0f;
+        brokenTimer = 0f;
         bleedRemaining = 0f;
         bleedTickTimer = 0f;
         state = EmotionState.None;
@@ -96,6 +98,7 @@ public class UnitEmotion : MonoBehaviour
 
         UpdateFear(deltaTime);
         UpdatePanic(deltaTime);
+        UpdateBroken(deltaTime);
         RecomputeState();
     }
 
@@ -198,6 +201,31 @@ public class UnitEmotion : MonoBehaviour
         AddStress(profile.stressPerPanic);
     }
 
+    // 붕괴도 패닉과 같은 방식으로 시간이 지나면 풀린다.
+    //
+    // 예전에는 RecomputeState가 stress >= stressLimit을 그대로 읽었는데, 스트레스는 전투 중
+    // 줄어드는 축이 없어서(회복은 메인 씬의 StressRecovery에서 시간당 10씩만 일어난다)
+    // 한 번 한계치에 닿으면 남은 전투 내내 ActionBlocking으로 굳어 버렸다.
+    // 붕괴를 없애는 대신, 무너져 있는 시간을 정해 두고 그 뒤에는 한계치 아래로 내려 다시 싸우게 한다.
+    private void UpdateBroken(float deltaTime)
+    {
+        if (brokenTimer > 0f)
+        {
+            brokenTimer -= deltaTime;
+            if (brokenTimer > 0f) return;
+
+            brokenTimer = 0f;
+            // 벗어난 직후 곧바로 다시 무너지지 않도록 한계치보다 확실히 아래로 내린다.
+            profile.stress = Mathf.Min(profile.brokenExitStress, profile.stressLimit);
+            if (profile.stress >= profile.stressLimit) profile.stress = profile.stressLimit * 0.7f;
+            return;
+        }
+
+        if (profile.stress < profile.stressLimit) return;
+
+        brokenTimer = Mathf.Max(0.1f, profile.brokenDuration);
+    }
+
     private void UpdateBleeding(float deltaTime)
     {
         if (bleedRemaining <= 0f) return;
@@ -224,7 +252,9 @@ public class UnitEmotion : MonoBehaviour
         if (panicTimer > 0f) next |= EmotionState.Panic | EmotionState.Fear;
         if (bleedRemaining > 0f) next |= EmotionState.Bleeding;
         if (HpRatio < profile.dyingHpRatio) next |= EmotionState.Dying;
-        if (profile.stress >= profile.stressLimit) next |= EmotionState.Broken;
+        // 스트레스 수치가 아니라 타이머를 본다. 수치를 직접 읽으면 한계치에 닿은 순간부터
+        // 전투가 끝날 때까지 절대 꺼지지 않는다(UpdateBroken 주석 참고).
+        if (brokenTimer > 0f) next |= EmotionState.Broken;
 
         if (next == state) return;
 

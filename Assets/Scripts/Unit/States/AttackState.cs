@@ -43,8 +43,8 @@ public class AttackState : UnitBattleState
             return true;
         }
 
-        // 원거리 유닛은 적이 품 안까지 들어오면 쏘던 자리를 버리고 물러선다.
-        if (context.ShouldKeepDistance())
+        // 원거리 유닛의 근접 회피 + HP 위기 후퇴를 함께 본다.
+        if (context.ShouldEvade())
         {
             context.ChangeState(context.EvadeState);
             return true;
