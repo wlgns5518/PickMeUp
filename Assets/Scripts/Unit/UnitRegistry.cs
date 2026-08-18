@@ -66,6 +66,12 @@ public static class UnitRegistry
         list.Add(unit);
     }
 
+    // 팀 리스트 직접 조회. 감정 전파처럼 "같은 팀 전원"을 훑어야 하는 곳에서 쓴다.
+    public static IReadOnlyList<UnitController> GetTeam(UnitTeam team)
+    {
+        return GetList(team);
+    }
+
     public static void Unregister(UnitController unit)
     {
         if (unit == null) return;
@@ -113,6 +119,37 @@ public static class UnitRegistry
 
         // Other units' bodies shouldn't block line of sight - only static level geometry (walls) should.
         return hit.collider.GetComponentInParent<UnitController>() != null;
+    }
+
+    // 같은 팀에서 가장 많이 다친 유닛을 찾는다(자기 자신 포함). 서포터의 회복 대상 선정용.
+    // 절대 HP가 아니라 비율로 고르는 이유: HP 총량이 큰 탱커가 절반이 깎였는데도
+    // 원래 체력이 적은 유닛보다 뒤로 밀리면 파티가 먼저 무너진다.
+    public static UnitController FindMostWoundedAlly(UnitController healer, float range, float hpRatioThreshold)
+    {
+        if (healer == null) return null;
+
+        List<UnitController> team = GetList(healer.Team);
+        Vector3 origin = healer.transform.position;
+        float rangeSqr = range * range;
+
+        UnitController best = null;
+        float bestRatio = hpRatioThreshold;
+
+        for (int i = team.Count - 1; i >= 0; i--)
+        {
+            UnitController candidate = team[i];
+            if (candidate == null || candidate.IsDead || !candidate.isActiveAndEnabled) continue;
+            if (!candidate.CanRecoverHp) continue;
+
+            float ratio = candidate.Stats.HpRatio;
+            if (ratio > bestRatio) continue;
+            if ((candidate.transform.position - origin).sqrMagnitude > rangeSqr) continue;
+
+            bestRatio = ratio;
+            best = candidate;
+        }
+
+        return best;
     }
 
     public static void AlertTeam(UnitController spotter, UnitController target)

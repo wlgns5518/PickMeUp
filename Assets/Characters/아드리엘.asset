@@ -16,7 +16,6 @@ MonoBehaviour:
   description: "\uBE44\uBC00\uC2A4\uB7EC\uC6B4 \uC778\uAC04 \uC694\uB9AC\uC0AC"
   portrait: {fileID: 21300000, guid: 9090bf5a562024b4f93af3fe0c37a3e4, type: 3}
   portraitAssetPath: "Assets/CharacterImage/\uC544\uB4DC\uB9AC\uC5D8_20260513_192516_8003.png"
-  modelAssetPath: "Assets/CharacterModels/\uC544\uB4DC\uB9AC\uC5D8.prefab"
   starCount: 1
   level: 1
   exp: 0
@@ -44,7 +43,3 @@ MonoBehaviour:
   mainHand: 0
   offHand: 0
   friendships: []
-  isDead: 0
-  firstBattleDone: 0
-  currentHP: 72
-  emotionState: 0

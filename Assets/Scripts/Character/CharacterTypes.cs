@@ -38,6 +38,10 @@ public enum EmotionState
     Panic    = 1 << 1, // 행동불가
     Bleeding = 1 << 2, // 일정시간마다 HP 감소
     Dying    = 1 << 3, // HP 3% 미만, 행동불가
+    Broken   = 1 << 4, // 스트레스 한계 초과 — 정신이 무너져 전투를 지속할 수 없음
+
+    // 스스로 행동을 결정할 수 없는 상태 묶음.
+    ActionBlocking = Panic | Dying | Broken,
 }
 
 [Serializable]

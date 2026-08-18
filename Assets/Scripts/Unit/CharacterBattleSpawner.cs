@@ -22,6 +22,9 @@ public class CharacterBattleSpawner : MonoBehaviour
     [SerializeField] private int hpPerVitality = 6;
     [SerializeField] private int hpPerLevel = 3;
     [SerializeField] private int baseAttackDamage = 6;
+    [Tooltip("마나 = baseMana + 지능 x manaPerIntelligence. 지능이 높을수록 스킬을 자주 쓴다.")]
+    [SerializeField] private int baseMana = 30;
+    [SerializeField] private int manaPerIntelligence = 4;
 
     private void Start()
     {
@@ -38,8 +41,15 @@ public class CharacterBattleSpawner : MonoBehaviour
             CharacterSO so = allyCharacters[i];
             if (so == null) continue;
 
+            // 원작의 영구 죽음 — 한 번 죽은 캐릭터는 다시 출전하지 않는다.
+            if (PartyRoster.IsFallen(so))
+            {
+                Debug.Log("[CharacterBattleSpawner] 영구 사망한 캐릭터라 출전에서 제외: " + so.characterName);
+                continue;
+            }
+
             Vector3 position = GetSpawnPosition(allySpawnPoints, i, allySpawnFallbackOffset);
-            SpawnUnit(allyUnitPrefab, UnitTeam.Ally, MapStats(so), position, so.characterName);
+            SpawnUnit(allyUnitPrefab, UnitTeam.Ally, MapStats(so), position, so.characterName, so);
         }
     }
 
@@ -63,28 +73,62 @@ public class CharacterBattleSpawner : MonoBehaviour
         return transform.position + fallbackOffset * (index + 1);
     }
 
-    private void SpawnUnit(UnitController prefab, UnitTeam team, UnitStats stats, Vector3 position, string unitName)
+    private void SpawnUnit(UnitController prefab, UnitTeam team, UnitStats stats, Vector3 position, string unitName, CharacterSO source = null)
     {
         if (NavMesh.SamplePosition(position, out NavMeshHit hit, 5f, NavMesh.AllAreas))
             position = hit.position;
 
         UnitController instance = Instantiate(prefab, position, Quaternion.identity);
-        instance.Configure(team, stats);
+        instance.Configure(team, stats, source);
         if (!string.IsNullOrEmpty(unitName)) instance.name = unitName;
     }
 
-    // CharacterSO 스탯 → UnitStats 매핑
+    // CharacterSO 스탯 → UnitStats 매핑.
+    // 기본 능력치를 먼저 뽑고, 그 위에 직업과 장비 보정을 얹는다.
+    // 이 순서 덕분에 같은 지능이라도 마법사가 든 마나가 더 크고, 같은 힘이라도 두손검이 더 아프다.
     private UnitStats MapStats(CharacterSO so)
     {
+        JobCombatProfile job = JobProfile.For(so.job);
+        WeaponCombatProfile weapon = JobProfile.For(so.mainHand);
+        bool hasShield = so.offHand == OffHandType.Shield && so.CanEquipShield;
+
         var stats = new UnitStats
         {
             maxHp = baseHp + so.stats.vitality * hpPerVitality + so.level * hpPerLevel,
             attackDamage = baseAttackDamage + so.stats.strength,
         };
+
+        stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * job.HpMultiplier));
+        stats.attackDamage = Mathf.Max(1, Mathf.RoundToInt(stats.attackDamage * job.AttackMultiplier * weapon.AttackMultiplier));
         stats.skillDamage = stats.attackDamage * 2;
-        stats.walkSpeed += so.stats.agility * 0.02f;
-        stats.runSpeed += so.stats.agility * 0.04f;
+
+        stats.maxMana = Mathf.RoundToInt((baseMana + so.stats.intelligence * manaPerIntelligence) * job.ManaMultiplier);
+
+        // 사거리: 직업 사거리에 무기 배율을 곱하되, 활처럼 무기가 강제하는 최소치가 있으면 그쪽을 따른다.
+        stats.attackRange = Mathf.Max(job.AttackRange * weapon.RangeMultiplier, weapon.MinRange);
+        // 자기 사거리 밖을 못 보면 원거리 유닛이 영원히 접근만 하다 끝난다.
+        stats.detectRange = Mathf.Max(job.DetectRange, stats.attackRange + JobProfile.DetectRangeMargin);
+
+        // 원거리 유닛은 한 번 물러설 때 실제로 사거리를 되찾을 만큼 크게 벌려야 한다.
+        // 기본값(2.5)으로는 사거리 9짜리가 물러나도 여전히 품 안이라 계속 붙잡힌다.
+        stats.evadeRange = Mathf.Max(stats.evadeRange, stats.attackRange * 0.45f);
+
+        stats.walkSpeed = (stats.walkSpeed + so.stats.agility * 0.02f) * job.SpeedMultiplier;
+        stats.runSpeed = (stats.runSpeed + so.stats.agility * 0.04f) * job.SpeedMultiplier;
+
+        // 공격 속도는 쿨다운이 아니라 스킬 재사용 간격으로만 표현한다.
+        // (평타 간격은 애니메이션 길이가 정하므로 여기서 건드릴 수 없다)
+        stats.skillCooldown /= Mathf.Max(0.1f, weapon.AttackSpeedMultiplier);
+
+        stats.damageReduction = job.DamageReduction + (hasShield ? JobProfile.ShieldDamageReduction : 0f);
+        stats.damageReduction = Mathf.Clamp(stats.damageReduction, 0f, 0.9f);
+        if (hasShield) stats.blockDamageReduction = Mathf.Clamp01(stats.blockDamageReduction + JobProfile.ShieldBlockBonus);
+
+        // 서포터만 아군을 회복시킬 수 있다.
+        stats.canHealAllies = job.IsHealer;
+
         stats.ResetHp();
+        stats.ResetMana();
         return stats;
     }
 }

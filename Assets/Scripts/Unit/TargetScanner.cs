@@ -22,6 +22,25 @@ public class TargetScanner : MonoBehaviour
     private void Awake()
     {
         owner = GetComponent<UnitController>();
+        ScatterSchedule();
+    }
+
+    // 주기 작업의 위상을 유닛마다 흩어 놓는다.
+    // 그러지 않으면 모든 유닛이 같은 프레임에 전면 탐색(레이캐스트 포함)과 팀 전파를 동시에 돌린다.
+    // 실측(67유닛): 전 유닛의 scanTimer가 0.0205로 완전히 같았고,
+    // 그 프레임에 전면 탐색 0.40ms + 팀 전파 0.37ms = 0.77ms가 한꺼번에 몰렸다.
+    // 둘 다 유닛 수의 제곱으로 커지는 작업이라 유닛이 늘수록 스파이크가 급격히 나빠진다.
+    private void ScatterSchedule()
+    {
+        scanTimer = Random.Range(0f, scanInterval);
+        nextAlertTime = Time.time + Random.Range(0f, alertInterval);
+    }
+
+    // 한 번 흩어놔도 여러 유닛이 같은 프레임에 스캔을 마치면 다시 위상이 붙는다.
+    // 재설정할 때마다 약간의 흔들림을 줘서 다시 뭉치지 않게 한다.
+    private float NextScanDelay()
+    {
+        return scanInterval * Random.Range(0.85f, 1.15f);
     }
 
     public void Initialize(UnitController owner)
@@ -47,7 +66,7 @@ public class TargetScanner : MonoBehaviour
             return;
         }
 
-        scanTimer = scanInterval;
+        scanTimer = NextScanDelay();
 
         if (!IsCurrentTargetValid())
         {
@@ -72,7 +91,7 @@ public class TargetScanner : MonoBehaviour
     {
         if (owner == null) return null;
 
-        scanTimer = scanInterval;
+        scanTimer = NextScanDelay();
         target = UnitRegistry.FindNearestVisibleEnemy(owner, owner.Stats.detectRange, viewAngle, GetCloseVisibleRange(), eyeHeight, obstacleMask);
         AlertTeamIfNeeded();
 

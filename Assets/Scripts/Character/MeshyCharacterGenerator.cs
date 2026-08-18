@@ -45,7 +45,7 @@ public class MeshyCharacterGenerator : MonoBehaviour
     [Tooltip("에디터에서 생성된 캐릭터를 .asset으로 저장")]
     [SerializeField] private bool saveAsAsset = true;
     [SerializeField] private string imageDir = "Assets/CharacterImage";
-    [SerializeField] private string assetDir = "Assets/CharacterSO";
+    [SerializeField] private string assetDir = "Assets/Characters";
 
     // ─────────────────────────────────────────────────────────────────────────
     // 상수 / 데이터 테이블

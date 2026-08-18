@@ -17,6 +17,8 @@ public class DeadState : UnitBattleState
         context.StopMovement();
         context.DisableCollider();
         context.TriggerDead();
+        // 레지스트리에서 빠지기 전에 알려야 같은 팀 전원이 아직 리스트에 남아 있다.
+        context.NotifyDeath();
         UnitRegistry.Unregister(context);
         context.DisableAgentAfterDeath();
 

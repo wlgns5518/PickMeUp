@@ -43,6 +43,13 @@ public class AttackState : UnitBattleState
             return true;
         }
 
+        // 원거리 유닛은 적이 품 안까지 들어오면 쏘던 자리를 버리고 물러선다.
+        if (context.ShouldKeepDistance())
+        {
+            context.ChangeState(context.EvadeState);
+            return true;
+        }
+
         if (!context.IsAttackAnimationLocked && context.CanUseSkill())
         {
             context.ChangeState(context.SkillState);

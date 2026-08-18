@@ -43,7 +43,3 @@ MonoBehaviour:
   mainHand: 0
   offHand: 0
   friendships: []
-  isDead: 0
-  firstBattleDone: 0
-  currentHP: 68
-  emotionState: 0

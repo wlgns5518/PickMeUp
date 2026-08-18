@@ -1684,6 +1684,7 @@ GameObject:
   - component: {fileID: 5990844632052732308}
   - component: {fileID: 6931602349150139293}
   - component: {fileID: 5529877855878719790}
+  - component: {fileID: 281879652692025786}
   m_Layer: 0
   m_Name: Goblin
   m_TagString: Untagged
@@ -1771,6 +1772,7 @@ MonoBehaviour:
   obstacleMask:
     serializedVersion: 2
     m_Bits: 4294967295
+  alertInterval: 1
 --- !u!114 &5529877855878719790
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1806,6 +1808,7 @@ MonoBehaviour:
   animator: {fileID: 5990844632052732308}
   scanner: {fileID: 6931602349150139293}
   bodyCollider: {fileID: 0}
+  emotion: {fileID: 0}
   bloodEffectPrefabs:
   - {fileID: 2656253210798625995, guid: a78e9ef18b366424b84e0c7410d2fe72, type: 3}
   - {fileID: 5865290276592450837, guid: 42a28376f729c864a81abf66add7a418, type: 3}
@@ -1843,9 +1846,51 @@ MonoBehaviour:
   hitStateName: Hit
   deathStateName: Death
   animationFadeDuration: 0.08
+  animatorCullingMode: 1
+  disableAnimatorAfterDeath: 1
   debugLogs: 0
   currentStateName: 
   currentTargetName: 
+--- !u!114 &281879652692025786
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8310206343971930320}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b8d062d72a487ef4e8f014b4f8053158, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UnitEmotion
+  profile:
+    mental: 10
+    mentalResistPerPoint: 0.04
+    minFearScale: 0.3
+    fearThreshold: 40
+    panicThreshold: 85
+    fearStatMultiplier: 0.7
+    fearClearThreshold: 25
+    fearRecoveryPerSecond: 6
+    fearPerHpPercentLost: 0.8
+    fearOnAllyDeath: 25
+    allyDeathWitnessRange: 12
+    lowHpFearPerSecond: 10
+    lowHpRatio: 0.3
+    panicDuration: 2.5
+    panicExitFear: 55
+    bleedTickInterval: 1
+    bleedDamageRatio: 0.03
+    bleedDuration: 6
+    bleedChanceOnSkillHit: 0.5
+    dyingHpRatio: 0.03
+    stress: 0
+    stressLimit: 100
+    stressPerPanic: 12
+    stressPerAllyDeath: 8
+    fragileFirstBattle: 0
+  currentEmotion: 
+  fearGaugeDebug: 0
 --- !u!1 &8367701340600988516
 GameObject:
   m_ObjectHideFlags: 0
