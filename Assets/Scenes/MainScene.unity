@@ -769,9 +769,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 043884c0c731e1b428a071a99334c2de, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FloorSelectUI
-  battleSceneName: Floor1
+  battleScenePrefix: Floor
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
-  visibleFloorCount: 8
+  visibleFloorCount: 9
   panelMargin: {x: 40, y: 40}
 --- !u!4 &247532115
 Transform:
@@ -1156,7 +1156,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f131c2bd587b041418bb4bf2c85b789f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::StressRecovery
-  secondsPerStressPoint: 60
+  stressPerHour: 10
   recoverWhileAway: 1
   maxAwayHours: 12
 --- !u!4 &656116146

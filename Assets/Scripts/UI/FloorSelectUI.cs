@@ -15,7 +15,7 @@ using UnityEngine.UI;
 public class FloorSelectUI : MonoBehaviour
 {
     [Header("Scene")]
-    [Tooltip("층을 고르면 이동할 전투 씬 이름. Build Settings에 등록돼 있어야 한다.")]
+    [Tooltip("모든 층이 함께 쓰는 전투 씬. 난이도는 고른 층 번호로 조정된다. Build Settings에 등록돼 있어야 한다.")]
     [SerializeField] private string battleSceneName = "Floor1";
 
     [Header("Font")]
@@ -23,8 +23,8 @@ public class FloorSelectUI : MonoBehaviour
     [SerializeField] private TMP_FontAsset koreanFont;
 
     [Header("Layout")]
-    [Tooltip("화면에 늘어놓을 층 버튼 개수.")]
-    [SerializeField] private int visibleFloorCount = 8;
+    [Tooltip("화면에 늘어놓을 층 버튼 개수. 층 씬(Floor1~Floor9)이 있는 만큼만 의미가 있다.")]
+    [SerializeField] private int visibleFloorCount = 9;
     [SerializeField] private Vector2 panelMargin = new Vector2(40f, 40f);
 
     private const float ButtonWidth = 220f;
@@ -162,7 +162,16 @@ public class FloorSelectUI : MonoBehaviour
             return;
         }
 
-        SceneManager.LoadScene(battleSceneName);
+        // 모든 층이 같은 씬을 쓴다. 고른 층은 FloorProgress.SelectedFloor로 전달되고,
+        // 스포너가 그 값으로 적 수와 능력치를 키운다.
+        string sceneName = battleSceneName;
+        if (!Application.CanStreamedLevelBeLoaded(sceneName))
+        {
+            Debug.LogError($"[FloorSelectUI] 씬 '{sceneName}'을 불러올 수 없습니다. Build Settings에 등록됐는지 확인하세요.");
+            return;
+        }
+
+        SceneManager.LoadScene(sceneName);
     }
 
     private static void SetTopLeft(RectTransform rect, Vector2 size, Vector2 offset)
