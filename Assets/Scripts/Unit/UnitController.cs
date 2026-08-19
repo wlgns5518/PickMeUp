@@ -64,6 +64,17 @@ public class UnitController : MonoBehaviour
     [SerializeField] private string hitStateName = "Hit";
     [SerializeField] private string deathStateName = "Death";
     [SerializeField] private float animationFadeDuration = 0.08f;
+
+    [Header("Animator Move Speed")]
+    [Tooltip("걷기/달리기 재생 배속을 넘길 Animator float 파라미터. 비워두면 배속을 건드리지 않는다.")]
+    [SerializeField] private string moveSpeedParameterName = "MoveSpeedMultiplier";
+    [Tooltip("걷기 클립이 원래 나아가는 속도(m/s). 실제 이동 속도를 이 값으로 나눠 배속을 정한다. Armed-Walk = 1.99")]
+    [SerializeField, Min(0.1f)] private float walkClipSpeed = 1.99f;
+    [Tooltip("달리기 클립이 원래 나아가는 속도(m/s). PlayerRun = 4.2, 고블린 Run = 2.29")]
+    [SerializeField, Min(0.1f)] private float runClipSpeed = 4.2f;
+    [Tooltip("배속 허용 범위. 너무 벌어지면 발이 미끄러지는 대신 다리가 헛돈다.")]
+    [SerializeField] private Vector2 moveSpeedMultiplierRange = new Vector2(0.6f, 2.2f);
+
     [Tooltip("화면 밖 유닛의 애니메이션 계산량을 줄인다. AlwaysAnimate는 보이지 않아도 전부 계산한다.")]
     [SerializeField] private AnimatorCullingMode animatorCullingMode = AnimatorCullingMode.CullUpdateTransforms;
     [Tooltip("사망 애니메이션이 끝나면 Animator를 꺼서 시체가 계속 애니메이션되지 않도록 한다.")]
@@ -159,6 +170,8 @@ public class UnitController : MonoBehaviour
     private int hitAnimationHash;
     private int deathAnimationHash;
     private bool hasWalkAnimationState;
+    private int moveSpeedParameterHash;
+    private bool hasMoveSpeedParameter;
 
     private float attackAnimationDuration;
     private float skillAnimationDuration;
@@ -244,6 +257,8 @@ public class UnitController : MonoBehaviour
         hasWalkAnimationState = animator != null &&
                                  !string.IsNullOrEmpty(walkStateName) &&
                                  animator.HasState(0, walkAnimationHash);
+
+        CacheMoveSpeedParameter();
 
         skillAnimationDuration = GetAnimationClipDuration(skillStateName, 1f);
         potionAnimationDuration = GetAnimationClipDuration(potionStateName, 0.8f);
@@ -950,11 +965,45 @@ public class UnitController : MonoBehaviour
 
         if (isRunning)
         {
+            ApplyMoveAnimationSpeed(speed, runClipSpeed);
             PlayAnimation(runAnimationHash, false);
             return;
         }
 
+        // 걷기 상태가 없는 리그(고블린)는 달리기 클립으로 대신하므로 기준 속도도 달리기 쪽을 쓴다.
+        ApplyMoveAnimationSpeed(speed, hasWalkAnimationState ? walkClipSpeed : runClipSpeed);
         PlayAnimation(hasWalkAnimationState ? walkAnimationHash : runAnimationHash, false);
+    }
+
+    // 클립이 원래 나아가는 속도와 실제 이동 속도가 어긋나면 발이 땅에서 미끄러진다.
+    // 민첩과 직업 배율로 이동 속도가 캐릭터마다 달라지므로(달리기 4~6m/s) 고정 배속으로는 맞출 수 없다.
+    // 그래서 Animator의 float 파라미터로 배속을 넘기고, Run/Walk 상태가 그 값을 곱해 재생한다.
+    private void ApplyMoveAnimationSpeed(float speed, float clipSpeed)
+    {
+        if (!hasMoveSpeedParameter || animator == null) return;
+
+        // 공포/패닉으로 실제 이동이 느려지면 애니메이션도 같이 느려져야 한다.
+        float actualSpeed = speed * EmotionMultiplier;
+        float multiplier = Mathf.Clamp(actualSpeed / Mathf.Max(0.1f, clipSpeed),
+            moveSpeedMultiplierRange.x, moveSpeedMultiplierRange.y);
+        animator.SetFloat(moveSpeedParameterHash, multiplier);
+    }
+
+    private void CacheMoveSpeedParameter()
+    {
+        hasMoveSpeedParameter = false;
+        if (animator == null || string.IsNullOrEmpty(moveSpeedParameterName)) return;
+
+        moveSpeedParameterHash = Animator.StringToHash(moveSpeedParameterName);
+        // 파라미터가 없는 컨트롤러에 SetFloat을 부르면 매 프레임 경고가 쌓인다. 먼저 확인한다.
+        foreach (AnimatorControllerParameter parameter in animator.parameters)
+        {
+            if (parameter.type != AnimatorControllerParameterType.Float) continue;
+            if (parameter.nameHash != moveSpeedParameterHash) continue;
+
+            hasMoveSpeedParameter = true;
+            return;
+        }
     }
 
     public void FaceTarget()

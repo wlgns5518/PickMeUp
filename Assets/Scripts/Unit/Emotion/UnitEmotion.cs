@@ -111,6 +111,8 @@ public class UnitEmotion : MonoBehaviour
 
     public void AddStress(float amount)
     {
+        // [테스트] 누적을 꺼 두면 붕괴까지 가지 않는다. CharacterStress.AccumulationEnabled 참고.
+        if (!CharacterStress.AccumulationEnabled) return;
         if (amount <= 0f) return;
         profile.stress = Mathf.Min(profile.stress + amount, profile.stressLimit);
     }

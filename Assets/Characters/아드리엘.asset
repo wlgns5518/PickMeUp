@@ -17,9 +17,9 @@ MonoBehaviour:
   portrait: {fileID: 21300000, guid: 9090bf5a562024b4f93af3fe0c37a3e4, type: 3}
   portraitAssetPath: "Assets/CharacterImage/\uC544\uB4DC\uB9AC\uC5D8_20260513_192516_8003.png"
   starCount: 1
-  level: 1
-  exp: 0
-  expToNext: 10
+  level: 6
+  exp: 7
+  expToNext: 35
   job: 7
   constitution:
     name: "\uC628\uD654"
@@ -28,10 +28,10 @@ MonoBehaviour:
     vitalityGrowth: 1.3329381
     agilityGrowth: 1.0268286
   stats:
-    strength: 9
-    intelligence: 7
-    vitality: 9
-    agility: 7
+    strength: 14
+    intelligence: 12
+    vitality: 14
+    agility: 12
   hiddenStats:
     diligence: 4
     stamina: 5

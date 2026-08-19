@@ -2,6 +2,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 
 // 전투 HUD의 단일 진입점. 씬에 이 컴포넌트 하나만 올려두면
@@ -20,13 +21,36 @@ public class BattleHud : MonoBehaviour
     [Tooltip("화면 왼쪽 위 모서리로부터의 여백(px, 1920x1080 기준).")]
     [SerializeField] private Vector2 partyPanelMargin = new Vector2(28f, 28f);
 
+    [Header("Banner")]
+    [Tooltip("부고와 결과창이 함께 쓰는 장식 배너(Assets/Image/UI.png). 비워두면 금색 테두리에 검은 판으로 그린다.")]
+    [FormerlySerializedAs("deathBannerFrame")]
+    [SerializeField] private Sprite bannerFrame;
+    [Tooltip("별을 찍을 TMP 스프라이트 에셋. 비워두면 Resources의 StarSprites를 쓴다.")]
+    [SerializeField] private TMP_SpriteAsset starSpriteAsset;
+
+    [Header("Enemy Bar")]
+    [Tooltip("화면 위쪽 가운데에 적 전체 체력바를 띄운다.")]
+    [SerializeField] private bool showEnemyHealthBar = true;
+    [Tooltip("화면 위 모서리에서 적 체력바까지의 거리(px, 1920x1080 기준).")]
+    [SerializeField] private float enemyBarTopOffset = 34f;
+
     [Header("Result")]
     [SerializeField] private bool showResultPanel = true;
+
+    [Header("Death Announcement")]
+    [Tooltip("동료가 죽었을 때 부고를 띄운다.")]
+    [SerializeField] private bool showDeathAnnouncement = true;
+    [Tooltip("배너 가로 길이(px, 1920x1080 기준). 세로는 그림 비율을 따른다.")]
+    [SerializeField] private float deathBannerWidth = 1000f;
+    [Tooltip("배너가 저절로 사라지기까지의 시간(초). 누르면 그전에도 사라진다.")]
+    [SerializeField] private float deathBannerHoldSeconds = 2f;
 
     private Canvas canvas;
     private RectTransform canvasRect;
     private PartyStatusPanel partyPanel;
     private BattleResultPanel resultPanel;
+    private AnnouncementBanner deathBanner;
+    private EnemyHealthBar enemyBar;
     private TMP_FontAsset resolvedFont;
     private PartyFollowCamera followCamera;
 
@@ -53,7 +77,10 @@ public class BattleHud : MonoBehaviour
         BuildCanvas();
         partyPanel = PartyStatusPanel.Create(canvasRect, resolvedFont, partyPanelMargin);
         partyPanel.UnitClicked += HandlePartySlotClicked;
-        resultPanel = BattleResultPanel.Create(canvasRect, resolvedFont);
+        if (showEnemyHealthBar) enemyBar = EnemyHealthBar.Create(canvasRect, resolvedFont, enemyBarTopOffset);
+        resultPanel = BattleResultPanel.Create(canvasRect, resolvedFont, bannerFrame, starSpriteAsset);
+        deathBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, bannerFrame,
+            starSpriteAsset, deathBannerWidth, deathBannerHoldSeconds);
     }
 
     // 파티 슬롯을 누르면 그 캐릭터로 시점을 옮긴다.
@@ -80,6 +107,7 @@ public class BattleHud : MonoBehaviour
         EnsureBuilt();
         BattleManager.OnBattleStarted += HandleBattleStarted;
         BattleManager.OnBattleEnded += HandleBattleEnded;
+        UnitController.OnAnyUnitDied += HandleUnitDied;
 
         // 도메인 리로드로 패널을 새로 만든 경우 전투는 이미 시작돼 있어 OnBattleStarted가 다시 오지 않는다.
         // 그대로 두면 파티 패널이 빈 채로 남으므로 여기서 한 번 더 붙여준다.
@@ -90,6 +118,7 @@ public class BattleHud : MonoBehaviour
     {
         BattleManager.OnBattleStarted -= HandleBattleStarted;
         BattleManager.OnBattleEnded -= HandleBattleEnded;
+        UnitController.OnAnyUnitDied -= HandleUnitDied;
     }
 
     private void LateUpdate()
@@ -101,6 +130,10 @@ public class BattleHud : MonoBehaviour
         // 유닛이 이번 프레임의 피해/감정 변화를 모두 반영한 뒤에 읽는다.
         // 슬롯은 파티 인원수(보통 5명)뿐이라 매 프레임 훑어도 부담이 없다.
         partyPanel?.Refresh();
+        enemyBar?.Refresh();
+
+        // 부고 패널은 MonoBehaviour가 아니라 코루틴을 쓸 수 없다. 페이드를 여기서 굴린다.
+        deathBanner?.Tick(Time.deltaTime);
     }
 
     private void BuildCanvas()
@@ -148,11 +181,25 @@ public class BattleHud : MonoBehaviour
         // BattleManager가 시작 시점에 붙잡아 둔 명단을 단일 출처로 쓴다.
         if (BattleManager.Instance == null) return;
         partyPanel?.Bind(BattleManager.Instance.AllyRoster);
+
+        // 적은 전투 시작 시점의 전체 최대 체력이 기준이다. 여기서 붙잡아야 바가 실제로 비어 간다.
+        enemyBar?.Bind(UnitRegistry.Enemies);
     }
 
     private void HandleBattleEnded(BattleResult result)
     {
+        enemyBar?.Hide();
+
         if (!showResultPanel || resultPanel == null) return;
         resultPanel.Show(result);
+    }
+
+    // 부고는 전투 중에 뜬다. 결과창을 기다리면 누가 언제 죽었는지 알 수 없다.
+    private void HandleUnitDied(UnitController unit)
+    {
+        if (!showDeathAnnouncement || deathBanner == null) return;
+        if (unit == null || unit.Team != UnitTeam.Ally || unit.SourceCharacter == null) return;
+
+        deathBanner.ShowDeath(unit.SourceCharacter);
     }
 }

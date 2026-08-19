@@ -14,12 +14,22 @@ public static class CharacterStress
     private static readonly Dictionary<CharacterSO, float> stressByCharacter =
         new Dictionary<CharacterSO, float>();
 
+    // [테스트] 전투 중 스트레스 누적 스위치. false면 UnitEmotion.AddStress가 아무 일도 하지 않는다.
+    //
+    // 붕괴(Broken)는 행동불능이라 한 명이라도 무너지면 그 뒤의 전투 흐름을 볼 수 없다.
+    // 다른 시스템을 검증하는 동안 꺼 두기 위한 스위치다.
+    // 테스트가 끝나면 DefaultAccumulation을 true로 되돌릴 것.
+    private const bool DefaultAccumulation = false;
+
+    public static bool AccumulationEnabled { get; set; } = DefaultAccumulation;
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetOnPlay()
     {
         // 도메인 리로드를 끈 에디터에서 이전 플레이 값이 남지 않도록 비운다.
         // 실제 값은 세이브에서 다시 읽어 온다.
         stressByCharacter.Clear();
+        AccumulationEnabled = DefaultAccumulation;
     }
 
     // 기록이 없으면 캐릭터의 타고난 스트레스(히든 스탯)를 시작값으로 본다.

@@ -1780,6 +1780,7 @@ MonoBehaviour:
     knockbackDuration: 0.12
     blockDamageReduction: 0.5
     damageReduction: 0
+    retreatHpThreshold: 0.25
     canHealAllies: 0
     healAmount: 25
     healRange: 8
@@ -1833,6 +1834,10 @@ MonoBehaviour:
   hitStateName: Hit
   deathStateName: Death
   animationFadeDuration: 0.08
+  moveSpeedParameterName: MoveSpeedMultiplier
+  walkClipSpeed: 1.99
+  runClipSpeed: 4.2
+  moveSpeedMultiplierRange: {x: 0.6, y: 2.2}
   animatorCullingMode: 1
   disableAnimatorAfterDeath: 1
   debugLogs: 0
@@ -1873,6 +1878,8 @@ MonoBehaviour:
     dyingHpRatio: 0.03
     stress: 0
     stressLimit: 100
+    brokenDuration: 8
+    brokenExitStress: 70
     stressPerPanic: 12
     stressPerAllyDeath: 8
     fragileFirstBattle: 0
@@ -1893,6 +1900,7 @@ MonoBehaviour:
   animator: {fileID: 8160989353832506121}
   mainHandSocket: {fileID: 0}
   offHandSocket: {fileID: 0}
+  palmGripRatio: 0.6
   defaultMainHand: {fileID: 11400000, guid: 0e8f6f2931d6579409ae6da1f2e1d490, type: 2}
   defaultOffHand: {fileID: 0}
   debugLogs: 0

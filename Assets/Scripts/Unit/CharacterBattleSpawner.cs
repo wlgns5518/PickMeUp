@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -52,11 +53,16 @@ public class CharacterBattleSpawner : MonoBehaviour
 
     private void SpawnAllies()
     {
-        if (allyUnitPrefab == null || allyCharacters == null) return;
+        if (allyUnitPrefab == null) return;
 
-        for (int i = 0; i < allyCharacters.Length; i++)
+        // 메인 씬에서 카드로 고른 편성이 있으면 그쪽이 이번 출전 명단이다.
+        // 인스펙터 배열은 편성 화면을 거치지 않고 전투 씬을 바로 재생할 때의 대비책으로 남는다.
+        IReadOnlyList<CharacterSO> lineup = PartyDeck.Count > 0 ? PartyDeck.Members : allyCharacters;
+        if (lineup == null) return;
+
+        for (int i = 0; i < lineup.Count; i++)
         {
-            CharacterSO so = allyCharacters[i];
+            CharacterSO so = lineup[i];
             if (so == null) continue;
 
             // 원작의 영구 죽음 — 한 번 죽은 캐릭터는 다시 출전하지 않는다.

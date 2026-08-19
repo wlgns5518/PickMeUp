@@ -1815,6 +1815,7 @@ MonoBehaviour:
     knockbackDuration: 0.12
     blockDamageReduction: 0.5
     damageReduction: 0
+    retreatHpThreshold: 0.25
     canHealAllies: 0
     healAmount: 25
     healRange: 8
@@ -1862,12 +1863,16 @@ MonoBehaviour:
   jumpStateName: 
   attackStateName: Attack
   attackComboLength: 1
-  skillStateName:
+  skillStateName: 
   blockStateName: 
   potionStateName: 
   hitStateName: Hit
   deathStateName: Death
   animationFadeDuration: 0.08
+  moveSpeedParameterName: MoveSpeedMultiplier
+  walkClipSpeed: 2.29
+  runClipSpeed: 2.29
+  moveSpeedMultiplierRange: {x: 0.6, y: 2.2}
   animatorCullingMode: 1
   disableAnimatorAfterDeath: 1
   debugLogs: 0
@@ -1908,6 +1913,8 @@ MonoBehaviour:
     dyingHpRatio: 0.03
     stress: 0
     stressLimit: 100
+    brokenDuration: 8
+    brokenExitStress: 70
     stressPerPanic: 12
     stressPerAllyDeath: 8
     fragileFirstBattle: 0
@@ -1928,6 +1935,7 @@ MonoBehaviour:
   animator: {fileID: 5990844632052732308}
   mainHandSocket: {fileID: 0}
   offHandSocket: {fileID: 0}
+  palmGripRatio: 0.6
   defaultMainHand: {fileID: 0}
   defaultOffHand: {fileID: 0}
   debugLogs: 0
