@@ -2347,7 +2347,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.09780366, y: 0, z: 0, w: 0.99520576}
+  m_LocalRotation: {x: 0.097843446, y: 0, z: 0, w: 0.9952018}
   m_LocalPosition: {x: 0, y: 55, z: -105}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -24160,55 +24160,9 @@ MonoBehaviour:
     bearing: 0
     distance: 117.5
     size: 18
-    prefab: {fileID: 0}
-    build: 1
-  - label: "\uC18C\uD658\uC18C"
-    kind: 4
-    role: "\uC0C8 \uB3D9\uB8CC\uB97C \uBD88\uB7EC\uB0B8\uB2E4."
-    bearing: 60
-    distance: 78
-    size: 18
-    prefab: {fileID: 0}
-    build: 1
-  - label: "\uBE44\uD589\uC120\uCC29\uC7A5"
-    kind: 6
-    role: "\uBE44\uD589\uC120\uC774 \uB4DC\uB098\uB4DC\uB294 \uC790\uB9AC."
-    bearing: 150
-    distance: 78
-    size: 18
-    prefab: {fileID: 0}
-    build: 1
-  - label: "\uD6C8\uB828\uC18C"
-    kind: 7
-    role: "\uB3D9\uB8CC\uB97C \uD6C8\uB828\uC2DC\uCF1C \uB2A5\uB825\uC744 \uC62C\uB9B0\uB2E4."
-    bearing: 180
-    distance: 117.5
-    size: 30
-    prefab: {fileID: 0}
-    build: 1
-  - label: "\uC219\uC18C"
-    kind: 8
-    role: "\uB3D9\uB8CC\uB4E4\uC774 \uC26C\uBA70 \uC2A4\uD2B8\uB808\uC2A4\uB97C \uD68C\uBCF5\uD55C\uB2E4."
-    bearing: 210
-    distance: 72
-    size: 22
-    prefab: {fileID: 0}
-    build: 1
-  - label: "\uD569\uC131\uC18C"
-    kind: 2
-    role: "\uC7AC\uB8CC\uB97C \uD569\uCCD0 \uC0C8 \uBB3C\uAC74\uC744 \uB9CC\uB4E0\uB2E4."
-    bearing: 300
-    distance: 72
-    size: 22
-    prefab: {fileID: 0}
-    build: 1
-  - label: "\uBB34\uAE30\uCC3D\uACE0"
-    kind: 3
-    role: "\uBB34\uAE30\uC640 \uC7A5\uBE44\uB97C \uB123\uC5B4 \uB450\uACE0 \uAEBC\uB0B4
-      \uC4F4\uB2E4."
-    bearing: 295
-    distance: 56
-    size: 13
+    facing: 0
+    useOtherBuilding: 0
+    building: 1
     prefab: {fileID: 0}
     build: 1
   - label: "\uACF5\uBC29\uC2DC\uC124"
@@ -24217,23 +24171,87 @@ MonoBehaviour:
     bearing: 0
     distance: 0
     size: 20
+    facing: 0
+    useOtherBuilding: 0
+    building: 9
     prefab: {fileID: 0}
     build: 1
   - label: "\uAD11\uC7A5"
     kind: 0
-    role: "\uC2DC\uACF5\uC758 \uD2C8 \uC55E, \uC0AC\uB78C\uC774 \uBAA8\uC774\uB294
-      \uBE48\uD130."
+    role: "\uC0AC\uB78C\uC774 \uBAA8\uC774\uB294 \uBE48\uD130."
     bearing: 0
-    distance: 46
+    distance: 105
     size: 24
+    facing: 180
+    useOtherBuilding: 0
+    building: 0
     prefab: {fileID: 0}
     build: 1
-  - label: "\uC5F0\uAE08\uC2DC\uC124"
-    kind: 5
-    role: "\uBB3C\uC57D\uACFC \uB9C8\uB825 \uC7AC\uB8CC\uB97C \uB2E4\uB8EC\uB2E4."
-    bearing: 120
-    distance: 84
+  - label: "\uC18C\uD658\uC18C"
+    kind: 4
+    role: "\uC0C8 \uB3D9\uB8CC\uB97C \uBD88\uB7EC\uB0B8\uB2E4."
+    bearing: 45
+    distance: 91.9
     size: 19
+    facing: 15
+    useOtherBuilding: 1
+    building: 5
+    prefab: {fileID: 0}
+    build: 1
+  - label: "\uBE44\uD589\uC120\uCC29\uC7A5"
+    kind: 6
+    role: "\uBE44\uD589\uC120\uC774 \uB4DC\uB098\uB4DC\uB294 \uC790\uB9AC."
+    bearing: 144.5
+    distance: 86
+    size: 18
+    facing: 5.5
+    useOtherBuilding: 0
+    building: 6
+    prefab: {fileID: 0}
+    build: 1
+  - label: "\uD6C8\uB828\uC18C"
+    kind: 7
+    role: "\uB3D9\uB8CC\uB97C \uD6C8\uB828\uC2DC\uCF1C \uB2A5\uB825\uC744 \uC62C\uB9B0\uB2E4."
+    bearing: 180
+    distance: 117.5
+    size: 30
+    facing: 0
+    useOtherBuilding: 0
+    building: 7
+    prefab: {fileID: 0}
+    build: 1
+  - label: "\uC219\uC18C"
+    kind: 8
+    role: "\uB3D9\uB8CC\uB4E4\uC774 \uC26C\uBA70 \uC2A4\uD2B8\uB808\uC2A4\uB97C \uD68C\uBCF5\uD55C\uB2E4."
+    bearing: 237.1
+    distance: 101.2
+    size: 22
+    facing: 2.9
+    useOtherBuilding: 0
+    building: 8
+    prefab: {fileID: 0}
+    build: 1
+  - label: "\uBB34\uAE30\uCC3D\uACE0"
+    kind: 3
+    role: "\uBB34\uAE30\uC640 \uC7A5\uBE44\uB97C \uB123\uC5B4 \uB450\uACE0 \uAEBC\uB0B4
+      \uC4F4\uB2E4."
+    bearing: 305.5
+    distance: 43
+    size: 9.6
+    facing: -125.5
+    useOtherBuilding: 0
+    building: 3
+    prefab: {fileID: 0}
+    build: 1
+  - label: "\uD569\uC131\uC18C"
+    kind: 2
+    role: "\uC7AC\uB8CC\uB97C \uD569\uCCD0 \uC0C8 \uBB3C\uAC74\uC744 \uB9CC\uB4E0\uB2E4."
+    bearing: 315
+    distance: 91.9
+    size: 22
+    facing: -15
+    useOtherBuilding: 0
+    building: 2
     prefab: {fileID: 0}
     build: 1
   buildGround: 1

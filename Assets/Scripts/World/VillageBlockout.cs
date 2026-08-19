@@ -46,6 +46,15 @@ public class VillageBlockout : MonoBehaviour
         [Tooltip("구역이 차지하는 반지름. 안에 놓이는 것들이 통째로 따라 커진다.")]
         [Min(2f)] public float size = 18f;
 
+        [Tooltip("정면을 돌리는 각도. 0이면 마을 한가운데를 바라본다.")]
+        public float facing;
+
+        [Tooltip("임시 도형만 다른 시설 것으로 세우고 싶을 때 켠다. 하는 일(kind)은 그대로다.")]
+        public bool useOtherBuilding;
+
+        [Tooltip("켰을 때 세울 도형. 예: 소환소인데 연금시설 건물을 쓰는 경우.")]
+        public Kind building;
+
         [Tooltip("에셋이 준비되면 여기에 프리팹을 넣는다. 넣으면 임시 도형 대신 이 프리팹이 놓인다.")]
         public GameObject prefab;
 
@@ -55,6 +64,7 @@ public class VillageBlockout : MonoBehaviour
 
     [Header("구역")]
     [SerializeField] private List<District> districts = new List<District>();
+
 
     [Header("바닥")]
     [Tooltip("성벽 안을 통째로 덮는 바닥. 구역들은 이 바닥 위에 놓여 서로 이어진다.")]
@@ -185,6 +195,75 @@ public class VillageBlockout : MonoBehaviour
         if (buildTrees) BuildTrees();
     }
 
+    // 씬 뷰에서 구역을 손으로 끌어다 놓은 뒤, 그 자리를 목록의 숫자로 받아 적는다.
+    // 만들어진 자식은 저장되지 않으므로 이걸 하지 않으면 다음 번에 다시 만들 때 원래 값으로 돌아간다.
+    [ContextMenu("지금 놓인 자리로 값 맞추기")]
+    public void CaptureFromScene()
+    {
+        CaptureValues();
+        Rebuild();
+    }
+
+    // 자식들의 지금 위치를 목록의 숫자로 옮겨 적는다. 다시 만들지는 않는다.
+    private void CaptureValues()
+    {
+        if (districts == null) return;
+        // 플레이 중에는 런타임 위치라 씬 값으로 굳히지 않는다.
+        if (Application.isPlaying) return;
+
+        // 자식은 표식(VillageFacility)의 종류와 이름으로 짝짓는다.
+        // 순서로 짝지으면 자식 하나만 지워져도 그 뒤가 통째로 한 칸씩 밀려 엉뚱한 값이 들어간다.
+        var built = new List<VillageFacility>();
+        foreach (Transform child in transform)
+        {
+            var facility = child.GetComponent<VillageFacility>();
+            if (facility != null) built.Add(facility);
+        }
+
+#if UNITY_EDITOR
+        UnityEditor.Undo.RecordObject(this, "구역 값 맞추기");
+#endif
+
+        foreach (District district in districts)
+        {
+            if (district == null || !district.build) continue;
+
+            VillageFacility match = null;
+            foreach (VillageFacility facility in built)
+            {
+                if (facility == null || facility.kind != district.kind || facility.label != district.label) continue;
+                match = facility;
+                break;
+            }
+
+            // 씬에서 지워진 구역은 값을 건드리지 않는다. 지운 채로 두려면 build를 끄면 된다.
+            if (match == null) continue;
+            built.Remove(match);
+
+            Transform child = match.transform;
+            Vector3 local = transform.InverseTransformPoint(child.position);
+
+            district.bearing = Round(Mathf.Repeat(Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, 360f));
+            district.distance = Round(new Vector2(local.x, local.z).magnitude);
+            district.facing = Round(Mathf.DeltaAngle(district.bearing + 180f, child.localEulerAngles.y));
+            // 프리팹을 넣은 구역은 루트를 늘리지 않으므로 스케일에서 크기를 되읽을 수 없다.
+            // 세울 때 쓴 것과 같은 기준 크기로 되읽어야 한다(도형을 바꿔 쓴 구역이 있다).
+            if (district.prefab == null)
+                district.size = Mathf.Max(2f, Round(child.localScale.x * DesignSize(district.useOtherBuilding ? district.building : district.kind)));
+        }
+
+#if UNITY_EDITOR
+        UnityEditor.EditorUtility.SetDirty(this);
+        if (gameObject.scene.IsValid())
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(gameObject.scene);
+#endif
+    }
+
+    private static float Round(float value)
+    {
+        return Mathf.Round(value * 10f) * 0.1f;
+    }
+
     [ContextMenu("기본 배치 불러오기")]
     public void LoadDefaultLayout()
     {
@@ -234,7 +313,8 @@ public class VillageBlockout : MonoBehaviour
         local.y = GroundY(local) - transform.position.y + (buildGround ? groundLift : 0f);
 
         // 구역은 마을 가운데를 바라보게 돌려 놓는다. 그래야 건물 정면이 광장 쪽을 향한다.
-        Transform root = NewChild(transform, district.label, local, district.bearing + 180f);
+        // facing으로 그 기준에서 더 돌릴 수 있다.
+        Transform root = NewChild(transform, district.label, local, district.bearing + 180f + district.facing);
 
         VillageFacility facility = root.gameObject.AddComponent<VillageFacility>();
         facility.kind = district.kind;
@@ -252,10 +332,13 @@ public class VillageBlockout : MonoBehaviour
             return;
         }
 
-        // 도형은 기준 크기로 짜 두고 통째로 늘린다. 인스펙터에서 size만 만져도 구역이 커진다.
-        root.localScale = Vector3.one * (district.size / DesignSize(district.kind));
+        // 하는 일과 세우는 도형은 따로다. 소환소인데 연금시설 건물을 쓰는 식이 가능하다.
+        Kind style = district.useOtherBuilding ? district.building : district.kind;
 
-        switch (district.kind)
+        // 도형은 기준 크기로 짜 두고 통째로 늘린다. 인스펙터에서 size만 만져도 구역이 커진다.
+        root.localScale = Vector3.one * (district.size / DesignSize(style));
+
+        switch (style)
         {
             case Kind.Plaza:     BuildPlaza(root); break;
             case Kind.Rift:      BuildRift(root); break;
@@ -864,23 +947,8 @@ public class VillageBlockout : MonoBehaviour
         Cyl(root, "무늬 안", new Vector3(0f, 0.42f, 0f), 21f, 0.14f, ZoneColor(Kind.Plaza), false);
         Cyl(root, "가운데 무늬", new Vector3(0f, 0.51f, 0f), 9f, 0.12f, StoneLight, false);
 
-        // 기념비. 광장 한가운데가 아니라 남쪽 가장자리에 세운다.
-        // 가운데나 북쪽에 두면 카메라와 시공의 틈 사이를 가로막아 틈이 보이지도, 눌리지도 않는다.
-        // 광장 루트는 180도 돌아 있어 로컬 +Z가 남쪽이다.
-        var monument = new Vector3(0f, 0f, 19f);
-        Cyl(root, "기념비 받침", monument + new Vector3(0f, 0.6f, 0f), 8f, 1.2f, StoneDark);
-        Cyl(root, "기념비", monument + new Vector3(0f, 5f, 0f), 2.6f, 8f, StoneLight);
-        Ball(root, "기념비 구슬", monument + new Vector3(0f, 10f, 0f), 3f, Accent, true, true);
-
-        // 가로등과 벤치
-        for (int i = 0; i < 6; i++)
-        {
-            float bearing = 30f + i * 60f;
-            Vector3 spot = Dir(bearing) * 24f;
-            Cyl(root, "가로등", spot + new Vector3(0f, 2.6f, 0f), 0.5f, 5.2f, Metal);
-            Ball(root, "불빛", spot + new Vector3(0f, 5.5f, 0f), 1.1f, Ember, false, true);
-        }
-
+        // 기념비와 가로등은 두지 않는다. 시공의 틈 바로 앞이라 시야를 막는다.
+        // 바닥 무늬와 화단만 남긴다.
         for (int i = 0; i < 4; i++)
         {
             float bearing = 45f + i * 90f;
@@ -894,8 +962,7 @@ public class VillageBlockout : MonoBehaviour
     // 문틀은 성벽(높이 16)보다 높아 밖에서도 이 자리가 보인다.
     private void BuildRift(Transform root)
     {
-        Box(root, "단", new Vector3(0f, 0.25f, 9f), new Vector3(34f, 0.5f, 20f), ZoneColor(Kind.Rift), 0f, false);
-        Box(root, "계단", new Vector3(0f, 0.14f, 20.4f), new Vector3(20f, 0.28f, 3.4f), Stone, 0f, false);
+        // 단과 계단은 두지 않는다. 마을 바닥이 벽까지 이어져 있어 문틀만 세우는 편이 깔끔하다.
 
         // 벽에 기대 세운 문틀
         Box(root, "기둥", new Vector3(-7.6f, 7.5f, 1.6f), new Vector3(2.4f, 15f, 3.2f), StoneLight);
