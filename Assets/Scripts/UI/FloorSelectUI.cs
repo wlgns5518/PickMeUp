@@ -9,8 +9,9 @@ using UnityEngine.UI;
 // 층은 자동으로 넘어가지 않는다. 여기서 직접 고른 뒤 전투 씬으로 들어가고,
 // 전투가 끝나면 다시 이 화면으로 돌아온다.
 //
-// 예전에는 화면 왼쪽에 목록이 늘 떠 있었다. 지금은 씬에 세워둔 문(FloorDoor)을 눌러야 열리는
-// 팝업이라 기본은 닫힌 상태다. 여는 쪽에서 Show()나 Toggle()을 부른다.
+// 예전에는 화면 왼쪽에 목록이 늘 떠 있었다. 지금은 파티 편성 창(DeckBuildUI)에서 "출전하기"를
+// 눌러야 열리는 팝업이라 기본은 닫힌 상태다. 여는 쪽에서 Show()나 Toggle()을 부른다.
+// 마을에서의 흐름은 시공의 틈 → 편성 → 출전 → 여기다.
 //
 // BattleHud와 같은 방식으로 캔버스부터 코드에서 만든다.
 // 이쪽은 클릭을 받아야 하므로 BattleHud와 달리 GraphicRaycaster를 붙인다.
@@ -28,7 +29,9 @@ public class FloorSelectUI : MonoBehaviour
     [Header("Layout")]
     [Tooltip("화면에 늘어놓을 층 버튼 개수. 모든 층이 전투 씬 하나를 함께 쓰므로 난이도 단계 수와 같다.")]
     [SerializeField] private int visibleFloorCount = 9;
-    [SerializeField] private Vector2 panelPadding = new Vector2(24f, 20f);
+    [SerializeField] private Vector2 panelPadding = new Vector2(30f, 26f);
+    [Tooltip("층 버튼을 몇 줄로 늘어놓을지. 아홉 층이면 3이 정사각형에 가깝다.")]
+    [SerializeField, Min(1)] private int floorColumns = 3;
 
     [Header("Open State")]
     [Tooltip("문을 누르지 않아도 처음부터 열려 있게 하려면 켠다.")]
@@ -44,11 +47,14 @@ public class FloorSelectUI : MonoBehaviour
     // 파티가 셋이라 어느 파티가 비었는지 짚어줘야 한다.
     private const string EmptyPartyMessageFormat = "{0}파티에 출전할 영웅이 없습니다.\n먼저 영웅을 편성해주세요.";
 
-    private const float ButtonWidth = 260f;
-    private const float ButtonHeight = 64f;
-    private const float ButtonSpacing = 10f;
-    private const float TitleHeight = 48f;
-    private const float CloseHeight = 44f;
+    // 잠긴 층 칸. 열린 층(PortraitFrame)보다 한 단계 어둡게 눌러 둔다.
+    private static readonly Color LockedFrame = new Color(0.11f, 0.10f, 0.13f, 0.95f);
+
+    private const float ButtonWidth = 360f;
+    private const float ButtonHeight = 150f;
+    private const float ButtonSpacing = 20f;
+    private const float TitleHeight = 72f;
+    private const float CloseHeight = 60f;
 
     private Canvas canvas;
     private RectTransform canvasRect;
@@ -174,9 +180,14 @@ public class FloorSelectUI : MonoBehaviour
     private void BuildPanel(RectTransform popup)
     {
         int count = Mathf.Max(1, visibleFloorCount);
-        float panelWidth = ButtonWidth + panelPadding.x * 2f;
+        // 한 줄로 세우면 아홉 층이 세로로 길게 늘어서 창이 가늘고 길어진다. 격자로 깔아 화면을 채운다.
+        int columns = Mathf.Clamp(floorColumns, 1, count);
+        int rows = Mathf.CeilToInt(count / (float)columns);
+
+        float listWidth = columns * ButtonWidth + (columns - 1) * ButtonSpacing;
+        float panelWidth = listWidth + panelPadding.x * 2f;
         // 닫기 버튼이 제목줄로 올라갔으므로 목록 아래에 따로 자리를 남기지 않는다.
-        float panelHeight = TitleHeight + count * (ButtonHeight + ButtonSpacing) + panelPadding.y * 2f;
+        float panelHeight = TitleHeight + rows * (ButtonHeight + ButtonSpacing) + panelPadding.y * 2f;
 
         Image panel = HudFactory.CreateImage(popup, "Panel", BattleHudPalette.PanelBody);
         // 창 안을 누른 클릭이 배경막으로 내려가지 않도록 여기서 받아 둔다.
@@ -188,23 +199,32 @@ public class FloorSelectUI : MonoBehaviour
         panelRect.sizeDelta = new Vector2(panelWidth, panelHeight);
         panelRect.anchoredPosition = Vector2.zero;
 
-        TMP_Text title = HudFactory.CreateText(panelRect, "Title", resolvedFont, 34f, BattleHudPalette.PanelText);
-        SetTopLeft(title.rectTransform, new Vector2(ButtonWidth, TitleHeight), new Vector2(panelPadding.x, -panelPadding.y));
+        TMP_Text title = HudFactory.CreateText(panelRect, "Title", resolvedFont, 42f, BattleHudPalette.PanelText);
+        title.alignment = TextAlignmentOptions.Left;
+        SetTopLeft(title.rectTransform, new Vector2(listWidth, TitleHeight), new Vector2(panelPadding.x, -panelPadding.y));
         title.text = "층 선택";
 
         for (int i = 0; i < count; i++)
         {
             int floor = FloorProgress.FirstFloor + i;
-            float y = -(panelPadding.y + TitleHeight + i * (ButtonHeight + ButtonSpacing));
+            int column = i % columns;
+            int row = i / columns;
+            float x = panelPadding.x + column * (ButtonWidth + ButtonSpacing);
+            float y = -(panelPadding.y + TitleHeight + row * (ButtonHeight + ButtonSpacing));
 
             Image background = HudFactory.CreateImage(panelRect, "Floor_" + floor, BattleHudPalette.PortraitFrame);
             background.raycastTarget = true;
-            SetTopLeft(background.rectTransform, new Vector2(ButtonWidth, ButtonHeight), new Vector2(panelPadding.x, y));
+            SetTopLeft(background.rectTransform, new Vector2(ButtonWidth, ButtonHeight), new Vector2(x, y));
 
             var button = background.gameObject.AddComponent<Button>();
             button.targetGraphic = background;
+            // 잠긴 층도 칸은 보여야 한다. 기본 비활성 색이 반투명이라 그대로 두면 판이 통째로
+            // 사라진 것처럼 보인다. 흐리게 만드는 일은 RefreshButtons가 색으로 직접 한다.
+            ColorBlock colors = button.colors;
+            colors.disabledColor = Color.white;
+            button.colors = colors;
 
-            TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 26f, BattleHudPalette.PanelText);
+            TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 34f, BattleHudPalette.PanelText);
             Stretch(label.rectTransform);
 
             // 클로저가 반복 변수를 붙잡지 않도록 지역 변수에 복사해 넘긴다.
@@ -219,13 +239,13 @@ public class FloorSelectUI : MonoBehaviour
         Image closeBackground = HudFactory.CreateImage(panelRect, "Close", BattleHudPalette.PanelBackdrop);
         closeBackground.raycastTarget = true;
         SetTopLeft(closeBackground.rectTransform, new Vector2(CloseHeight, CloseHeight),
-            new Vector2(panelPadding.x + ButtonWidth - CloseHeight, -panelPadding.y));
+            new Vector2(panelPadding.x + listWidth - CloseHeight, -panelPadding.y));
 
         var closeButton = closeBackground.gameObject.AddComponent<Button>();
         closeButton.targetGraphic = closeBackground;
         closeButton.onClick.AddListener(Hide);
 
-        TMP_Text closeLabel = HudFactory.CreateText(closeBackground.rectTransform, "Label", resolvedFont, 24f, BattleHudPalette.PanelText);
+        TMP_Text closeLabel = HudFactory.CreateText(closeBackground.rectTransform, "Label", resolvedFont, 30f, BattleHudPalette.PanelText);
         Stretch(closeLabel.rectTransform);
         // 곱셈 기호(U+2715 등)는 NotoSansKR 아틀라스에 없어 네모로 그려진다. 알파벳 X를 쓴다.
         closeLabel.text = "X";
@@ -240,6 +260,10 @@ public class FloorSelectUI : MonoBehaviour
             bool cleared = floor <= FloorProgress.HighestCleared;
 
             floorButtons[i].interactable = unlocked;
+
+            // 잠긴 층은 칸을 어둡게 눌러 표시한다. 버튼의 비활성 색에 맡기면 반투명이라 칸이 사라진다.
+            var frame = floorButtons[i].targetGraphic as Image;
+            if (frame != null) frame.color = unlocked ? BattleHudPalette.PortraitFrame : LockedFrame;
 
             TMP_Text label = floorLabels[i];
             // 체크표시(U+2713)를 쓰면 NotoSansKR에 글리프가 없어 매번 경고를 뱉고 □로 그려진다.

@@ -53,6 +53,12 @@ public class CharacterSO : ScriptableObject
     [Tooltip("보조 손 방패. 비워둔 채 offHand만 Shield면 카탈로그의 기본 방패가 들린다.")]
     public WeaponDefinition offHandWeapon;
 
+    // Skills ------------------------------------------------------------
+    // 합성으로만 늘어난다. 이름과 설명이 아니라 id만 들고 있는 이유는 SkillCatalog 주석 참조.
+    [Header("Skills")]
+    [Tooltip("배운 스킬의 id. 실제 이름과 설명은 SkillCatalog가 들고 있다.")]
+    public List<string> skillIds = new List<string>();
+
     // Relationships -----------------------------------------------------
     [Header("Relationships")]
     public List<FriendshipEntry> friendships = new List<FriendshipEntry>();
@@ -146,6 +152,27 @@ public class CharacterSO : ScriptableObject
         stats.intelligence += i;
         stats.vitality     += v;
         stats.agility      += a;
+    }
+
+    // Skills ------------------------------------------------------------
+
+    public int SkillCount => skillIds != null ? skillIds.Count : 0;
+
+    public bool IsSkillFull => SkillCount >= SkillCatalog.MaxSkillsPerCharacter;
+
+    public bool HasSkill(string skillId)
+    {
+        return !string.IsNullOrEmpty(skillId) && skillIds != null && skillIds.Contains(skillId);
+    }
+
+    // 이미 배웠거나 자리가 없으면 false. 부르는 쪽이 그 이유를 미리 확인한다.
+    public bool LearnSkill(string skillId)
+    {
+        if (string.IsNullOrEmpty(skillId) || IsSkillFull || HasSkill(skillId)) return false;
+
+        if (skillIds == null) skillIds = new List<string>();
+        skillIds.Add(skillId);
+        return true;
     }
 
     // Relationships -----------------------------------------------------

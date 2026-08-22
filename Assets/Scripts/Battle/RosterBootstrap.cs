@@ -26,5 +26,8 @@ public class RosterBootstrap : MonoBehaviour
         // 무엇이든 고치기 전에 원본 값을 붙잡아 둔다. 그 뒤에 세이브를 얹는다.
         RosterBaseline.CaptureAll(roster.Members);
         SaveSystem.Load(roster.Members);
+
+        // 에셋의 명단은 시작값이다. 소환으로 늘고 합성으로 주는 실제 보유 명단은 런타임 쪽이 든다.
+        OwnedRoster.Seed(roster.Members);
     }
 }

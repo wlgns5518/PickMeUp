@@ -67,9 +67,6 @@ public class MeshyCharacterGenerator : MonoBehaviour
     private static readonly string[]   Traits   = { "냉소적인", "낙천적인", "고독한", "충직한", "야망 있는", "수줍은", "비밀스러운" };
     private static readonly string[]   TraitsEn = { "cynical", "cheerful", "lonely", "loyal", "ambitious", "shy", "mysterious" };
 
-    // 1성 63.949% / 2성 30% / 3성 5% / 4성 1% / 5성 0.05% / 6성 0.001% (7성 가챠 제외)
-    private static readonly int[]      StarWeights = { 63949, 30000, 5000, 1000, 50, 1 };
-
     // 폴링 상태 키워드 (소문자) — 매 폴링에서 HashSet 조회 O(1)
     private static readonly HashSet<string> SucceededStatus = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         { "succeeded", "success", "completed", "done", "finished" };
@@ -82,13 +79,15 @@ public class MeshyCharacterGenerator : MonoBehaviour
 
     /// onUpdate 두 번 호출: (1) 메타데이터 즉시, (2) 이미지 완료 후.
     /// presetName이 있으면 Gemini 호출 생략.
-    public IEnumerator GenerateCharacter(Action<CharacterSO> onUpdate, string presetName = null)
+    /// forcedStars가 1 이상이면 그 등급으로 고정한다 — 소환소가 확률표로 굴린 결과를 넘긴다.
+    public IEnumerator GenerateCharacter(Action<CharacterSO> onUpdate, string presetName = null, int forcedStars = 0)
     {
         int jIdx = RollWeightedIndex(JobWeights);
         int tIdx = UnityEngine.Random.Range(0, Traits.Length);
 
         CharacterSO so = ScriptableObject.CreateInstance<CharacterSO>();
-        so.starCount = RollStars();
+        // 등급은 소환 확률표가 정한다. 넘겨받은 값이 없으면 유료 소환과 같은 확률로 굴린다.
+        so.starCount = forcedStars > 0 ? Mathf.Clamp(forcedStars, 1, 7) : SummonTable.RollStars(SummonKind.Paid);
         so.level = 1; so.exp = 0; so.expToNext = 10;
         so.job = JobPool[jIdx];
 
@@ -198,8 +197,6 @@ public class MeshyCharacterGenerator : MonoBehaviour
         c.agilityGrowth      *= UnityEngine.Random.Range(0.85f, 1.15f);
         return c;
     }
-
-    private static int RollStars() => RollWeightedIndex(StarWeights) + 1;
 
     private static int RollWeightedIndex(int[] weights)
     {
@@ -413,7 +410,10 @@ public class MeshyCharacterGenerator : MonoBehaviour
             return null;
         }
 #else
-        return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+        // FullRect로 만든다. 기본값(Tight)은 알파 외곽선을 따라 폴리곤을 뜨는데, 카드에 그대로
+        // 붙일 사각 초상화라 얻는 것 없이 시간만 든다(1024짜리 한 장에 수 ms).
+        return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f),
+            100f, 0, SpriteMeshType.FullRect);
 #endif
     }
 

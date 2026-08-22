@@ -20,6 +20,9 @@ public static class RosterBaseline
         public int Intelligence;
         public int Vitality;
         public int Agility;
+        // 합성으로 배운 스킬. 이것도 되돌리지 않으면 에디터에서 한 번 합성할 때마다
+        // 원본 캐릭터가 영구히 스킬을 달고 다닌다.
+        public string[] Skills;
     }
 
     private static readonly Dictionary<CharacterSO, Baseline> baselines = new Dictionary<CharacterSO, Baseline>();
@@ -57,6 +60,7 @@ public static class RosterBaseline
             Intelligence = character.stats.intelligence,
             Vitality = character.stats.vitality,
             Agility = character.stats.agility,
+            Skills = character.skillIds != null ? character.skillIds.ToArray() : new string[0],
         };
     }
 
@@ -81,6 +85,7 @@ public static class RosterBaseline
             so.stats.intelligence = b.Intelligence;
             so.stats.vitality = b.Vitality;
             so.stats.agility = b.Agility;
+            so.skillIds = b.Skills != null ? new List<string>(b.Skills) : new List<string>();
 
 #if UNITY_EDITOR
             UnityEditor.EditorUtility.SetDirty(so);

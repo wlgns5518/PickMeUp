@@ -321,6 +321,12 @@ public class VillageBlockout : MonoBehaviour
         facility.label = district.label;
         facility.role = district.role;
 
+        // 눌러서 창을 여는 구역에는 여기서 클릭 처리를 붙인다. 구역을 다시 만들 때마다 자식이 통째로
+        // 지워져 씬에서 손으로 붙여둘 수 없으므로, 세우는 김에 함께 붙인다.
+        // 어느 구역에 창이 딸려 있는지는 FacilityGate가 안다 — 여기는 목록을 들고 있지 않는다.
+        if (FacilityGate.HasWindow(district.kind))
+            root.gameObject.AddComponent<FacilityGate>().Bind(district.kind);
+
         if (district.prefab != null)
         {
             // 에셋이 들어오면 임시 도형은 만들지 않는다.
@@ -970,13 +976,13 @@ public class VillageBlockout : MonoBehaviour
         Box(root, "상인방", new Vector3(0f, 16.1f, 1.6f), new Vector3(19f, 2.2f, 3.6f), StoneLight);
         Box(root, "종석", new Vector3(0f, 17.8f, 1.6f), new Vector3(3.4f, 1.4f, 3.8f), StoneDark);
 
-        // 벽이 갈라진 자리. 이걸 누르면 층 선택 창이 열린다.
-        // FloorDoor는 자기 밑의 콜라이더로 클릭을 받으므로 어두운 판만 단단하게 두고
-        // 앞에 겹치는 빛나는 판에는 콜라이더를 두지 않는다.
+        // 벽이 갈라진 자리. 여기를 눌러 원정을 떠난다 — 클릭은 구역 루트의 FacilityGate가 받는다.
+        // 여기에 따로 클릭 부품을 붙이면 안 된다. EventSystem은 콜라이더에서 위로 올라가며 가장 먼저
+        // 만나는 처리기에 클릭을 주므로, 자식에 붙이는 순간 구역 루트의 게이트가 영영 안 불린다.
+        // 어두운 판만 단단하게 두고 앞에 겹치는 빛나는 판에는 콜라이더를 두지 않는다.
         Transform gate = NewChild(root, "시공의 틈 입구", new Vector3(0f, 0f, 0.5f), 0f);
         Box(gate, "틈", new Vector3(0f, 7f, 0f), new Vector3(12.6f, 14.4f, 1f), RiftDark);
         Box(gate, "틈 빛", new Vector3(0f, 7f, 0.7f), new Vector3(10f, 11.8f, 0.4f), Accent, 0f, false, true);
-        gate.gameObject.AddComponent<FloorDoor>();
 
         // 틈에서 떨어져 나와 떠 있는 파편. 벽을 파고들지 않게 전부 앞쪽에 둔다.
         for (int i = 0; i < 7; i++)

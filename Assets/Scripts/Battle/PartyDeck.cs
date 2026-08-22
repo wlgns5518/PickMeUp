@@ -207,6 +207,20 @@ public static class PartyDeck
         if (changed) Changed?.Invoke();
     }
 
+    // 어느 파티에 있든 통째로 뺀다. 합성 재료처럼 캐릭터 자체가 사라질 때 쓴다 —
+    // 활성 파티만 보는 Remove로는 2파티에 얹어둔 재료가 그대로 남는다.
+    public static bool RemoveEverywhere(CharacterSO character)
+    {
+        if (character == null) return false;
+
+        bool removed = false;
+        for (int i = 0; i < parties.Length; i++)
+            removed |= parties[i].Remove(character);
+
+        if (removed) Changed?.Invoke();
+        return removed;
+    }
+
     // 전투에서 돌아왔을 때 죽은 채로 편성에 남아 있는 캐릭터를 걷어낸다. 세 파티 모두.
     public static void PruneFallen()
     {

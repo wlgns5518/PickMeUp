@@ -183,6 +183,8 @@ public class RhythmGame : MonoBehaviour
         if (playArea == null) { Debug.LogError("[Rhythm] playArea is missing"); return; }
 
         if (rhythmRoot != null) rhythmRoot.SetActive(true);
+        // 화면 루트가 켜져 있는 동안 뒤쪽 3D 장면을 멈춘다. 퍼즐과 같은 부품을 쓴다.
+        MiniGameScreen.Ensure(rhythmRoot);
 
         PrepareLayout();
         ClearNotes();

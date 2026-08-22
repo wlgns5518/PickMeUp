@@ -15,6 +15,20 @@ public enum PuzzleDifficulty
     Hell   = 15,
 }
 
+// 장비 그림 맞추기 미니게임.
+//
+// 그림을 격자로 자른 뒤 칸을 셋으로 나눈다. 그림이 한 픽셀도 없는 칸은 아예 만들지 않고,
+// 그림이 있긴 하지만 너무 옅은 칸은 판의 제자리에 처음부터 맞춰 둔다. 나머지 칸만 판에
+// 빈칸을 깔아 두고 조각을 바깥에 흩는다. 그 빈칸들이 모여 그리는 윤곽이 곧 맞춰야 할 형태다.
+//
+// 옅은 칸을 버리지 않는 이유는 다 맞췄을 때 그림에 구멍이 남지 않게 하기 위해서다.
+// 그렇다고 플레이어에게 맡기면 거의 투명한 조각을 화면에서 찾아 헤매게 된다.
+// 반대로 완전히 빈 칸은 만들 이유가 없다 — 지켜야 할 그림이 애초에 없으니 구멍도 나지 않는다.
+// 대각선으로 누운 검처럼 자기 바운딩 박스를 얇게 가로지르는 그림에서는 이쪽이 다수다.
+//
+// 조각끼리 이어 붙이는 방식이 아니라 정해진 칸에 맞추는 방식이라 조각 하나하나가 독립적으로
+// 판정된다 — 어디까지 맞췄는지가 언제나 분명하고, 한 조각을 잘못 놓아도 이미 맞춘 것들이
+// 딸려 움직이지 않는다.
 public class PuzzleGame : MonoBehaviour
 {
     [Header("Setup")]
@@ -32,24 +46,40 @@ public class PuzzleGame : MonoBehaviour
     [Header("Layout")]
     [Tooltip("Hell(15x15)에서의 조각 한 변 픽셀 크기 (기준값). 낮은 난이도는 어셈블 크기 동일 유지를 위해 자동 확대.")]
     [SerializeField] private float hellPieceSize = 40f;
-    [Tooltip("이 거리 이내로 다른 조각과 정합 위치에 놓이면 스냅 연결")]
+    [Tooltip("이 거리 이내로 제자리에 놓으면 판에 붙는다. 아래 비율과 비교해 더 큰 쪽이 쓰인다.")]
     [SerializeField] private float pieceSnapDistance = 25f;
+    [Tooltip("조각 크기에 비례한 스냅 반경. 난이도가 낮아 조각이 커지면 판정도 같이 넉넉해진다.")]
+    [Range(0.1f, 0.8f)] [SerializeField] private float snapRadiusRatio = 0.4f;
+    [Tooltip("조각을 흩뿌릴 때 화면 가장자리에서 띄울 여백.")]
+    [SerializeField] private float scatterMargin = 20f;
     [SerializeField] private bool autoStart = false;
 
     // 슬라이스 시 결정되는 실제 조각 픽셀 크기
     private float currentPieceSize;
 
-    [Header("Empty Piece Skip")]
-    [SerializeField] private bool skipEmptyPieces = true;
+    [Header("Background Pieces")]
+    [Tooltip("그림이 옅게만 든 조각을 처음부터 맞춰진 상태로 둔다. 끄면 그 조각들도 직접 맞춰야 하는데, " +
+             "거의 투명해서 화면에서 찾기가 매우 어렵다. " +
+             "그림이 아예 없는 칸은 이 값과 무관하게 조각을 만들지 않는다.")]
+    [SerializeField] private bool preplaceBackgroundPieces = true;
+    [Tooltip("이 값 미만의 알파는 비어 있는 픽셀로 본다.")]
     [Range(0f, 1f)] [SerializeField] private float alphaThreshold = 0.05f;
+    [Tooltip("칸 안에 불투명 픽셀이 이 비율에 못 미치면 배경 조각으로 본다. " +
+             "0으로 두면 그림이 한 픽셀이라도 있는 칸은 전부 플레이어 몫이 된다.")]
     [Range(0f, 1f)] [SerializeField] private float minOpaqueRatio = 0.03f;
 
     [Header("UI")]
     [SerializeField] private TMP_Text timerText;
 
+    [Header("Board")]
+    [Tooltip("아직 비어 있는 칸의 색. 배경이 검정이라 옅은 흰색이 빈칸으로 잘 읽힌다.")]
+    [SerializeField] private Color slotColor = new Color(1f, 1f, 1f, 0.13f);
+    [Tooltip("조각이 들어간 칸의 색. 조각이 덮으므로 거의 안 보이지만, 조각 가장자리가 투명할 때 티가 난다.")]
+    [SerializeField] private Color slotFilledColor = new Color(1f, 1f, 1f, 0.03f);
+    [Tooltip("칸과 칸 사이를 띄우는 간격. 붙여 놓으면 격자가 한 덩어리로 보인다.")]
+    [SerializeField] private float slotInset = 2f;
+
     [Header("Visual Polish")]
-    [Tooltip("완성될 그림을 흐릿하게 미리 보여주는 가이드")]
-    [Range(0f, 1f)] [SerializeField] private float referenceGhostAlpha = 0.14f;
     [SerializeField] private Vector2 pieceShadowOffset = new Vector2(4f, -4f);
     [SerializeField] private Color pieceShadowColor = new Color(0f, 0f, 0f, 0.35f);
     [SerializeField] private float dragLiftScale = 1.08f;
@@ -66,17 +96,13 @@ public class PuzzleGame : MonoBehaviour
     public UnityEvent onSuccess;
     public UnityEvent onFail;
 
+    // 플레이어가 맞춰야 하는 조각.
     private readonly List<PuzzlePiece> pieces = new List<PuzzlePiece>();
-    // 각 조각이 속한 그룹(리스트 참조 공유). 같은 그룹이면 같은 List 인스턴스
-    private readonly Dictionary<PuzzlePiece, List<PuzzlePiece>> groupOf =
-        new Dictionary<PuzzlePiece, List<PuzzlePiece>>();
-    // 격자 좌표 → 조각. logicalNeighbors 구성 시에만 사용.
-    private readonly Dictionary<Vector2Int, PuzzlePiece> pieceByGrid =
-        new Dictionary<Vector2Int, PuzzlePiece>();
-    // 조각별 스냅 후보(8방향, 투명 조각으로 인한 격자 빈칸은 건너뛰고 다음 실제 조각까지 탐색).
-    // SlicePieces에서 한 번만 구성해 TrySnap이 O(1)에 가깝게 후보를 얻도록 함.
-    private readonly Dictionary<PuzzlePiece, List<PuzzlePiece>> logicalNeighbors =
-        new Dictionary<PuzzlePiece, List<PuzzlePiece>>();
+    // 배경만 있어 처음부터 제자리에 놓아 두는 조각. 진행률에도 성공 판정에도 들어가지 않는다.
+    private readonly List<PuzzlePiece> backgroundPieces = new List<PuzzlePiece>();
+
+    // 제자리에 놓인 조각 수. 전부 놓이면 성공이다.
+    private int placedCount;
 
     private float remainingTime;
     private int   lastShownSecond = -1;
@@ -84,14 +110,15 @@ public class PuzzleGame : MonoBehaviour
     private int   gridN;
     private bool  isTimerLow;
 
-    // 완성 그림 미리보기 (조각들 뒤에 흐릿하게 표시)
-    private Image referenceGhost;
+    // 가운데 판. 조각 하나마다 빈칸 하나가 깔린다.
+    private RectTransform board;
+    private readonly Dictionary<PuzzlePiece, Image> slotOf = new Dictionary<PuzzlePiece, Image>();
 
     // 스냅 성공 시 조각들의 "팝" 스케일 애니메이션 (조각 → 남은 시간)
     private readonly Dictionary<PuzzlePiece, float> punchTimers = new Dictionary<PuzzlePiece, float>();
     private readonly List<PuzzlePiece> punchKeysBuffer = new List<PuzzlePiece>();
 
-    // 진행률 텍스트 (최대 그룹 크기 / 전체 조각 수)
+    // 진행률 텍스트 (맞춘 조각 수 / 맞춰야 할 조각 수)
     private TMP_Text progressText;
 
     // 성공/실패 배너 (배너가 사라진 뒤에 실제로 숨김 처리)
@@ -134,6 +161,10 @@ public class PuzzleGame : MonoBehaviour
         if (playArea == null)     { Debug.LogError("[Puzzle] playArea 없음"); return; }
 
         if (puzzleRoot != null) puzzleRoot.SetActive(true);
+        // 화면 루트가 켜져 있는 동안 뒤쪽 3D 장면을 멈춘다. 실제 처리는 MiniGameScreen이 한다 —
+        // 미니게임마다 같은 코드를 복사하지 않도록 공통으로 빼 두었다.
+        MiniGameScreen.Ensure(puzzleRoot);
+        EnsurePuzzleCanvas();
 
         EnsureProgressText();
         EnsureBanner();
@@ -141,7 +172,7 @@ public class PuzzleGame : MonoBehaviour
 
         ClearPieces();
         SlicePieces();
-        UpdateReferenceGhost();
+        BuildBoard();
         ScatterPieces();
 
         remainingTime = timeLimit;
@@ -162,22 +193,41 @@ public class PuzzleGame : MonoBehaviour
         if (puzzleRoot != null) puzzleRoot.SetActive(false);
     }
 
+    // 퍼즐 UI를 자기 캔버스로 떼어 놓는다.
+    //
+    // 놀이 영역은 씬의 공용 캔버스에 얹혀 있다. 그대로 두면 조각 하나를 끌 때마다 그 캔버스에 딸린
+    // 모든 UI(카드 컨테이너까지)의 배치가 다시 계산된다. 캔버스를 따로 두면 다시 계산되는 범위가
+    // 퍼즐 안으로 갇힌다.
+    //
+    // 중첩 캔버스는 부모의 GraphicRaycaster가 봐주지 않는다. 조각을 집으려면 자기 것을 달아야 한다.
+    private void EnsurePuzzleCanvas()
+    {
+        if (playArea.GetComponent<Canvas>() != null) return;
+
+        playArea.gameObject.AddComponent<Canvas>();
+        if (playArea.GetComponent<GraphicRaycaster>() == null)
+            playArea.gameObject.AddComponent<GraphicRaycaster>();
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // 조각 슬라이싱 / 흩뿌리기
     // ─────────────────────────────────────────────────────────────────────
-
-    private Color32[] cachedPixels;
-    private int cachedTexWidth;
 
     private void ClearPieces()
     {
         for (int i = 0; i < pieces.Count; i++)
             if (pieces[i] != null) Destroy(pieces[i].gameObject);
         pieces.Clear();
-        groupOf.Clear();
-        pieceByGrid.Clear();
-        logicalNeighbors.Clear();
+
+        for (int i = 0; i < backgroundPieces.Count; i++)
+            if (backgroundPieces[i] != null) Destroy(backgroundPieces[i].gameObject);
+        backgroundPieces.Clear();
+
         punchTimers.Clear();
+        placedCount = 0;
+
+        // 빈칸은 조각과 짝이라 함께 치운다. 남겨 두면 지워진 조각을 가리키는 칸이 판에 남는다.
+        ClearSlots();
     }
 
     private void SlicePieces()
@@ -187,20 +237,16 @@ public class PuzzleGame : MonoBehaviour
         Texture2D tex = sourceSprite.texture;
         Rect fullRect = sourceSprite.textureRect;
 
-        // 픽셀 캐시 (콘텐츠 바운딩 + 투명 조각 체크 양쪽에서 사용)
 #if UNITY_EDITOR
         EnsureReadable(tex);
 #endif
-        try { cachedPixels = tex.GetPixels32(); cachedTexWidth = tex.width; }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"[Puzzle] 픽셀 읽기 실패: {e.Message}\n" +
-                           $"→ 텍스처 '{tex.name}'의 Read/Write Enabled를 켜주세요.");
-            cachedPixels = null;
-        }
+        // 콘텐츠 바운딩도 칸별 불투명 픽셀 수도 전부 여기서 나온다. 스프라이트마다 한 번만
+        // 만들어 두고 재사용하므로, 같은 퍼즐을 다시 시작할 때는 픽셀을 아예 읽지 않는다.
+        // 텍스처를 읽지 못하면 null이고, 그때는 알파를 모르는 채로 전체를 그냥 자른다.
+        PuzzleAlphaMask mask = PuzzleAlphaMask.Get(sourceSprite, alphaThreshold);
 
         // 검 이미지가 실제로 차지하는 영역(타이트 바운딩)만 슬라이스 대상으로 사용
-        Rect src = cachedPixels != null ? ComputeContentRect(fullRect) : fullRect;
+        Rect src = mask != null ? mask.ContentRect : fullRect;
         Debug.Log($"[Puzzle] 콘텐츠 영역 {src} (전체 {fullRect})");
 
         // Hell 픽셀 크기는 고정. 낮은 난이도는 어셈블 크기 동일하게 유지하도록 확대.
@@ -212,6 +258,11 @@ public class PuzzleGame : MonoBehaviour
         float pieceWPx = src.width / n;
         float pieceHPx = src.height / n;
 
+        // 칸 안에 불투명 픽셀이 이만큼은 있어야 플레이어가 맞출 조각이 된다.
+        // 최소 1인 이유는 비율을 0으로 두더라도 "그림이 하나도 없는 칸"은 걸러내야 하기 때문이다.
+        int needed = Mathf.Max(1, Mathf.CeilToInt(pieceWPx * pieceHPx * minOpaqueRatio));
+
+        int preplaced = 0;
         int skipped = 0;
         for (int row = 0; row < n; row++)
         {
@@ -222,59 +273,42 @@ public class PuzzleGame : MonoBehaviour
                     src.y + (n - 1 - row) * pieceHPx,
                     pieceWPx, pieceHPx);
 
-                if (skipEmptyPieces && cachedPixels != null && IsMostlyTransparent(pieceRect))
+                // needed에 닿으면 거기서 세기를 멈추므로, 그림이 넉넉한 칸일수록 빨리 빠져나온다.
+                // 못 미친 값은 끝까지 센 결과라 0을 0으로 믿어도 된다.
+                int opaque = mask != null ? mask.CountOpaque(pieceRect, needed) : needed;
+
+                // 그림이 한 픽셀도 없는 칸은 조각을 만들지 않는다. 만들어 봐야 아무것도 그리지
+                // 않는 오브젝트가 되고, 없어도 완성 그림은 똑같다 — 지켜야 할 그림이 없으니까.
+                if (opaque == 0)
                 {
                     skipped++;
                     continue;
                 }
 
-                Sprite pieceSprite = Sprite.Create(tex, pieceRect, new Vector2(0.5f, 0.5f), 100f);
+                // FullRect가 꼭 필요하다. Sprite.Create는 기본이 Tight라 조각마다 알파 외곽선을
+                // 따라가며 폴리곤 메시를 만드는데, 조각은 어차피 정사각형이라 아무 이득이 없으면서
+                // 한 장당 4ms 가까이 든다(Hell 225장 = 840ms 멈춤).
+                Sprite pieceSprite = Sprite.Create(tex, pieceRect, new Vector2(0.5f, 0.5f), 100f,
+                    0, SpriteMeshType.FullRect);
                 PuzzlePiece piece = CreatePiece(pieceSprite, currentPieceSize, currentPieceSize, col, row);
 
-                pieces.Add(piece);
-                pieceByGrid[new Vector2Int(col, row)] = piece;
-
-                // 자기 자신으로 그룹 초기화
-                var group = new List<PuzzlePiece> { piece };
-                groupOf[piece] = group;
-            }
-        }
-
-        if (skipped > 0) Debug.Log($"[Puzzle] 투명 조각 {skipped}개 생략 → 실제 {pieces.Count}개");
-        cachedPixels = null;
-
-        BuildLogicalNeighbors(n);
-    }
-
-    // 각 조각의 8방향 스냅 후보를 미리 계산. 투명 조각으로 격자에 빈칸이 있어도
-    // 그 방향으로 계속 나아가 처음 만나는 실제 조각을 후보로 삼는다 (끊긴 연결 방지).
-    private void BuildLogicalNeighbors(int n)
-    {
-        for (int idx = 0; idx < pieces.Count; idx++)
-        {
-            PuzzlePiece piece = pieces[idx];
-            var candidates = new List<PuzzlePiece>(NeighborOffsets.Length);
-
-            for (int d = 0; d < NeighborOffsets.Length; d++)
-            {
-                Vector2Int dir = NeighborOffsets[d];
-                int col = piece.gridCol + dir.x;
-                int row = piece.gridRow + dir.y;
-
-                while (col >= 0 && col < n && row >= 0 && row < n)
+                // 그림이 옅게만 든 칸은 버리지 않고 처음부터 맞춰진 것으로 둔다. 버리면 그림에
+                // 구멍이 남고, 그렇다고 플레이어에게 맡기면 보이지도 않는 조각을 찾아 헤매게 된다.
+                if (preplaceBackgroundPieces && opaque < needed)
                 {
-                    if (pieceByGrid.TryGetValue(new Vector2Int(col, row), out PuzzlePiece found))
-                    {
-                        candidates.Add(found);
-                        break;
-                    }
-                    col += dir.x;
-                    row += dir.y;
+                    backgroundPieces.Add(piece);
+                    preplaced++;
+                }
+                else
+                {
+                    pieces.Add(piece);
                 }
             }
-
-            logicalNeighbors[piece] = candidates;
         }
+
+        if (skipped > 0)   Debug.Log($"[Puzzle] 빈 칸 {skipped}개는 조각을 만들지 않음");
+        if (preplaced > 0) Debug.Log($"[Puzzle] 배경 조각 {preplaced}개는 맞춰진 채로 시작");
+        Debug.Log($"[Puzzle] 맞출 조각 {pieces.Count}개 (격자 {n}x{n} = {n * n}칸)");
     }
 
 #if UNITY_EDITOR
@@ -293,73 +327,6 @@ public class PuzzleGame : MonoBehaviour
         }
     }
 #endif
-
-    // 텍스처 내에서 알파가 있는 픽셀들의 타이트 바운딩 박스
-    private Rect ComputeContentRect(Rect fullRect)
-    {
-        int texH = cachedPixels.Length / cachedTexWidth;
-        int x0 = Mathf.Clamp(Mathf.RoundToInt(fullRect.x), 0, cachedTexWidth - 1);
-        int y0 = Mathf.Clamp(Mathf.RoundToInt(fullRect.y), 0, texH - 1);
-        int x1 = Mathf.Clamp(x0 + Mathf.RoundToInt(fullRect.width) - 1, x0, cachedTexWidth - 1);
-        int y1 = Mathf.Clamp(y0 + Mathf.RoundToInt(fullRect.height) - 1, y0, texH - 1);
-
-        byte threshold = (byte)Mathf.RoundToInt(alphaThreshold * 255f);
-        int minX = x1, minY = y1, maxX = x0, maxY = y0;
-        bool found = false;
-
-        for (int y = y0; y <= y1; y++)
-        {
-            int rowStart = y * cachedTexWidth;
-            for (int x = x0; x <= x1; x++)
-            {
-                if (cachedPixels[rowStart + x].a >= threshold)
-                {
-                    if (!found) { minX = maxX = x; minY = maxY = y; found = true; }
-                    else
-                    {
-                        if (x < minX) minX = x;
-                        else if (x > maxX) maxX = x;
-                        if (y < minY) minY = y;
-                        else if (y > maxY) maxY = y;
-                    }
-                }
-            }
-        }
-
-        if (!found) return fullRect;
-        return new Rect(minX, minY, maxX - minX + 1, maxY - minY + 1);
-    }
-
-    private bool IsMostlyTransparent(Rect pieceRect)
-    {
-        int x = Mathf.Clamp(Mathf.RoundToInt(pieceRect.x), 0, cachedTexWidth - 1);
-        int texH = cachedPixels.Length / cachedTexWidth;
-        int y = Mathf.Clamp(Mathf.RoundToInt(pieceRect.y), 0, texH - 1);
-        int w = Mathf.Clamp(Mathf.RoundToInt(pieceRect.width), 1, cachedTexWidth - x);
-        int h = Mathf.Clamp(Mathf.RoundToInt(pieceRect.height), 1, texH - y);
-
-        byte threshold = (byte)Mathf.RoundToInt(alphaThreshold * 255f);
-        int total = w * h;
-        int needed = Mathf.CeilToInt(total * minOpaqueRatio);
-        int opaque = 0;
-        int scanned = 0;
-
-        for (int j = 0; j < h; j++)
-        {
-            int rowStart = (y + j) * cachedTexWidth + x;
-            for (int i = 0; i < w; i++)
-            {
-                if (cachedPixels[rowStart + i].a >= threshold) opaque++;
-                scanned++;
-
-                // 조기 종료: 임계 도달 → 투명 아님
-                if (opaque >= needed) return false;
-                // 조기 종료: 남은 픽셀 다 채워도 임계 못 넘김 → 투명 확정
-                if (opaque + (total - scanned) < needed) return true;
-            }
-        }
-        return opaque < needed;
-    }
 
     private PuzzlePiece CreatePiece(Sprite sprite, float w, float h, int col, int row)
     {
@@ -398,20 +365,34 @@ public class PuzzleGame : MonoBehaviour
         coreRt.offsetMin = coreRt.offsetMax = Vector2.zero;
 
         var piece = go.GetComponent<PuzzlePiece>();
-        piece.Init(col, row, this, coreImg);
+        piece.Init(col, row, this, coreImg, shadowImg);
         return piece;
     }
 
+    // 조각은 판 바깥에 흩는다. 판 위에 겹쳐 놓으면 맞춰야 할 그림이 가려져 게임이 되지 않는다.
+    // 화면이 좁아 바깥에 자리가 없으면 어쩔 수 없이 판 위에도 떨어진다.
     private void ScatterPieces()
     {
-        Vector2 half = playArea.rect.size * 0.5f - new Vector2(currentPieceSize, currentPieceSize);
+        float boardHalf = gridN * currentPieceSize * 0.5f;
+        float keepOut = boardHalf + currentPieceSize * 0.5f;
+        Vector2 half = playArea.rect.size * 0.5f
+                       - Vector2.one * (currentPieceSize * 0.5f + scatterMargin);
+        half = Vector2.Max(half, Vector2.one * currentPieceSize * 0.5f);
+
         for (int i = 0; i < pieces.Count; i++)
         {
-            ((RectTransform)pieces[i].transform).anchoredPosition = new Vector2(
-                Random.Range(-half.x, half.x),
-                Random.Range(-half.y, half.y));
+            Vector2 pos = Vector2.zero;
+            for (int attempt = 0; attempt < ScatterAttempts; attempt++)
+            {
+                pos = new Vector2(Random.Range(-half.x, half.x), Random.Range(-half.y, half.y));
+                if (Mathf.Abs(pos.x) > keepOut || Mathf.Abs(pos.y) > keepOut) break;
+            }
+
+            pieces[i].RT.anchoredPosition = pos;
         }
     }
+
+    private const int ScatterAttempts = 24;
 
     // ─────────────────────────────────────────────────────────────────────
     // 드래그 → 그룹 이동 / 스냅 / 그룹 병합
@@ -419,151 +400,156 @@ public class PuzzleGame : MonoBehaviour
 
     public void OnPieceBeginDrag(PuzzlePiece p)
     {
-        if (!running) return;
-        if (!groupOf.TryGetValue(p, out var group)) return;
-        for (int i = 0; i < group.Count; i++)
-        {
-            group[i].CG.blocksRaycasts = false;
-            group[i].transform.SetAsLastSibling();
-            group[i].RT.localScale = Vector3.one * dragLiftScale; // 집어 든 느낌
-        }
+        if (!running || p.Placed) return;
+
+        p.CG.blocksRaycasts = false;
+        p.transform.SetAsLastSibling();   // 끌고 다니는 동안은 무엇보다 위에
+        p.RT.localScale = Vector3.one * dragLiftScale; // 집어 든 느낌
     }
 
     public void OnPieceDrag(PuzzlePiece p, Vector2 delta)
     {
-        if (!running) return;
-        if (!groupOf.TryGetValue(p, out var group)) return;
-        for (int i = 0; i < group.Count; i++)
-            group[i].RT.anchoredPosition += delta;
+        if (!running || p.Placed) return;
+
+        p.RT.anchoredPosition += delta;
     }
 
     public void OnPieceEndDrag(PuzzlePiece p)
     {
-        if (!running) return;
-        if (!groupOf.TryGetValue(p, out var group)) return;
-        int sizeBefore = group.Count;
-        for (int i = 0; i < group.Count; i++)
-            group[i].CG.blocksRaycasts = true;
+        if (!running || p.Placed) return;
 
-        TrySnap(p); // group(List) 내부 항목이 그대로 병합되어 갱신됨 (같은 리스트 인스턴스)
+        p.CG.blocksRaycasts = true;
+        p.RT.localScale = Vector3.one;    // 들어올림 스케일 원복
 
-        for (int i = 0; i < group.Count; i++)
-            group[i].RT.localScale = Vector3.one; // 들어올림 스케일 원복
-
-        if (group.Count > sizeBefore)
-            TriggerSnapPunch(group);
+        Vector2 slot = SlotPosition(p);
+        float radius = SnapRadius();
+        if ((p.RT.anchoredPosition - slot).sqrMagnitude <= radius * radius) PlacePiece(p, slot, true);
 
         UpdateProgressUI();
 
-        // 모든 조각이 하나의 그룹이면 성공
-        if (pieces.Count > 0 && groupOf[pieces[0]].Count == pieces.Count)
-            Succeed();
+        if (pieces.Count > 0 && placedCount >= pieces.Count) Succeed();
     }
 
-    // 인접 격자 오프셋 (상/하/좌/우 + 대각선 4방향, 총 8칸)
-    private static readonly Vector2Int[] NeighborOffsets =
+    // 판 위에서 이 조각이 있어야 할 자리. 판은 놀이 영역 한가운데(0,0)에 놓인다.
+    private Vector2 SlotPosition(PuzzlePiece piece)
     {
-        new Vector2Int(1, 0),  new Vector2Int(-1, 0),
-        new Vector2Int(0, 1),  new Vector2Int(0, -1),
-        new Vector2Int(1, 1),  new Vector2Int(1, -1),
-        new Vector2Int(-1, 1), new Vector2Int(-1, -1),
-    };
+        float half = gridN * currentPieceSize * 0.5f;
+        return new Vector2(
+            -half + (piece.gridCol + 0.5f) * currentPieceSize,
+             half - (piece.gridRow + 0.5f) * currentPieceSize);
+    }
 
-    // 드래그된 조각의 그룹과 격자상 인접한 조각만 검사 → 위치 정합 시 병합.
-    // pieceByGrid로 O(1) 이웃 조회 (전체 조각 스캔 대신).
-    // 한 번 병합되면 새 그룹으로 다시 검사 (체인 스냅 지원).
-    private void TrySnap(PuzzlePiece dragged)
+    // 조각이 클수록 판정도 넉넉해야 한다. Easy(조각 150px)에서 25px만 허용하면
+    // 눈으로는 제자리인데 안 붙는 일이 잦다.
+    private float SnapRadius()
     {
-        float snapSqr = pieceSnapDistance * pieceSnapDistance;
-        bool snapped;
-        do
-        {
-            snapped = false;
-            var myGroup = groupOf[dragged];
-            int myCount = myGroup.Count;
+        return Mathf.Max(pieceSnapDistance, currentPieceSize * snapRadiusRatio);
+    }
 
-            for (int a = 0; a < myCount && !snapped; a++)
-            {
-                PuzzlePiece my = myGroup[a];
-                Vector2 myPos = my.RT.anchoredPosition;
-                int myCol = my.gridCol;
-                int myRow = my.gridRow;
+    // countsTowardGoal이 false면 처음부터 맞춰져 있던 배경 조각이다. 자리에 굳히기만 하고
+    // 진행률이나 성공 판정은 건드리지 않는다. "팝" 연출도 넣지 않는다 — 플레이어가 한 일이 아니다.
+    private void PlacePiece(PuzzlePiece piece, Vector2 slot, bool countsTowardGoal)
+    {
+        // 판으로 옮겨 붙인다. 판은 자기 캔버스라 여기 들어온 조각은 남은 조각을 끌 때
+        // 다시 배치되지 않는다. 판이 놀이 영역 한가운데라 자리 좌표는 그대로 통한다.
+        // 빈칸보다 뒤에 붙으므로 자연히 그 위에 그려진다.
+        if (board != null) piece.transform.SetParent(board, false);
+        piece.RT.anchoredPosition = slot;
+        piece.MarkPlaced();
 
-                var candidates = logicalNeighbors[my];
-                for (int c = 0; c < candidates.Count; c++)
-                {
-                    PuzzlePiece other = candidates[c];
-                    var otherGroup = groupOf[other];
-                    if (otherGroup == myGroup) continue;
+        // 채운 칸은 눌러 둔다. 남은 빈칸만 밝게 보여야 어디가 비었는지 한눈에 들어온다.
+        if (slotOf.TryGetValue(piece, out Image marker) && marker != null) marker.color = slotFilledColor;
 
-                    float dxPx = (other.gridCol - myCol) * currentPieceSize;
-                    float dyPx = -(other.gridRow - myRow) * currentPieceSize;
-                    Vector2 otherPos = other.RT.anchoredPosition;
-                    float diffX = (otherPos.x - myPos.x) - dxPx;
-                    float diffY = (otherPos.y - myPos.y) - dyPx;
+        if (!countsTowardGoal) return;
 
-                    if (diffX * diffX + diffY * diffY <= snapSqr)
-                    {
-                        // other 그룹 전체를 정합 위치로 평행이동
-                        Vector2 snapDelta = new Vector2(myPos.x + dxPx - otherPos.x,
-                                                        myPos.y + dyPx - otherPos.y);
-                        int otherCount = otherGroup.Count;
-                        for (int k = 0; k < otherCount; k++)
-                            otherGroup[k].RT.anchoredPosition += snapDelta;
-
-                        // 그룹 병합 — otherGroup → myGroup
-                        for (int k = 0; k < otherCount; k++)
-                        {
-                            myGroup.Add(otherGroup[k]);
-                            groupOf[otherGroup[k]] = myGroup;
-                        }
-
-                        snapped = true;
-                        break;
-                    }
-                }
-            }
-        }
-        while (snapped);
+        placedCount++;
+        punchTimers[piece] = snapPunchDuration;
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // 완성 그림 미리보기 (조각들 뒤에 흐릿하게 표시)
+    // 가운데 판 (조각이 들어갈 빈칸)
     // ─────────────────────────────────────────────────────────────────────
 
-    private void UpdateReferenceGhost()
+    // 실제로 만들어진 조각 하나마다 빈칸을 하나씩 깐다.
+    //
+    // 배경만 있는 칸은 처음부터 맞춰져 있으므로 빈칸을 만들지 않는다. 그래서 빈칸들이 모여
+    // 그리는 윤곽이 곧 맞춰야 할 그림의 형태가 된다 — 완성 그림을 통째로 깔아 두는 것보다
+    // "어디를 채워야 하는지"가 분명하고, 어느 조각이 어디로 가는지는 직접 찾아야 한다.
+    private void BuildBoard()
     {
-        if (referenceGhost == null)
+        if (board == null)
         {
-            var go = new GameObject("ReferenceGhost", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-            go.transform.SetParent(playArea, false);
-            referenceGhost = go.GetComponent<Image>();
-            referenceGhost.raycastTarget = false;
-            referenceGhost.preserveAspect = true;
-
-            var rt = (RectTransform)go.transform;
-            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-            rt.pivot = new Vector2(0.5f, 0.5f);
+            // 판은 자기 캔버스를 가진다. 빈칸과 이미 맞춘 조각은 더 이상 움직이지 않으므로,
+            // 손에 든 조각을 끌 때 함께 다시 배치될 이유가 없다. Hell 난이도에서 이쪽이 200장을 넘는다.
+            // 안에 든 것들은 클릭을 받지 않으니 GraphicRaycaster는 달지 않는다.
+            var root = new GameObject("Board", typeof(RectTransform), typeof(Canvas));
+            root.transform.SetParent(playArea, false);
+            board = (RectTransform)root.transform;
+            board.anchorMin = board.anchorMax = new Vector2(0.5f, 0.5f);
+            board.pivot = new Vector2(0.5f, 0.5f);
         }
 
-        referenceGhost.sprite = sourceSprite;
-        referenceGhost.color = new Color(1f, 1f, 1f, referenceGhostAlpha);
+        ClearSlots();
+
         float side = gridN * currentPieceSize;
-        var ghostRt = (RectTransform)referenceGhost.transform;
-        ghostRt.sizeDelta = new Vector2(side, side);
-        ghostRt.anchoredPosition = Vector2.zero;
-        ghostRt.SetAsFirstSibling(); // 조각들보다 뒤에 표시
+        board.sizeDelta = new Vector2(side, side);
+        board.anchoredPosition = Vector2.zero;
+
+        // 판은 조각들보다 뒤, 검은 배경보다는 앞에 있어야 한다.
+        // 놀이 영역에는 화면을 통째로 덮는 불투명한 BlackBG가 자식으로 놓여 있어서
+        // 맨 앞 형제로 보내면 판이 그 뒤로 숨는다. 맨 뒤로 보낸 다음 조각들을 그 위로 올린다.
+        board.SetAsLastSibling();
+        for (int i = 0; i < pieces.Count; i++)
+            pieces[i].transform.SetAsLastSibling();
+
+        // 칸끼리 조금씩 띄워야 격자가 눈에 들어온다. 딱 붙이면 한 덩어리로 보인다.
+        float markerSize = Mathf.Max(4f, currentPieceSize - slotInset * 2f);
+        for (int i = 0; i < pieces.Count; i++)
+        {
+            PuzzlePiece piece = pieces[i];
+            Image marker = CreateSlotMarker(piece);
+
+            RectTransform rt = marker.rectTransform;
+            rt.sizeDelta = new Vector2(markerSize, markerSize);
+            rt.anchoredPosition = SlotPosition(piece);
+
+            slotOf[piece] = marker;
+        }
+
+        // 배경 조각은 빈칸을 만들지 않고 곧장 제자리에 굳힌다. 이미 맞춰진 자리이므로
+        // 진행률에도 성공 판정에도 넣지 않는다.
+        for (int i = 0; i < backgroundPieces.Count; i++)
+            PlacePiece(backgroundPieces[i], SlotPosition(backgroundPieces[i]), false);
+    }
+
+    private Image CreateSlotMarker(PuzzlePiece piece)
+    {
+        var go = new GameObject($"Slot_{piece.gridCol}_{piece.gridRow}",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        go.transform.SetParent(board, false);
+
+        var image = go.GetComponent<Image>();
+        // 빈칸은 보여주기만 한다. 레이캐스트를 받으면 그 위에 놓인 조각을 집을 수 없다.
+        image.raycastTarget = false;
+        image.color = slotColor;
+
+        var rt = image.rectTransform;
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        return image;
+    }
+
+    private void ClearSlots()
+    {
+        if (board != null)
+            for (int i = board.childCount - 1; i >= 0; i--) Destroy(board.GetChild(i).gameObject);
+
+        slotOf.Clear();
     }
 
     // ─────────────────────────────────────────────────────────────────────
     // 스냅 "팝" 애니메이션
     // ─────────────────────────────────────────────────────────────────────
-
-    private void TriggerSnapPunch(List<PuzzlePiece> group)
-    {
-        for (int i = 0; i < group.Count; i++)
-            punchTimers[group[i]] = snapPunchDuration;
-    }
 
     private void UpdateSnapPunches()
     {
@@ -626,15 +612,7 @@ public class PuzzleGame : MonoBehaviour
     {
         if (progressText == null) return;
 
-        int total = pieces.Count;
-        int maxGroup = 0;
-        for (int i = 0; i < pieces.Count; i++)
-        {
-            int c = groupOf[pieces[i]].Count;
-            if (c > maxGroup) maxGroup = c;
-        }
-
-        progressText.text = $"{maxGroup} / {total}";
+        progressText.text = $"{placedCount} / {pieces.Count}";
         progressText.transform.SetAsLastSibling();
     }
 

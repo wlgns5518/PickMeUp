@@ -8,8 +8,9 @@ OcclusionCullingSettings:
     smallestOccluder: 5
     smallestHole: 0.25
     backfaceThreshold: 100
-  m_SceneGUID: 00000000000000000000000000000000
-  m_OcclusionCullingData: {fileID: 0}
+  m_SceneGUID: 99c9720ab356a0642a771bea13969a05
+  m_OcclusionCullingData: {fileID: 36300000, guid: 6ddce0c8e69bc854f8c0fa5f0f7b17ca,
+    type: 2}
 --- !u!104 &2
 RenderSettings:
   m_ObjectHideFlags: 0
@@ -1286,7 +1287,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &156220772
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1303,7 +1304,7 @@ MonoBehaviour:
     type: 3}
   cardParent: {fileID: 1051653898}
   generator: {fileID: 1277185473}
-  spawnCountOnStart: 1
+  spawnCountOnStart: 0
 --- !u!4 &156220773
 Transform:
   m_ObjectHideFlags: 0
@@ -2032,7 +2033,8 @@ MonoBehaviour:
   battleSceneName: Floor1~9
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   visibleFloorCount: 9
-  panelPadding: {x: 24, y: 20}
+  panelPadding: {x: 30, y: 26}
+  floorColumns: 3
   openOnStart: 0
   bannerSprite: {fileID: 21300000, guid: 3b60df34a4731f345a301361d210e989, type: 3}
   bannerWidth: 900
@@ -8686,6 +8688,61 @@ MonoBehaviour:
   m_stampJitter: 0.25
   m_stampWidth: 100
   m_stampHeight: 100
+--- !u!1 &448008416
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 448008418}
+  - component: {fileID: 448008417}
+  m_Layer: 0
+  m_Name: SynthesisUI
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &448008417
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 448008416}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: df3851e8f400c604789b24262251ba2a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SynthesisUI
+  roster: {fileID: 11400000, guid: 0d619bff89015f24f9a394e847a2bc66, type: 2}
+  cardPrefab: {fileID: -5443837647192553864, guid: e426b271cba2d234b97760ca6340515e,
+    type: 3}
+  koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
+  openOnStart: 0
+  bannerSprite: {fileID: 21300000, guid: 3b60df34a4731f345a301361d210e989, type: 3}
+  bannerWidth: 900
+  screenMargin: 40
+  cardSpacing: 14
+  maxSlotCardScale: 1
+  maxRosterCardScale: 0.5
+--- !u!4 &448008418
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 448008416}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &594548053
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -14610,6 +14667,56 @@ MonoBehaviour:
   m_drawWorldDesignerRulers: 1
   m_drawWorldDesignerDensityViz: 0
   m_autoStampDensityVisualizationTimeStamp: 0
+--- !u!1 &842084880
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 842084882}
+  - component: {fileID: 842084881}
+  m_Layer: 0
+  m_Name: SummonUI
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &842084881
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 842084880}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c328e2ee7af7eec4d9b40f2e0fe7f875, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SummonUI
+  cardSpawner: {fileID: 156220772}
+  koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
+  panelPadding: {x: 36, y: 30}
+  openOnStart: 0
+  bannerSprite: {fileID: 21300000, guid: 3b60df34a4731f345a301361d210e989, type: 3}
+  bannerWidth: 900
+--- !u!4 &842084882
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 842084880}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &859159285
 GameObject:
   m_ObjectHideFlags: 0
@@ -15298,12 +15405,16 @@ MonoBehaviour:
   timeLimit: 60
   hellPieceSize: 50
   pieceSnapDistance: 30
-  autoStart: 0
-  skipEmptyPieces: 1
+  snapRadiusRatio: 0.4
+  scatterMargin: 20
+  autoStart: 1
+  preplaceBackgroundPieces: 1
   alphaThreshold: 0.05
   minOpaqueRatio: 0.05
   timerText: {fileID: 707157850}
-  referenceGhostAlpha: 0.14
+  slotColor: {r: 1, g: 1, b: 1, a: 0.13}
+  slotFilledColor: {r: 1, g: 1, b: 1, a: 0.03}
+  slotInset: 2
   pieceShadowOffset: {x: 4, y: -4}
   pieceShadowColor: {r: 0, g: 0, b: 0, a: 0.35}
   dragLiftScale: 1.08
@@ -21198,6 +21309,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1140965369}
+  - component: {fileID: 1140965370}
   m_Layer: 5
   m_Name: PuzzleRoot
   m_TagString: Untagged
@@ -21226,6 +21338,20 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &1140965370
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1140965368}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9e45211cbf021794ca1ac00dcaff6410, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MiniGameScreen
+  worldCamera: {fileID: 0}
+  hideWorld: 1
 --- !u!1 &1152705542
 GameObject:
   m_ObjectHideFlags: 0
@@ -45869,6 +45995,8 @@ MonoBehaviour:
     type: 3}
   maxCardScale: 0.55
   bannerSprite: {fileID: 21300000, guid: 3b60df34a4731f345a301361d210e989, type: 3}
+  showOpenButton: 0
+  floorSelect: {fileID: 247532114}
   screenMargin: 30
   cardSpacing: 14
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
@@ -58909,6 +59037,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2102741767}
+  - component: {fileID: 2102741768}
   m_Layer: 5
   m_Name: RhythmRoot
   m_TagString: Untagged
@@ -58939,6 +59068,20 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &2102741768
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2102741766}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9e45211cbf021794ca1ac00dcaff6410, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MiniGameScreen
+  worldCamera: {fileID: 0}
+  hideWorld: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -58960,3 +59103,5 @@ SceneRoots:
   - {fileID: 1611576143}
   - {fileID: 1280484789}
   - {fileID: 1663409355}
+  - {fileID: 842084882}
+  - {fileID: 448008418}

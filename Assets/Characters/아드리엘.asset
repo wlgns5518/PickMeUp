@@ -17,9 +17,9 @@ MonoBehaviour:
   portrait: {fileID: 21300000, guid: 9090bf5a562024b4f93af3fe0c37a3e4, type: 3}
   portraitAssetPath: "Assets/CharacterImage/\uC544\uB4DC\uB9AC\uC5D8_20260513_192516_8003.png"
   starCount: 1
-  level: 6
-  exp: 7
-  expToNext: 35
+  level: 10
+  exp: 0
+  expToNext: 55
   job: 7
   constitution:
     name: "\uC628\uD654"
@@ -28,10 +28,10 @@ MonoBehaviour:
     vitalityGrowth: 1.3329381
     agilityGrowth: 1.0268286
   stats:
-    strength: 14
-    intelligence: 12
-    vitality: 14
-    agility: 12
+    strength: 18
+    intelligence: 16
+    vitality: 18
+    agility: 16
   hiddenStats:
     diligence: 4
     stamina: 5
@@ -44,4 +44,5 @@ MonoBehaviour:
   offHand: 1
   mainHandWeapon: {fileID: 11400000, guid: d68ea7ae7dd377b4ab5f503924096027, type: 2}
   offHandWeapon: {fileID: 11400000, guid: ea8e0509cc2f9574b8fe2251517cd3ab, type: 2}
+  skillIds: []
   friendships: []

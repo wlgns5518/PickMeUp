@@ -5,7 +5,8 @@ using UnityEngine.UI;
 
 // 이번 전투에 내보낼 파티를 짜는 화면.
 //
-// 평소에는 화면 아래 버튼 하나만 떠 있고, 누르면 편성 창이 화면을 덮는다.
+// 마을의 시공의 틈(FacilityGate)을 누르면 열린다. 원정을 떠나는 자리이므로 누구를 데려갈지
+// 고르는 것도 거기서 한다. 화면 아래 여는 버튼은 showOpenButton으로 되살릴 수 있다.
 // 창 안에서는 보유 영웅 카드를 위쪽 출전 슬롯으로 끌어다 놓아 파티를 만든다.
 // 슬롯 밖 허공에 놓거나 목록으로 되돌리면 빠지고, 슬롯끼리 끌면 순서가 바뀐다.
 // 카드를 한 번 누르는 방식도 그대로 둔다 — 드래그는 자리를 고를 때, 클릭은 그냥 넣고 뺄 때 편하다.
@@ -13,7 +14,7 @@ using UnityEngine.UI;
 // FloorSelectUI와 같이 캔버스부터 코드에서 만든다.
 // 카드 수는 로스터에 달려 있어서, 씬에 미리 깔아두면 캐릭터가 늘 때마다 씬을 다시 만져야 한다.
 [DisallowMultipleComponent]
-public class DeckBuildUI : MonoBehaviour
+public class DeckBuildUI : MonoBehaviour, ICardDragHost, IFacilityWindow
 {
     [Header("Roster")]
     [Tooltip("보유 캐릭터 전원의 명단. 여기 있는 캐릭터가 카드로 나열된다.")]
@@ -32,6 +33,14 @@ public class DeckBuildUI : MonoBehaviour
     [Header("Banner")]
     [Tooltip("안내 문구가 올라갈 장식 배너(Assets/Image/UI.png). 비워두면 단색 판으로 그린다.")]
     [SerializeField] private Sprite bannerSprite;
+
+    [Header("Open Button")]
+    [Tooltip("화면 아래에 편성 창을 여는 버튼을 둔다. 꺼두면 마을의 시공의 틈을 눌러야만 열린다.")]
+    [SerializeField] private bool showOpenButton;
+
+    [Header("Depart")]
+    [Tooltip("편성을 마치고 층을 고를 창. 비워두면 씬에서 찾는다.")]
+    [SerializeField] private FloorSelectUI floorSelect;
 
     [Header("Layout")]
     [Tooltip("편성 창과 화면 가장자리 사이 여백.")]
@@ -54,9 +63,10 @@ public class DeckBuildUI : MonoBehaviour
     private const float SectionLabelHeight = 28f;
     private const float BannerFallbackAspect = 2.46f;
     private const float OpenButtonWidth = 360f;
+    private const float DepartWidth = 180f;
 
     private static readonly Vector2 ReferenceResolution = new Vector2(1920f, 1080f);
-    private static readonly Vector2 FallbackCardSize = new Vector2(300f, 450f);
+    private static readonly Vector2 FallbackCardSize = CardLayout.CardSize;
     private static readonly Color SelectedRosterFrame = new Color(0.38f, 0.31f, 0.12f, 0.96f);
 
     // 카드 한 장의 겉모습. 출전 슬롯은 카드를 만들어 두고 주인만 바꿔 끼우므로
@@ -96,7 +106,7 @@ public class DeckBuildUI : MonoBehaviour
     {
         public Image Frame;
         public CardVisual Card;
-        public DeckDragSource Drag;
+        public CardDragSource Drag;
         public TMP_Text EmptyLabel;
     }
 
@@ -126,10 +136,21 @@ public class DeckBuildUI : MonoBehaviour
     private readonly List<PartySlot> partySlots = new List<PartySlot>();
     private readonly List<RosterSlot> rosterSlots = new List<RosterSlot>();
 
+    // 카드를 몇 장 깔아 두고 만들었는지. 보유 인원이 여기서 달라지면 슬롯을 새로 깔아야 한다.
+    private int builtRosterCount = -1;
+    // 창이 닫혀 있는 동안 인원이 바뀌었다. 다음에 열 때 다시 깐다.
+    private bool rosterDirty;
+
     public bool IsOpen => popupRoot != null && popupRoot.activeSelf;
 
     private void Awake()
     {
+        // 로스터 에셋은 시작 명단이다. RosterBootstrap이 없는 씬에서도 카드가 나오도록 여기서도 얹는다.
+        // Seed는 이미 있는 캐릭터를 건너뛰므로 두 번 불려도 결과가 같다.
+        // 창을 다시 지을 때(EnsureBuilt)가 아니라 여기서만 얹는 이유는, 합성으로 사라진 시작 멤버가
+        // 다시 살아 돌아오면 안 되기 때문이다.
+        if (roster != null) OwnedRoster.Seed(roster.Members);
+
         EnsureBuilt();
         SetOpen(false);
     }
@@ -138,12 +159,42 @@ public class DeckBuildUI : MonoBehaviour
     {
         EnsureBuilt();
         PartyDeck.Changed += Refresh;
+        OwnedRoster.Changed += HandleRosterChanged;
         Refresh();
     }
 
     private void OnDisable()
     {
         PartyDeck.Changed -= Refresh;
+        OwnedRoster.Changed -= HandleRosterChanged;
+    }
+
+    // 소환으로 늘거나 합성으로 줄면 칸 수도 카드 크기도 달라진다. 인원이 그대로면 다시 그리기만 한다.
+    private void HandleRosterChanged()
+    {
+        if (builtRosterCount == OwnedRoster.Count)
+        {
+            Refresh();
+            return;
+        }
+
+        // 인원이 바뀌면 칸 수도 카드 크기도 달라져 슬롯을 새로 깔아야 한다. 다만 창이 닫혀 있으면
+        // 아무도 보지 않는 화면을 다시 짓는 셈이다 — 10연차 소환은 한 명씩 열 번 늘어나므로
+        // 그때마다 캔버스를 통째로 다시 지으면 그대로 멈춤이 된다. 다음에 열 때로 미룬다.
+        rosterDirty = true;
+        if (IsOpen) RebuildRoster();
+    }
+
+    private void RebuildRoster()
+    {
+        rosterDirty = false;
+
+        bool wasOpen = IsOpen;
+        // canvas를 놓으면 EnsureBuilt가 남아 있는 캔버스를 치우고 처음부터 다시 만든다.
+        canvas = null;
+        EnsureBuilt();
+        Refresh();
+        SetOpen(wasOpen);
     }
 
     // 전투에서 돌아오면 편성에 죽은 캐릭터가 남아 있을 수 있다.
@@ -164,6 +215,7 @@ public class DeckBuildUI : MonoBehaviour
     public void Show()
     {
         EnsureBuilt();
+        if (rosterDirty) RebuildRoster();
         Refresh();
         SetOpen(true);
         // 창을 열 때마다 조작법을 한 번 알려준다. 누르거나 2초가 지나면 사라진다.
@@ -181,6 +233,28 @@ public class DeckBuildUI : MonoBehaviour
     {
         if (IsOpen) Hide();
         else Show();
+    }
+
+    // 편성을 마치고 층 선택으로 넘어간다. 편성 창은 닫는다 — 두 창이 겹쳐 떠 있으면
+    // 어느 쪽이 지금 조작 대상인지 알 수 없다.
+    private void Depart()
+    {
+        if (floorSelect == null) floorSelect = FindAnyObjectByType<FloorSelectUI>(FindObjectsInactive.Include);
+        if (floorSelect == null)
+        {
+            announcement?.Show("층 선택 창을 찾지 못했습니다.");
+            return;
+        }
+
+        // 빈 파티로 넘어가면 층을 고른 뒤에야 막혀 되돌아와야 한다. 여기서 먼저 알린다.
+        if (PartyDeck.Count == 0)
+        {
+            announcement?.Show($"{PartyDeck.ActiveIndex + 1}파티에 출전할 영웅이 없습니다.\n먼저 영웅을 편성해주세요.");
+            return;
+        }
+
+        Hide();
+        floorSelect.Show();
     }
 
     private void SetOpen(bool open)
@@ -213,7 +287,7 @@ public class DeckBuildUI : MonoBehaviour
         return rect;
     }
 
-    public void HandleDrop(DeckDragSource source, int slotIndex)
+    public void HandleDrop(CardDragSource source, int slotIndex)
     {
         if (source == null || source.Character == null) return;
 
@@ -228,6 +302,15 @@ public class DeckBuildUI : MonoBehaviour
 
         // 보유 목록 위에 떨어뜨렸다 — 출전에서 빼는 동작.
         if (source.SlotIndex >= 0) PartyDeck.Remove(source.Character);
+    }
+
+    // 슬롯 밖 허공에 놓으면 출전에서 뺀다. 목록으로 되돌리려고 정확히 조준하게 만들 이유가 없다.
+    // 보유 목록에서 집어 온 카드라면 아무 일도 일어나지 않는다.
+    public void HandleDropOutside(CardDragSource source)
+    {
+        if (source == null || source.SlotIndex < 0) return;
+
+        RemoveFromParty(source.SlotIndex);
     }
 
     public void RemoveFromParty(int slotIndex)
@@ -326,6 +409,9 @@ public class DeckBuildUI : MonoBehaviour
     // 평소에 화면 아래에 떠 있는 버튼. 이것만 누르면 편성 창이 열린다.
     private void BuildOpenButton()
     {
+        // 여는 자리는 마을의 시공의 틈이다. 화면에 늘 떠 있는 버튼은 기본으로 두지 않는다.
+        if (!showOpenButton) return;
+
         float height = OpenButtonWidth / BannerAspect();
 
         RectTransform button;
@@ -392,11 +478,13 @@ public class DeckBuildUI : MonoBehaviour
 
     private void BuildPanelContent(RectTransform panel, Vector2 panelSize)
     {
-        IReadOnlyList<CharacterSO> members = roster != null ? roster.Members : null;
-        if (roster == null)
+        // 명단은 에셋이 아니라 런타임 쪽(OwnedRoster)이 정답이다. 소환으로 늘고 합성으로 줄기 때문이다.
+        IReadOnlyList<CharacterSO> members = OwnedRoster.Members;
+        if (roster == null && members.Count == 0)
             Debug.LogWarning("[DeckBuildUI] 로스터 에셋이 지정되지 않아 보여줄 카드가 없습니다.", this);
 
-        int rosterCount = members != null ? members.Count : 0;
+        int rosterCount = members.Count;
+        builtRosterCount = rosterCount;
         int capacity = Mathf.Max(1, deckCapacity);
         float availableWidth = panelSize.x - PanelPadding * 2f;
 
@@ -460,6 +548,18 @@ public class DeckBuildUI : MonoBehaviour
         SetTopLeft(closeBackground.rectTransform, new Vector2(HeaderHeight, HeaderHeight),
             new Vector2(PanelPadding + width - HeaderHeight, -y));
         AttachButton(closeBackground, Hide);
+
+        // 편성을 마치면 여기서 바로 층을 고른다. 창을 닫고 마을에서 다시 시공의 틈을 눌러야 하면
+        // 편성 → 출전이 한 흐름으로 이어지지 않는다.
+        Image departBackground = HudFactory.CreateImage(panel, "Depart", SelectedRosterFrame);
+        departBackground.raycastTarget = true;
+        SetTopLeft(departBackground.rectTransform, new Vector2(DepartWidth, HeaderHeight),
+            new Vector2(PanelPadding + width - HeaderHeight - 10f - DepartWidth, -y));
+        AttachButton(departBackground, Depart);
+
+        TMP_Text departLabel = HudFactory.CreateText(departBackground.rectTransform, "Label", resolvedFont, 26f, BattleHudPalette.Mvp);
+        Stretch(departLabel.rectTransform);
+        departLabel.text = "출전하기";
         TMP_Text closeLabel = HudFactory.CreateText(closeBackground.rectTransform, "Label", resolvedFont, 24f, BattleHudPalette.PanelText);
         Stretch(closeLabel.rectTransform);
         // 곱셈 기호(U+2715 등)는 NotoSansKR 아틀라스에 없어 네모로 그려진다. 알파벳 X를 쓴다.
@@ -479,7 +579,7 @@ public class DeckBuildUI : MonoBehaviour
             frame.raycastTarget = true;
             SetTopLeft(frame.rectTransform, slotSize, new Vector2(i * (slotSize.x + cardSpacing), 0f));
 
-            frame.gameObject.AddComponent<DeckDropTarget>().Bind(this, i);
+            frame.gameObject.AddComponent<CardDropTarget>().Bind(this, i);
 
             TMP_Text empty = HudFactory.CreateText(frame.rectTransform, "Empty", resolvedFont, 20f, BattleHudPalette.Dying);
             Stretch(empty.rectTransform);
@@ -488,7 +588,7 @@ public class DeckBuildUI : MonoBehaviour
             CardVisual card = BuildCard(frame.rectTransform, null);
             CenterInSlot(card.Rect, partyCardScale);
 
-            var drag = frame.gameObject.AddComponent<DeckDragSource>();
+            var drag = frame.gameObject.AddComponent<CardDragSource>();
             drag.Bind(this, null, i);
 
             partySlots.Add(new PartySlot
@@ -508,7 +608,7 @@ public class DeckBuildUI : MonoBehaviour
         Image area = HudFactory.CreateImage(panel, "RosterArea", new Color(1f, 1f, 1f, 0.03f));
         area.raycastTarget = true;
         SetTopLeft(area.rectTransform, new Vector2(width, height), new Vector2(PanelPadding, -y));
-        area.gameObject.AddComponent<DeckDropTarget>().Bind(this, DeckDragSource.RosterSlot);
+        area.gameObject.AddComponent<CardDropTarget>().Bind(this, CardDragSource.RosterSlot);
 
         if (count == 0)
         {
@@ -544,24 +644,7 @@ public class DeckBuildUI : MonoBehaviour
     // 주어진 넓이에 카드 count장을 가장 크게 넣을 수 있는 배율과 열 수를 찾는다.
     private float FitCards(int count, Vector2 area, out int columns)
     {
-        columns = Mathf.Max(1, count);
-        float best = 0f;
-
-        for (int cols = 1; cols <= count; cols++)
-        {
-            int rows = Mathf.CeilToInt(count / (float)cols);
-            float cellWidth = (area.x - (cols - 1) * cardSpacing) / cols - FramePadding * 2f;
-            float cellHeight = (area.y - (rows - 1) * cardSpacing) / rows - FramePadding * 2f;
-            if (cellWidth <= 0f || cellHeight <= 0f) continue;
-
-            float scale = Mathf.Min(cellWidth / FallbackCardSize.x, cellHeight / FallbackCardSize.y);
-            if (scale <= best) continue;
-
-            best = scale;
-            columns = cols;
-        }
-
-        return Mathf.Clamp(Mathf.Min(best, maxCardScale), 0.1f, maxCardScale);
+        return CardLayout.Fit(count, area, cardSpacing, FramePadding, maxCardScale, out columns);
     }
 
     private RosterSlot BuildRosterSlot(RectTransform parent, CharacterSO character, Vector2 slotSize, Vector2 position, int index)
@@ -576,7 +659,7 @@ public class DeckBuildUI : MonoBehaviour
         CharacterSO captured = character;
         button.onClick.AddListener(() => ToggleFromRoster(captured));
 
-        frame.gameObject.AddComponent<DeckDragSource>().Bind(this, character, DeckDragSource.RosterSlot);
+        frame.gameObject.AddComponent<CardDragSource>().Bind(this, character, CardDragSource.RosterSlot);
 
         CardVisual card = BuildCard(frame.rectTransform, character);
         CenterInSlot(card.Rect, rosterCardScale);
@@ -733,16 +816,12 @@ public class DeckBuildUI : MonoBehaviour
 
     private Vector2 SlotSize(float scale)
     {
-        return FallbackCardSize * scale + new Vector2(FramePadding * 2f, FramePadding * 2f);
+        return CardLayout.SlotSize(scale, FramePadding);
     }
 
     private static void CenterInSlot(RectTransform card, float scale)
     {
-        card.anchorMin = new Vector2(0.5f, 0.5f);
-        card.anchorMax = new Vector2(0.5f, 0.5f);
-        card.pivot = new Vector2(0.5f, 0.5f);
-        card.anchoredPosition = Vector2.zero;
-        card.localScale = Vector3.one * scale;
+        CardLayout.CenterInSlot(card, scale);
     }
 
     private float BannerAspect()
