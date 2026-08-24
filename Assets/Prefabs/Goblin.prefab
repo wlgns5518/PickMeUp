@@ -1773,7 +1773,6 @@ MonoBehaviour:
   obstacleMask:
     serializedVersion: 2
     m_Bits: 4294967295
-  alertInterval: 1
 --- !u!114 &5529877855878719790
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1866,6 +1865,8 @@ MonoBehaviour:
   skillStateName: 
   blockStateName: 
   potionStateName: 
+  healStateName: Cast
+  dodgeStateName: Dodge
   hitStateName: Hit
   deathStateName: Death
   animationFadeDuration: 0.08

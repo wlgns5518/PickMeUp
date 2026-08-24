@@ -16,7 +16,6 @@ public class MoveState : UnitBattleState
 
     public override void Update()
     {
-        if (TrySwitchToDead()) return;
         if (TrySwitchToIdleWhenNoEnemy()) return;
 
         if (TrySwitchToDetectedTarget()) return;

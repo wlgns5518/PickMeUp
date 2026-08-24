@@ -31,9 +31,26 @@ public static class StressClock
         hasStamp = true;
     }
 
+    // 기록된 시각. 0이면 아직 기록이 없다는 뜻이다.
+    public static long StampTicks => hasStamp ? stampTicks : 0L;
+
     public static void Stamp()
     {
-        stampTicks = DateTime.UtcNow.Ticks;
+        Write(DateTime.UtcNow.Ticks);
+    }
+
+    // 기록된 시각을 직접 얹는다. 세이브 파일에 담긴 정산 시각을 복원할 때 쓴다.
+    // 시각이 스트레스 값과 떨어져 보관되면(예전에는 PlayerPrefs에만 있었다) 세이브를 옮기거나
+    // 되돌렸을 때 값과 시각이 어긋나 회복이 두 번 적용되거나 아예 사라진다.
+    public static void RestoreStamp(long utcTicks)
+    {
+        if (utcTicks <= 0L) return;
+        Write(utcTicks);
+    }
+
+    private static void Write(long ticks)
+    {
+        stampTicks = ticks;
         hasStamp = true;
         PlayerPrefs.SetString(Key, stampTicks.ToString());
         PlayerPrefs.Save();

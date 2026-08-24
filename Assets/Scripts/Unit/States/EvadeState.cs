@@ -36,13 +36,23 @@ public class EvadeState : UnitBattleState
         }
 
         context.MoveTo(destination, context.Stats.runSpeed);
+
+        // 회피 모션이 있으면 그것으로 물러난다. 예전에는 늘 달리기 클립이라,
+        // 적을 마주 본 채 뒷걸음질하는 동안 앞으로 달리는 다리가 나왔다.
+        // 모션이 없는 리그(고블린)는 예전처럼 달리기로 물러난다.
+        if (context.TriggerDodge())
+        {
+            // 구르는 동안은 최소 시간을 모션 길이에 맞춘다. 모션 중간에 상태가 바뀌면
+            // 구르다 만 자세에서 공격 모션으로 튄다.
+            stateTimer = Mathf.Max(MinEvadeDuration, context.DodgeAnimationDuration);
+            return;
+        }
+
         context.SetMoveAnimation(context.Stats.runSpeed, true, false);
     }
 
     public override void Update()
     {
-        if (TrySwitchToDead()) return;
-
         if (!context.HasUsableTarget())
         {
             context.ChangeState(context.SearchState);
@@ -63,6 +73,6 @@ public class EvadeState : UnitBattleState
             return;
         }
 
-        context.ChangeState(context.IsTargetInAttackRange() ? context.AttackState : context.ChaseState);
+        ReturnToCombat();
     }
 }

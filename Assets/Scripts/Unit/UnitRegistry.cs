@@ -7,9 +7,30 @@ public static class UnitRegistry
     private static readonly List<UnitController> enemies = new List<UnitController>(32);
     private static readonly List<UnitController> neutrals = new List<UnitController>(16);
 
+    // 살아있는 유닛에 속한 콜라이더 전부. 시야 레이가 유닛 몸통을 벽으로 착각하지 않도록
+    // 걸러내는 데 쓴다. 콜라이더 참조로 직접 조회하므로 계층을 거슬러 올라갈 필요가 없다.
+    private static readonly HashSet<Collider> unitColliders = new HashSet<Collider>();
+
+    // 시야 레이의 히트를 받는 공용 버퍼. 매 판정마다 배열을 새로 만들지 않기 위해 정적으로 둔다.
+    // 한 직선 위에 이보다 많은 콜라이더가 겹치는 경우는 난전 한복판뿐이고,
+    // 그때는 "안 보인다"로 처리해 벽 너머를 보는 쪽 실수를 피한다(아래 주석 참조).
+    private static readonly RaycastHit[] lineOfSightHits = new RaycastHit[32];
+
     public static IReadOnlyList<UnitController> Allies => allies;
     public static IReadOnlyList<UnitController> Enemies => enemies;
     public static IReadOnlyList<UnitController> Neutrals => neutrals;
+
+    // 다른 정적 저장소(PartyDeck, CharacterStress...)와 같은 이유로 플레이 시작마다 비운다.
+    // 여기만 빠져 있었다: 도메인 리로드를 끄면 이전 플레이에서 파괴된 유닛이 리스트에 남고,
+    // HasLivingEnemy가 리스트 개수만 보기 때문에 아무도 없는 맵에서 계속 적을 찾아 헤매게 된다.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetOnPlay()
+    {
+        allies.Clear();
+        enemies.Clear();
+        neutrals.Clear();
+        unitColliders.Clear();
+    }
 
     // 시야 판정에 필요한 값(시야각 cos, 제곱 거리, 정규화된 전방 벡터)을 스캔 1회당 한 번만
     // 계산해두는 구조체. 후보마다 Cos/normalize를 다시 돌던 비용을 없앤다.
@@ -66,6 +87,31 @@ public static class UnitRegistry
         list.Add(unit);
     }
 
+    // 콜라이더 등록은 팀 리스트가 아니라 오브젝트 수명에 묶는다.
+    // 죽어서 레지스트리에서 빠진 시체도 여전히 씬에 서 있으므로, 팀 리스트와 함께 지워버리면
+    // 쌓인 시체가 갑자기 시야를 막는 벽이 된다.
+    public static void RegisterColliders(UnitController unit)
+    {
+        if (unit == null || unit.BodyColliders == null) return;
+
+        Collider[] colliders = unit.BodyColliders;
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            if (colliders[i] != null) unitColliders.Add(colliders[i]);
+        }
+    }
+
+    public static void UnregisterColliders(UnitController unit)
+    {
+        if (unit == null || unit.BodyColliders == null) return;
+
+        Collider[] colliders = unit.BodyColliders;
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            if (colliders[i] != null) unitColliders.Remove(colliders[i]);
+        }
+    }
+
     // 팀 리스트 직접 조회. 감정 전파처럼 "같은 팀 전원"을 훑어야 하는 곳에서 쓴다.
     public static IReadOnlyList<UnitController> GetTeam(UnitTeam team)
     {
@@ -112,13 +158,25 @@ public static class UnitRegistry
         float distance = offset.magnitude;
         if (distance <= 0.01f) return true;
 
-        if (!Physics.Raycast(origin, offset / distance, out RaycastHit hit, distance - 0.05f, obstacleMask, QueryTriggerInteraction.Ignore))
+        // Physics.Raycast는 가장 가까운 히트 하나만 돌려준다. 유닛 몸통도 마스크에 들어 있으므로
+        // (TargetScanner의 기본 obstacleMask는 ~0이다) 앞에 다른 유닛이 한 명이라도 서 있으면
+        // 그 뒤의 벽이 통째로 무시돼 "보인다"가 나왔다 — 난전에서는 거의 항상 이 경로를 탄다.
+        // 직선 위의 히트를 전부 받아서 유닛이 아닌 것이 하나라도 있으면 막힌 것으로 본다.
+        int hitCount = Physics.RaycastNonAlloc(
+            origin, offset / distance, lineOfSightHits, distance - 0.05f, obstacleMask, QueryTriggerInteraction.Ignore);
+
+        // 버퍼가 꽉 찼다면 그 너머에 벽이 더 있었는지 알 수 없다.
+        // 벽 너머를 보게 두는 쪽이 더 큰 실수이므로 막힌 것으로 처리한다.
+        if (hitCount >= lineOfSightHits.Length) return false;
+
+        for (int i = 0; i < hitCount; i++)
         {
-            return true;
+            // 유닛 몸은 시야를 막지 않는다. 정적 레벨 지오메트리(벽)만 막는다.
+            if (unitColliders.Contains(lineOfSightHits[i].collider)) continue;
+            return false;
         }
 
-        // Other units' bodies shouldn't block line of sight - only static level geometry (walls) should.
-        return hit.collider.GetComponentInParent<UnitController>() != null;
+        return true;
     }
 
     // 같은 팀에서 가장 많이 다친 유닛을 찾는다(자기 자신 포함). 서포터의 회복 대상 선정용.
@@ -152,19 +210,10 @@ public static class UnitRegistry
         return best;
     }
 
-    public static void AlertTeam(UnitController spotter, UnitController target)
-    {
-        if (!IsValidTarget(spotter, target)) return;
-
-        List<UnitController> team = GetList(spotter.Team);
-        for (int i = team.Count - 1; i >= 0; i--)
-        {
-            UnitController unit = team[i];
-            if (unit == null || unit.IsDead || !unit.isActiveAndEnabled) continue;
-
-            unit.ReceiveSharedTarget(target);
-        }
-    }
+    // 팀 전원에게 타깃을 밀어 넣던 AlertTeam은 TeamThreatBoard로 옮겼다.
+    // 알림 한 번이 팀 인원 수만큼의 호출이라 난전에서 유닛 수의 제곱으로 커졌고,
+    // 그 비용이 발견한 프레임에 통째로 몰렸다. 지금은 게시판에 쓰고(O(1)),
+    // 각 유닛이 자기 스캔 주기에 읽어 간다.
 
     public static void FindEnemiesInRange(UnitController requester, float range, List<UnitController> results)
     {

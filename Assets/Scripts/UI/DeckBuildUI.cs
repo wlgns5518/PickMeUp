@@ -97,7 +97,7 @@ public class DeckBuildUI : MonoBehaviour, ICardDragHost, IFacilityWindow
             if (NameLabel != null)
                 NameLabel.text = string.IsNullOrEmpty(character.characterName) ? character.name : character.characterName;
             if (RankLabel != null)
-                RankLabel.text = character.starCount + "성  Lv." + character.level;
+                RankLabel.text = character.starCount + "성  Lv." + character.Level;
         }
     }
 

@@ -183,15 +183,15 @@ public class CharacterBattleSpawner : MonoBehaviour
 
         var stats = new UnitStats
         {
-            maxHp = baseHp + so.stats.vitality * hpPerVitality + so.level * hpPerLevel,
-            attackDamage = baseAttackDamage + so.stats.strength,
+            maxHp = baseHp + so.Vitality * hpPerVitality + so.Level * hpPerLevel,
+            attackDamage = baseAttackDamage + so.Strength,
         };
 
         stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * job.HpMultiplier));
         stats.attackDamage = Mathf.Max(1, Mathf.RoundToInt(stats.attackDamage * job.AttackMultiplier * weapon.AttackMultiplier));
         stats.skillDamage = stats.attackDamage * 2;
 
-        stats.maxMana = Mathf.RoundToInt((baseMana + so.stats.intelligence * manaPerIntelligence) * job.ManaMultiplier);
+        stats.maxMana = Mathf.RoundToInt((baseMana + so.Intelligence * manaPerIntelligence) * job.ManaMultiplier);
 
         // 사거리: 직업 사거리에 무기 배율을 곱하되, 활처럼 무기가 강제하는 최소치가 있으면 그쪽을 따른다.
         stats.attackRange = Mathf.Max(job.AttackRange * weapon.RangeMultiplier, weapon.MinRange);
@@ -202,8 +202,8 @@ public class CharacterBattleSpawner : MonoBehaviour
         // 기본값(2.5)으로는 사거리 9짜리가 물러나도 여전히 품 안이라 계속 붙잡힌다.
         stats.evadeRange = Mathf.Max(stats.evadeRange, stats.attackRange * 0.45f);
 
-        stats.walkSpeed = (stats.walkSpeed + so.stats.agility * 0.02f) * job.SpeedMultiplier;
-        stats.runSpeed = (stats.runSpeed + so.stats.agility * 0.04f) * job.SpeedMultiplier;
+        stats.walkSpeed = (stats.walkSpeed + so.Agility * 0.02f) * job.SpeedMultiplier;
+        stats.runSpeed = (stats.runSpeed + so.Agility * 0.04f) * job.SpeedMultiplier;
 
         // 공격 속도는 쿨다운이 아니라 스킬 재사용 간격으로만 표현한다.
         // (평타 간격은 애니메이션 길이가 정하므로 여기서 건드릴 수 없다)

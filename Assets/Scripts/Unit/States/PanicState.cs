@@ -21,19 +21,9 @@ public class PanicState : UnitBattleState
 
     public override void Update()
     {
-        if (TrySwitchToDead()) return;
-
         // 붕괴는 회복되지 않으므로 여기서 영원히 머문다. 패닉/빈사는 풀릴 수 있다.
         if (context.Emotion != null && context.Emotion.IsActionBlocked) return;
 
-        if (TrySwitchToIdleWhenNoEnemy()) return;
-
-        if (!context.HasUsableTarget())
-        {
-            context.ChangeState(context.SearchState);
-            return;
-        }
-
-        context.ChangeState(context.IsTargetInAttackRange() ? context.AttackState : context.ChaseState);
+        ReturnToCombat();
     }
 }

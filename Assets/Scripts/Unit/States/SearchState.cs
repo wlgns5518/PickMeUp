@@ -21,7 +21,6 @@ public class SearchState : UnitBattleState
 
     public override void Update()
     {
-        if (TrySwitchToDead()) return;
         if (TrySwitchToIdleWhenNoEnemy()) return;
 
         if (TrySwitchToTarget()) return;

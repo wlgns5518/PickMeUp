@@ -791,7 +791,7 @@ public class SynthesisUI : MonoBehaviour, ICardDragHost, IFacilityWindow
     {
         Builder.Append(string.IsNullOrEmpty(character.characterName) ? "이름 없음" : character.characterName);
         Builder.Append('\n');
-        Builder.Append("Lv.").Append(character.level)
+        Builder.Append("Lv.").Append(character.Level)
             .Append("  ").Append(character.starCount).Append('성')
             .Append("  ").Append(CharacterRules.Korean(character.job));
     }
@@ -800,11 +800,12 @@ public class SynthesisUI : MonoBehaviour, ICardDragHost, IFacilityWindow
     {
         if (character.SkillCount == 0) return "(없음)";
 
+        IReadOnlyList<string> skills = character.Skills;
         var list = new StringBuilder(64);
-        for (int i = 0; i < character.skillIds.Count; i++)
+        for (int i = 0; i < skills.Count; i++)
         {
             if (i > 0) list.Append(", ");
-            list.Append(SkillCatalog.NameOf(character.skillIds[i]));
+            list.Append(SkillCatalog.NameOf(skills[i]));
         }
         return list.ToString();
     }

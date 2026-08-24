@@ -337,9 +337,9 @@ public class BattleManager : MonoBehaviour
             }
 
             reward.ExpGained = exp;
-            reward.LevelBefore = reward.Character.level;
+            reward.LevelBefore = reward.Character.Level;
             reward.Character.GainExp(exp);
-            reward.LevelAfter = reward.Character.level;
+            reward.LevelAfter = reward.Character.Level;
         }
     }
 }

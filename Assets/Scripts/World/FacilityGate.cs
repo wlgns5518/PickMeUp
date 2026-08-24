@@ -38,6 +38,7 @@ public class FacilityGate : MonoBehaviour, IPointerClickHandler, IPointerEnterHa
             case VillageBlockout.Kind.Summoning:
             case VillageBlockout.Kind.Synthesis:
             case VillageBlockout.Kind.Rift:
+            case VillageBlockout.Kind.EquipmentWorkshop:
                 return true;
             default:
                 return false;
@@ -84,6 +85,8 @@ public class FacilityGate : MonoBehaviour, IPointerClickHandler, IPointerEnterHa
             // 시공의 틈은 원정을 떠나는 자리다. 누구를 데려갈지부터 고른다.
             case VillageBlockout.Kind.Rift:
                 return FindAnyObjectByType<DeckBuildUI>(FindObjectsInactive.Include);
+            case VillageBlockout.Kind.EquipmentWorkshop:
+                return FindAnyObjectByType<EquipmentWorkshopUI>(FindObjectsInactive.Include);
             default:
                 return null;
         }

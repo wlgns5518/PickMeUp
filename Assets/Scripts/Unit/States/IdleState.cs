@@ -18,8 +18,6 @@ public class IdleState : UnitBattleState
 
     public override void Update()
     {
-        if (TrySwitchToDead()) return;
-
         if (UnitRegistry.HasLivingEnemy(context))
         {
             context.ChangeState(context.SearchState);

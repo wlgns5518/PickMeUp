@@ -59,8 +59,12 @@ public class UnitController : MonoBehaviour
     [SerializeField, Min(1)] private int attackComboLength = 3;
     [SerializeField] private string skillStateName = "Kick";
     [SerializeField] private string blockStateName = "Block";
-    [Tooltip("회복약을 마시는 모션. 비워두면 Idle로 대체된다.")]
-    [SerializeField] private string potionStateName = "";
+    [Tooltip("회복약을 마시는 모션. 비워두거나 애니메이터에 없으면 Idle로 대체된다.")]
+    [SerializeField] private string potionStateName = "Potion";
+    [Tooltip("아군을 치료할 때의 시전 모션. 비워두거나 애니메이터에 없으면 스킬 모션을 빌려 쓴다.")]
+    [SerializeField] private string healStateName = "Cast";
+    [Tooltip("거리를 벌릴 때의 회피 모션. 비워두거나 애니메이터에 없으면 달리기로 물러난다.")]
+    [SerializeField] private string dodgeStateName = "Dodge";
     [SerializeField] private string hitStateName = "Hit";
     [SerializeField] private string deathStateName = "Death";
     [SerializeField] private float animationFadeDuration = 0.08f;
@@ -87,6 +91,7 @@ public class UnitController : MonoBehaviour
     // 상태·타깃이 바뀔 때마다 GC 쓰레기가 쌓인다. 빌드에는 포함하지 않는다.
     [SerializeField] private string currentStateName;
     [SerializeField] private string currentTargetName;
+    private IState<UnitController> debugTrackedState;
 #endif
 
     private StateMachine<UnitController> stateMachine;
@@ -146,6 +151,10 @@ public class UnitController : MonoBehaviour
     private float lastTargetChangeTime = -999f;
     private float requestedAgentSpeed;
     private UnitController lastAttacker;
+    private Collider[] bodyColliders;
+
+    // 이 유닛에 속한 콜라이더 전부. UnitRegistry가 시야 레이의 히트 중 유닛 몸통을 걸러내는 데 쓴다.
+    public Collider[] BodyColliders => bodyColliders;
 
     // 전투 매니저가 유닛 하나하나를 구독하지 않아도 되도록 정적 이벤트로 알린다.
     public static event Action<UnitController> OnAnyUnitDied;
@@ -164,9 +173,12 @@ public class UnitController : MonoBehaviour
     private int[] attackAnimationHashes;
     private float[] attackAnimationDurationsPerStep;
     private int attackComboIndex;
+    private bool hasAttackAnimation;
     private int skillAnimationHash;
     private int blockAnimationHash;
     private int potionAnimationHash;
+    private int healAnimationHash;
+    private int dodgeAnimationHash;
     private int hitAnimationHash;
     private int deathAnimationHash;
     private bool hasWalkAnimationState;
@@ -176,12 +188,17 @@ public class UnitController : MonoBehaviour
     private float attackAnimationDuration;
     private float skillAnimationDuration;
     private float potionAnimationDuration;
+    private float healAnimationDuration;
+    private float dodgeAnimationDuration;
     private float hitAnimationDuration;
     private float deathAnimationDuration;
 
     public float AttackAnimationDuration => attackAnimationDuration;
     public float SkillAnimationDuration => skillAnimationDuration;
     public float PotionAnimationDuration => potionAnimationDuration;
+    public float HealAnimationDuration => healAnimationDuration;
+    // 회피 모션이 없는 리그(고블린)는 0. EvadeState가 이 값으로 "구를지 달릴지"를 정한다.
+    public float DodgeAnimationDuration => dodgeAnimationHash != 0 ? dodgeAnimationDuration : 0f;
     public float HitAnimationDuration => hitAnimationDuration;
     public float DeathAnimationDuration => deathAnimationDuration;
 
@@ -225,6 +242,10 @@ public class UnitController : MonoBehaviour
         if (animator == null) animator = GetComponentInChildren<Animator>();
         if (scanner == null) scanner = GetComponent<TargetScanner>();
         if (bodyCollider == null) bodyCollider = GetComponent<Collider>();
+        // 시야 판정이 자기 몸(과 래그돌 콜라이더)을 장애물로 세지 않도록 레지스트리에 넘길 목록.
+        // 무기 모델의 콜라이더는 WeaponEquipper가 꺼 두므로 여기 들어오지 않아도 된다.
+        bodyColliders = GetComponentsInChildren<Collider>(true);
+        UnitRegistry.RegisterColliders(this);
 
         if (emotion == null) emotion = GetComponent<UnitEmotion>();
         if (equipment == null) equipment = GetComponent<WeaponEquipper>();
@@ -244,26 +265,44 @@ public class UnitController : MonoBehaviour
     private void CacheAnimationHashes()
     {
         idleAnimationHash = ToHash(idleStateName);
-        walkAnimationHash = ToHash(walkStateName);
         runAnimationHash = ToHash(runStateName);
-        jumpAnimationHash = ToHash(jumpStateName);
         CacheAttackComboAnimations();
-        skillAnimationHash = ToHash(skillStateName);
-        blockAnimationHash = ToHash(blockStateName);
-        potionAnimationHash = ToHash(potionStateName);
-        hitAnimationHash = ToHash(hitStateName);
-        deathAnimationHash = ToHash(deathStateName);
 
-        hasWalkAnimationState = animator != null &&
-                                 !string.IsNullOrEmpty(walkStateName) &&
-                                 animator.HasState(0, walkAnimationHash);
+        // 아래 상태들은 리그마다 있을 수도 없을 수도 있다(고블린 컨트롤러에는 Kick도 Block도 없다).
+        // 이름만 보고 "있다"고 판단하면 존재하지 않는 상태로 CrossFade해서 유닛이 그 자리에 굳는다.
+        // 실제로 애니메이터에 있는 것만 해시를 남기고, 없으면 0으로 둬서 부르는 쪽이 대체 동작을 타게 한다.
+        walkAnimationHash = ResolveStateHash(walkStateName);
+        jumpAnimationHash = ResolveStateHash(jumpStateName);
+        skillAnimationHash = ResolveStateHash(skillStateName);
+        blockAnimationHash = ResolveStateHash(blockStateName);
+        potionAnimationHash = ResolveStateHash(potionStateName);
+        healAnimationHash = ResolveStateHash(healStateName);
+        dodgeAnimationHash = ResolveStateHash(dodgeStateName);
+        hitAnimationHash = ResolveStateHash(hitStateName);
+        deathAnimationHash = ResolveStateHash(deathStateName);
+
+        hasWalkAnimationState = walkAnimationHash != 0;
 
         CacheMoveSpeedParameter();
 
         skillAnimationDuration = GetAnimationClipDuration(skillStateName, 1f);
         potionAnimationDuration = GetAnimationClipDuration(potionStateName, 0.8f);
+        healAnimationDuration = healAnimationHash != 0
+            ? GetAnimationClipDuration(healStateName, skillAnimationDuration)
+            : skillAnimationDuration;
+        dodgeAnimationDuration = GetAnimationClipDuration(dodgeStateName, 0.35f);
         hitAnimationDuration = GetAnimationClipDuration(hitStateName, 0.35f);
         deathAnimationDuration = GetAnimationClipDuration(deathStateName, 1.5f);
+    }
+
+    // 이름이 비어 있거나 애니메이터에 그런 상태가 없으면 0.
+    // 애니메이터 자체가 없으면 판단할 근거가 없으므로 이름 해시를 그대로 돌려준다.
+    private int ResolveStateHash(string stateName)
+    {
+        int hash = ToHash(stateName);
+        if (hash == 0 || animator == null) return hash;
+
+        return animator.HasState(0, hash) ? hash : 0;
     }
 
     // 무기를 갈아 끼우면 Attack1~N 클립이 다른 Override Controller로 바뀐다. 상태 이름(해시)은
@@ -284,15 +323,22 @@ public class UnitController : MonoBehaviour
             attackAnimationDurationsPerStep = new float[steps];
         }
 
+        hasAttackAnimation = false;
         for (int i = 0; i < steps; i++)
         {
             string name = steps > 1 ? attackStateName + (i + 1) : attackStateName;
-            attackAnimationHashes[i] = ToHash(name);
+            // 실제로 애니메이터에 있는 단계만 남긴다. 무기가 선언한 콤보 수보다 컨트롤러의
+            // 상태가 적으면 존재하지 않는 상태로 CrossFade해서 그 단계에서 유닛이 굳는다.
+            attackAnimationHashes[i] = ResolveStateHash(name);
             attackAnimationDurationsPerStep[i] = GetAnimationClipDuration(name, 1f);
+            if (attackAnimationHashes[i] != 0) hasAttackAnimation = true;
         }
 
         attackComboIndex = 0;
     }
+
+    // 공격 모션이 하나라도 있는가. 없으면 CanAttack이 false가 되어 공격 상태로 들어가지 않는다.
+    public bool HasAttackAnimation => hasAttackAnimation;
 
     // WeaponEquipper가 무기를 갈아 끼운 뒤 호출. Awake는 장비가 붙기 전에 한 번 끝나므로
     // 처음 캐시된 길이는 맨손 기준이라 무기 장착 후 다시 계산해야 한다.
@@ -358,6 +404,13 @@ public class UnitController : MonoBehaviour
         return fallback;
     }
 
+    // 콜라이더 등록만 오브젝트 수명에 묶여 있다(RegisterColliders 주석 참조).
+    // 팀 리스트 등록/해제는 OnEnable/OnDisable 쪽이다.
+    private void OnDestroy()
+    {
+        UnitRegistry.UnregisterColliders(this);
+    }
+
     private void OnEnable()
     {
         UnitRegistry.Register(this);
@@ -375,66 +428,37 @@ public class UnitController : MonoBehaviour
         CreateStates();
         stateMachine = new StateMachine<UnitController>();
         IState<UnitController> initialState = UnitRegistry.HasLivingEnemy(this) ? SearchState : IdleState;
-        stateMachine.Initialize(initialState);
-#if UNITY_EDITOR
-        currentStateName = initialState.GetType().Name;
-#endif
+        stateMachine.Initialize(this, initialState, UnitGlobalTransitions.All);
+        SyncDebugState();
     }
 
     private void Update()
     {
         if (scanner != null) scanner.Tick();
+        if (emotion != null) emotion.Tick(Time.deltaTime);
 
-        if (emotion != null)
-        {
-            emotion.Tick(Time.deltaTime);
-
-            // 패닉/빈사/붕괴는 어느 상태에 있든 즉시 행동을 끊는다. 개별 상태마다 검사를 넣으면
-            // 상태가 늘어날 때 빠뜨리기 쉬워서, 상태머신을 돌리기 직전 한 곳에서만 판단한다.
-            if (!IsDead && emotion.IsActionBlocked && stateMachine != null && stateMachine.CurrentState != PanicState)
-            {
-                ChangeState(PanicState);
-            }
-        }
-
-        TryDrinkPotion();
-        TryHealAlly();
-
+        // 사망/패닉/회복약/치료처럼 어느 상태에서든 걸리는 전이는 상태머신이 직접 들고 있다.
+        // (UnitGlobalTransitions 참조 — 예전에는 그 판단이 여기 있었다.)
         stateMachine?.Update();
-    }
-
-    // 회복약도 패닉과 같은 이유로 상태머신 바깥 한 곳에서만 판단한다.
-    // 패닉/빈사/붕괴 중에는 스스로 마실 수 없고, 이미 휘두르고 있는 공격 모션은 끊지 않는다.
-    private void TryDrinkPotion()
-    {
-        if (IsDead || stateMachine == null) return;
-        if (emotion != null && emotion.IsActionBlocked) return;
-        if (stateMachine.CurrentState == PotionState || stateMachine.CurrentState == DeadState) return;
-        if (IsAttackAnimationLocked) return;
-        if (!CanUsePotion()) return;
-
-        ChangeState(PotionState);
-    }
-
-    // 회복도 회복약과 같은 자리에서 판단한다. 서포터가 아니면 첫 줄에서 바로 빠진다.
-    private void TryHealAlly()
-    {
-        if (!stats.canHealAllies) return;
-        if (IsDead || stateMachine == null) return;
-        if (emotion != null && emotion.IsActionBlocked) return;
-        if (stateMachine.CurrentState == HealState ||
-            stateMachine.CurrentState == PotionState ||
-            stateMachine.CurrentState == DeadState) return;
-        if (IsAttackAnimationLocked) return;
-        if (!CanHealAlly()) return;
-
-        ChangeState(HealState);
+        SyncDebugState();
     }
 
     public void ChangeState(IState<UnitController> state)
     {
         stateMachine?.ChangeState(state);
+    }
+
+    // 인스펙터 표시용. 요청한 상태가 아니라 실제로 적용된 상태를 읽어야 한다 —
+    // 전이는 지연 적용되고, 같은 프레임에 덮어써져 건너뛰는 요청도 있기 때문이다.
+    // GetType().Name은 호출할 때마다 문자열을 새로 만들므로 참조가 바뀐 프레임에만 읽는다.
+    [System.Diagnostics.Conditional("UNITY_EDITOR")]
+    private void SyncDebugState()
+    {
 #if UNITY_EDITOR
+        IState<UnitController> state = stateMachine?.CurrentState;
+        if (ReferenceEquals(state, debugTrackedState)) return;
+
+        debugTrackedState = state;
         currentStateName = state != null ? state.GetType().Name : "";
 #endif
     }
@@ -595,7 +619,7 @@ public class UnitController : MonoBehaviour
 
     public bool CanAttack()
     {
-        return !string.IsNullOrEmpty(attackStateName) &&
+        return HasAttackAnimation &&
                IsTargetValid() &&
                IsTargetInAttackRange() &&
                !IsAttackAnimationLocked;
@@ -605,7 +629,7 @@ public class UnitController : MonoBehaviour
 
     public bool CanUseSkill()
     {
-        return !string.IsNullOrEmpty(skillStateName) &&
+        return skillAnimationHash != 0 &&
                IsTargetValid() &&
                IsTargetInAttackRange() &&
                stats.HasMana(stats.skillManaCost) &&
@@ -628,7 +652,7 @@ public class UnitController : MonoBehaviour
 
         // 마나가 바닥나 스킬을 못 쓰는 것도 마실 이유가 된다. 다만 HP가 거의 가득 차 있으면
         // 회복량의 대부분이 버려지므로 그때는 아낀다. 스킬 자체가 없는 유닛은 해당 없음.
-        return !string.IsNullOrEmpty(skillStateName) &&
+        return skillAnimationHash != 0 &&
                stats.skillManaCost > 0 &&
                !stats.HasMana(stats.skillManaCost) &&
                hpRatio <= stats.potionManaTriggerHpRatio;
@@ -678,13 +702,26 @@ public class UnitController : MonoBehaviour
 
     public void TriggerHeal()
     {
-        // 전용 시전 모션이 없으면 스킬 모션을 빌려 쓴다.
-        PlayAnimation(skillAnimationHash != 0 ? skillAnimationHash : idleAnimationHash, true);
+        // 시전 모션 → 없으면 스킬 모션 → 그것도 없으면 Idle.
+        // 예전에는 곧바로 스킬(발차기)로 떨어져서, 서포터가 아군을 치료할 때 발길질을 했다.
+        int hash = healAnimationHash != 0 ? healAnimationHash
+                 : skillAnimationHash != 0 ? skillAnimationHash
+                 : idleAnimationHash;
+        PlayAnimation(hash, true);
+    }
+
+    // 거리를 벌릴 때의 회피 모션. 없으면 false를 돌려주고, 부르는 쪽이 달리기로 물러난다.
+    public bool TriggerDodge()
+    {
+        if (dodgeAnimationHash == 0) return false;
+
+        PlayAnimation(dodgeAnimationHash, true);
+        return true;
     }
 
     public bool CanBlock()
     {
-        return !string.IsNullOrEmpty(blockStateName) &&
+        return blockAnimationHash != 0 &&
                IsTargetValid() &&
                Time.time >= lastBlockTime + stats.blockCooldown &&
                IsTargetTelegraphingAttack();

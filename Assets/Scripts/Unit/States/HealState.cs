@@ -22,24 +22,14 @@ public class HealState : UnitBattleState
 
         context.PerformHeal();
         context.TriggerHeal();
-        stateTimer = context.SkillAnimationDuration;
+        stateTimer = context.HealAnimationDuration;
     }
 
     public override void Update()
     {
-        if (TrySwitchToDead()) return;
-
         stateTimer -= Time.deltaTime;
         if (stateTimer > 0f) return;
 
-        if (TrySwitchToIdleWhenNoEnemy()) return;
-
-        if (!context.HasUsableTarget())
-        {
-            context.ChangeState(context.SearchState);
-            return;
-        }
-
-        context.ChangeState(context.IsTargetInAttackRange() ? context.AttackState : context.ChaseState);
+        ReturnToCombat();
     }
 }

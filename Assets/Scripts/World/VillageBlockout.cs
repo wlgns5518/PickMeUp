@@ -25,7 +25,8 @@ public class VillageBlockout : MonoBehaviour
         Airdock,    // 비행선착장
         Training,   // 훈련소
         Housing,    // 숙소
-        Workshop    // 공방시설
+        Workshop,   // 공방시설(장식용 뼈대) — 도형만 쓰고 싶을 때는 지금도 이 kind를 쓴다.
+        EquipmentWorkshop // 장비제작소 — 공방시설 자리를 그대로 쓰되 기능(자동/수동 제작)이 붙는다.
     }
 
     [System.Serializable]
@@ -193,6 +194,19 @@ public class VillageBlockout : MonoBehaviour
         }
 
         if (buildTrees) BuildTrees();
+
+        CombineForRendering();
+    }
+
+    // 런타임에 만든 오브젝트는 "정적"으로 표시할 수 없어 정적 배칭을 받지 못한다.
+    // 도형이 수백 개라 그대로 두면 그 수만큼 드로우콜이 나간다.
+    // StaticBatchingUtility는 런타임에도 쓸 수 있는 유일한 통로 — 만들어 놓은 뒤 한 번 묶어 준다.
+    // (에디터에서는 값을 고칠 때마다 다시 만들어야 하므로 묶지 않는다. 묶으면 메시가 합쳐져
+    //  개별 오브젝트를 씬 뷰에서 집어 옮길 수 없다.)
+    private void CombineForRendering()
+    {
+        if (!Application.isPlaying) return;
+        StaticBatchingUtility.Combine(gameObject);
     }
 
     // 씬 뷰에서 구역을 손으로 끌어다 놓은 뒤, 그 자리를 목록의 숫자로 받아 적는다.
@@ -283,7 +297,7 @@ public class VillageBlockout : MonoBehaviour
             // 합성소의 오른쪽 아래.
             Make("무기창고",   Kind.Armory,    295f,  56f, 13f, "무기와 장비를 넣어 두고 꺼내 쓴다."),
             // 9시에서 3시까지 마을을 가로지르는 한 줄. 가운데(거리 0)에 놓고 좌우로 뻗는다.
-            Make("공방시설",   Kind.Workshop,    0f,   0f, 20f, "장비를 만들고 고친다."),
+            Make("장비제작소", Kind.EquipmentWorkshop, 0f, 0f, 20f, "장비를 만든다. 자동 제작은 등급이 고정이고, 수동 제작은 퍼즐 난이도에 따라 상위 등급이 나올 수 있다."),
             // 아래 둘은 지정에 없어 남은 자리에 넣었다. 옮기려면 방위/거리만 고치면 된다.
             Make("광장",       Kind.Plaza,       0f,  46f, 24f, "시공의 틈 앞, 사람이 모이는 빈터."),
             Make("연금시설",   Kind.Alchemy,   120f,  84f, 19f, "물약과 마력 재료를 다룬다.")                                            //  4시
@@ -356,6 +370,7 @@ public class VillageBlockout : MonoBehaviour
             case Kind.Training:  BuildTraining(root); break;
             case Kind.Housing:   BuildHousing(root); break;
             case Kind.Workshop:  BuildWorkshop(root); break;
+            case Kind.EquipmentWorkshop: BuildWorkshop(root); break; // 도형은 공방시설과 같다.
         }
     }
 
@@ -374,6 +389,7 @@ public class VillageBlockout : MonoBehaviour
             case Kind.Training:  return 22f;
             case Kind.Housing:   return 22f;
             case Kind.Workshop:  return 20f;
+            case Kind.EquipmentWorkshop: return 20f;
             default:             return 18f;
         }
     }
@@ -754,6 +770,7 @@ public class VillageBlockout : MonoBehaviour
             case Kind.Training:  return new Color(0.55f, 0.45f, 0.55f);
             case Kind.Housing:   return new Color(0.69f, 0.53f, 0.55f);
             case Kind.Workshop:  return new Color(0.68f, 0.62f, 0.43f);
+            case Kind.EquipmentWorkshop: return new Color(0.68f, 0.62f, 0.43f);
             default:             return Stone;
         }
     }
@@ -788,32 +805,63 @@ public class VillageBlockout : MonoBehaviour
         return go.transform;
     }
 
+    // 도형 하나를 세운다.
+    //
+    // GameObject.CreatePrimitive를 쓰지 않는 이유: 그쪽은 늘 콜라이더를 붙여서 나오는데,
+    // 여기서 만드는 것의 상당수는 콜라이더가 필요 없고(난간, 바닥 문양) 실린더는 붙어 나온
+    // 캡슐을 버리고 상자를 다시 다는 구조였다. 도형 수백 개를 세울 때마다 컴포넌트를 붙였다 떼는
+    // 셈이라, 값을 조금 고칠 때마다 다시 만드는 에디터 작업에서 특히 체감된다.
+    // 메시는 어차피 유니티 기본 도형 넷뿐이므로 한 번 꺼내 캐시해 두고 공유한다.
     private GameObject Prim(Transform parent, PrimitiveType type, string name,
         Vector3 center, Vector3 scale, Color color, Vector3 euler = default, bool solid = true, bool glow = false)
     {
-        GameObject go = GameObject.CreatePrimitive(type);
-        go.name = name;
+        var go = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
         go.transform.SetParent(parent, false);
         go.transform.localPosition = center;
         go.transform.localRotation = Quaternion.Euler(euler);
         go.transform.localScale = scale;
+
+        go.GetComponent<MeshFilter>().sharedMesh = PrimitiveMesh(type);
         go.GetComponent<MeshRenderer>().sharedMaterial = glow ? GlowMat(color) : Mat(color);
 
-        if (!solid)
+        // 부딪힐 일 없는 것(solid=false)에는 아예 달지 않는다.
+        if (solid)
         {
-            // 바닥 문양이나 난간처럼 부딪힐 일 없는 것에는 콜라이더를 두지 않는다.
-            Kill(go.GetComponent<Collider>());
-        }
-        else if (type == PrimitiveType.Cylinder)
-        {
-            // 실린더에는 캡슐 콜라이더가 붙는데, 납작하게 눌러 놓으면 반지름이 지름을 따라가면서
-            // 판때기가 커다란 공이 된다(기단 하나가 반지름 24짜리 돔). 보이는 대로 상자를 물린다.
-            Kill(go.GetComponent<Collider>());
-            go.AddComponent<BoxCollider>().size = new Vector3(1f, 2f, 1f);
+            switch (type)
+            {
+                case PrimitiveType.Sphere:
+                    go.AddComponent<SphereCollider>();
+                    break;
+                case PrimitiveType.Cylinder:
+                    // 실린더에 캡슐을 물리면 납작하게 눌렀을 때 반지름이 지름을 따라가면서
+                    // 판때기가 커다란 공이 된다(기단 하나가 반지름 24짜리 돔). 보이는 대로 상자를 문다.
+                    go.AddComponent<BoxCollider>().size = new Vector3(1f, 2f, 1f);
+                    break;
+                default:
+                    go.AddComponent<BoxCollider>();
+                    break;
+            }
         }
 
         Mark(go);
         return go;
+    }
+
+    // 유니티 기본 도형의 메시. CreatePrimitive로 한 번만 꺼내 캐시한다.
+    // 여기 담기는 것은 유니티 내장 에셋이라 ClearGenerated에서 지우면 안 된다(meshes 목록과 별개).
+    private static readonly Dictionary<PrimitiveType, Mesh> PrimitiveMeshes =
+        new Dictionary<PrimitiveType, Mesh>();
+
+    private static Mesh PrimitiveMesh(PrimitiveType type)
+    {
+        if (PrimitiveMeshes.TryGetValue(type, out Mesh cached) && cached != null) return cached;
+
+        GameObject sample = GameObject.CreatePrimitive(type);
+        Mesh mesh = sample.GetComponent<MeshFilter>().sharedMesh;
+        Kill(sample);
+
+        PrimitiveMeshes[type] = mesh;
+        return mesh;
     }
 
     private GameObject Box(Transform parent, string name, Vector3 center, Vector3 size, Color color,
@@ -861,6 +909,108 @@ public class VillageBlockout : MonoBehaviour
 
     // ---- 뒷정리 ---------------------------------------------------------
 
+#if UNITY_EDITOR
+    // 배치가 굳으면 지금 모습 그대로 프리팹으로 내보낸다.
+    //
+    // 런타임에 이 프리팹을 대신 쓰는 분기는 일부러 두지 않았다. 생성 경로가 둘이 되면
+    // 한쪽만 고쳐진 채 어긋나기 시작한다. 구운 것을 쓰고 싶으면 씬에 프리팹을 놓고
+    // 이 컴포넌트를 끄면 된다 — 유니티에서 늘 하던 방식 그대로다.
+    //
+    // 임시 머티리얼과 직접 만든 메시는 에셋이 아니라서(HideFlags.DontSave) 그냥 저장하면
+    // 프리팹의 참조가 전부 끊긴다. 그래서 프리팹 옆에 컨테이너 에셋을 하나 만들어 함께 넣는다.
+    [ContextMenu("프리팹으로 굽기")]
+    private void BakeToPrefab()
+    {
+        string path = UnityEditor.EditorUtility.SaveFilePanelInProject(
+            "마을 블록아웃 굽기", name + "_Baked", "prefab",
+            "지금 놓여 있는 배치를 프리팹으로 저장합니다.");
+        if (string.IsNullOrEmpty(path)) return;
+
+        // 화면에 보이는 것과 구워지는 것이 다르면 안 된다. 먼저 새로 만든다.
+        Rebuild();
+
+        var root = new GameObject(System.IO.Path.GetFileNameWithoutExtension(path));
+        try
+        {
+            // 만들어 둔 머티리얼과 메시를 먼저 에셋으로 만든다.
+            // 렌더러가 이미 이 인스턴스들을 물고 있으므로, 이 순서라야 프리팹이 제대로 참조한다.
+            SaveGeneratedAssets(path);
+
+            var children = new List<Transform>();
+            foreach (Transform child in transform) children.Add(child);
+            for (int i = 0; i < children.Count; i++)
+            {
+                ClearHideFlagsRecursive(children[i].gameObject);
+                children[i].SetParent(root.transform, true);
+            }
+
+            if (UnityEditor.PrefabUtility.SaveAsPrefabAsset(root, path) == null)
+            {
+                Debug.LogError($"[VillageBlockout] 프리팹 저장에 실패했습니다: {path}", this);
+                return;
+            }
+
+            Debug.Log($"[VillageBlockout] 구웠습니다: {path}", this);
+        }
+        finally
+        {
+            // 임시 루트와 그 안의 사본을 치우고, 편집용 배치를 원래대로 다시 세운다.
+            Kill(root);
+            Rebuild();
+        }
+    }
+
+    // 색 머티리얼과 직접 만든 메시를 프리팹 옆 컨테이너 에셋에 담는다.
+    // 첫 머티리얼이 대표 에셋이 되고 나머지는 그 안의 하위 에셋으로 들어간다 —
+    // 파일이 수십 개로 흩어지지 않고, 지울 때도 한 번에 지워진다.
+    private void SaveGeneratedAssets(string prefabPath)
+    {
+        string directory = System.IO.Path.GetDirectoryName(prefabPath);
+        string baseName = System.IO.Path.GetFileNameWithoutExtension(prefabPath);
+        string containerPath = (directory + "/" + baseName + "_Assets.asset").Replace('\\', '/');
+
+        UnityEditor.AssetDatabase.DeleteAsset(containerPath);
+
+        Object container = null;
+        foreach (Material material in materials.Values) AddGenerated(material, containerPath, ref container);
+        foreach (Material material in glowMaterials.Values) AddGenerated(material, containerPath, ref container);
+        for (int i = 0; i < meshes.Count; i++) AddGenerated(meshes[i], containerPath, ref container);
+
+        // 이제 이것들은 에셋이다. 캐시에 그대로 두면 다음 Rebuild의 ClearGenerated가
+        // DestroyImmediate로 지우려 들고, 에셋은 그렇게 지울 수 없어 예외가 난다.
+        // 목록에서 놓아주면 Rebuild가 편집용 임시 머티리얼을 새로 만들어 쓴다.
+        ForgetGenerated();
+
+        if (container == null) return;
+
+        UnityEditor.AssetDatabase.SaveAssets();
+        UnityEditor.AssetDatabase.ImportAsset(containerPath);
+    }
+
+    private static void AddGenerated(Object generated, string containerPath, ref Object container)
+    {
+        if (generated == null) return;
+
+        // 에셋이 되려면 "저장하지 않음" 표시를 먼저 떼야 한다.
+        generated.hideFlags = HideFlags.None;
+
+        if (container == null)
+        {
+            UnityEditor.AssetDatabase.CreateAsset(generated, containerPath);
+            container = generated;
+            return;
+        }
+
+        UnityEditor.AssetDatabase.AddObjectToAsset(generated, container);
+    }
+
+    private static void ClearHideFlagsRecursive(GameObject go)
+    {
+        go.hideFlags = HideFlags.None;
+        foreach (Transform child in go.transform) ClearHideFlagsRecursive(child.gameObject);
+    }
+#endif
+
     private void Mark(GameObject go)
     {
         // 씬 파일에 임시 배치가 통째로 들어가지 않게 한다. 씬을 열 때마다 다시 만든다.
@@ -887,6 +1037,13 @@ public class VillageBlockout : MonoBehaviour
         foreach (Material material in materials.Values) Kill(material);
         foreach (Material material in glowMaterials.Values) Kill(material);
         foreach (Mesh mesh in meshes) Kill(mesh);
+        ForgetGenerated();
+    }
+
+    // 지우지 않고 목록만 비운다. 구워서 에셋이 된 것들을 놓아줄 때 쓴다 —
+    // 에셋은 DestroyImmediate로 지울 수 없어서, 캐시에 남겨 두면 다음 Rebuild가 예외를 낸다.
+    private void ForgetGenerated()
+    {
         materials.Clear();
         glowMaterials.Clear();
         meshes.Clear();

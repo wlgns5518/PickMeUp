@@ -26,8 +26,6 @@ public class ChaseState : UnitBattleState
 
     public override void Update()
     {
-        if (TrySwitchToDead()) return;
-
         if (!TryRefreshTarget())
         {
             context.ChangeState(context.SearchState);

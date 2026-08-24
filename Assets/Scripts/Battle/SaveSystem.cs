@@ -16,9 +16,12 @@ public static class SaveSystem
     private const string FileName = "pickmeup_roster.json";
 
     [Serializable]
-    private class CharacterProgress
+    private class CharacterRecord
     {
+        // 안정적 식별자(CharacterSO.Id). 에셋 이름을 바꿔도 이 값은 그대로다.
         public string id;
+        // 옛 세이브 호환용. id가 아직 없던 시절의 세이브는 여기(=에셋 이름)로 찾아낸다.
+        public string assetName;
         public int level;
         public int exp;
         public int expToNext;
@@ -28,13 +31,19 @@ public static class SaveSystem
         public int agility;
         public bool fallen;
         public float stress;
+        // 합성으로 배운 스킬. 예전에는 저장하지 않아서 게임을 껐다 켜면 통째로 사라졌다.
+        public List<string> skillIds = new List<string>();
     }
 
     [Serializable]
     private class SaveData
     {
         public int highestClearedFloor;
-        public List<CharacterProgress> characters = new List<CharacterProgress>();
+        // 아래 stress 값들이 어느 시각 기준인지. 값과 시각이 함께 있어야
+        // 세이브를 옮기거나 되돌렸을 때 회복이 두 번 적용되거나 사라지지 않는다.
+        // 0이면 이 칸이 없던 시절의 세이브다 — 그때는 PlayerPrefs에 남은 시각을 쓴다.
+        public long stressStampUtcTicks;
+        public List<CharacterRecord> characters = new List<CharacterRecord>();
     }
 
     public static string SavePath => Path.Combine(Application.persistentDataPath, FileName);
@@ -45,27 +54,41 @@ public static class SaveSystem
     {
         if (roster == null) return;
 
-        var data = new SaveData { highestClearedFloor = FloorProgress.HighestCleared };
+        // 스트레스는 "정산 시각 기준의 값"으로 저장한다. 먼저 정산해 두지 않으면
+        // 저장한 값에 이미 반영된 회복분을 다음 실행에서 한 번 더 빼게 된다.
+        CharacterStress.Settle();
+
+        var data = new SaveData
+        {
+            highestClearedFloor = FloorProgress.HighestCleared,
+            stressStampUtcTicks = StressClock.StampTicks,
+        };
         for (int i = 0; i < roster.Count; i++)
         {
             CharacterSO so = roster[i];
             if (so == null) continue;
             // 같은 에셋이 로스터에 여러 번 들어가 있을 수 있으므로 중복은 건너뛴다.
-            if (Find(data.characters, so.name) != null) continue;
+            if (Find(data.characters, so) != null) continue;
 
-            data.characters.Add(new CharacterProgress
+            // 에셋이 아니라 런타임 진행도를 저장한다(CharacterProgress 주석 참조).
+            CharacterProgress.Entry entry = CharacterProgress.Of(so);
+
+            var record = new CharacterRecord
             {
-                id = so.name,
-                level = so.level,
-                exp = so.exp,
-                expToNext = so.expToNext,
-                strength = so.stats.strength,
-                intelligence = so.stats.intelligence,
-                vitality = so.stats.vitality,
-                agility = so.stats.agility,
+                id = so.Id,
+                assetName = so.name,
+                level = entry.Level,
+                exp = entry.Exp,
+                expToNext = entry.ExpToNext,
+                strength = entry.Strength,
+                intelligence = entry.Intelligence,
+                vitality = entry.Vitality,
+                agility = entry.Agility,
                 fallen = PartyRoster.IsFallen(so),
                 stress = CharacterStress.Get(so),
-            });
+            };
+            record.skillIds.AddRange(entry.SkillIds);
+            data.characters.Add(record);
         }
 
         try
@@ -99,6 +122,8 @@ public static class SaveSystem
         if (data == null) return false;
 
         FloorProgress.RestoreCleared(data.highestClearedFloor);
+        // 스트레스 값을 얹기 전에 그 값들이 기준으로 삼는 시각부터 되돌린다.
+        StressClock.RestoreStamp(data.stressStampUtcTicks);
         if (roster == null) return true;
 
         for (int i = 0; i < roster.Count; i++)
@@ -106,19 +131,16 @@ public static class SaveSystem
             CharacterSO so = roster[i];
             if (so == null) continue;
 
-            CharacterProgress p = Find(data.characters, so.name);
+            CharacterRecord p = Find(data.characters, so);
             if (p == null) continue;
 
-            so.level = p.level;
-            so.exp = p.exp;
-            so.expToNext = p.expToNext;
-            so.stats.strength = p.strength;
-            so.stats.intelligence = p.intelligence;
-            so.stats.vitality = p.vitality;
-            so.stats.agility = p.agility;
+            CharacterProgress.Restore(so, p.level, p.exp, p.expToNext,
+                p.strength, p.intelligence, p.vitality, p.agility, p.skillIds);
 
             if (p.fallen) PartyRoster.MarkFallen(so);
-            CharacterStress.Set(so, p.stress);
+            // 저장된 값은 저장 시점 기준이다. Set으로 넣으면 그 사이 흐른 자리비움 시간이
+            // 통째로 버려지므로 반드시 Restore를 쓴다.
+            CharacterStress.Restore(so, p.stress);
         }
 
         return true;
@@ -136,11 +158,25 @@ public static class SaveSystem
         }
     }
 
-    private static CharacterProgress Find(List<CharacterProgress> list, string id)
+    // 안정적 식별자로 먼저 찾고, 없으면 에셋 이름으로 되짚는다.
+    // 두 번째 경로는 id가 도입되기 전에 쓰던 세이브(그 시절 id 칸에는 에셋 이름이 들어 있다)를
+    // 그대로 읽기 위한 것이다. 새로 저장할 때 id가 채워지므로 한 번 저장하면 첫 경로로 넘어간다.
+    private static CharacterRecord Find(List<CharacterRecord> list, CharacterSO character)
     {
+        if (character == null) return null;
+
+        string id = character.Id;
         for (int i = 0; i < list.Count; i++)
         {
-            if (list[i] != null && list[i].id == id) return list[i];
+            if (list[i] != null && !string.IsNullOrEmpty(list[i].id) && list[i].id == id) return list[i];
+        }
+
+        string assetName = character.name;
+        for (int i = 0; i < list.Count; i++)
+        {
+            CharacterRecord record = list[i];
+            if (record == null) continue;
+            if (record.assetName == assetName || record.id == assetName) return record;
         }
 
         return null;

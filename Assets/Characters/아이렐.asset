@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dc9fd870c5559754d8d253c21c558de4, type: 3}
   m_Name: "\uC544\uC774\uB810"
   m_EditorClassIdentifier: 
+  id: 92035354ccd34a94bd04204c19599d0b
   characterName: "\uC544\uC774\uB810"
   description: "\uCDA9\uC9C1\uD55C \uC778\uAC04 \uADFC\uC811"
   portrait: {fileID: 21300000, guid: a6817060c582a25408aed567b775f5fe, type: 3}

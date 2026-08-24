@@ -7,14 +7,12 @@ public class TargetScanner : MonoBehaviour
     [SerializeField] private float closeVisibleRange = 2f;
     [SerializeField] private float eyeHeight = 1.2f;
     [SerializeField] private LayerMask obstacleMask = ~0;
-    [Tooltip("같은 타깃을 팀에 다시 공유하는 최소 간격. 타깃이 바뀌면 즉시 공유한다.")]
-    [SerializeField] private float alertInterval = 1f;
 
     private UnitController owner;
     private UnitController target;
     private float scanTimer;
-    private UnitController lastAlertedTarget;
-    private float nextAlertTime;
+    // 팀 게시판에서 마지막으로 받아 간 소식 번호. 같은 소식을 두 번 반영하지 않기 위한 것.
+    private int lastThreatVersion;
 
     public UnitController Target => target;
     public float ViewAngle => viewAngle;
@@ -33,7 +31,6 @@ public class TargetScanner : MonoBehaviour
     private void ScatterSchedule()
     {
         scanTimer = Random.Range(0f, scanInterval);
-        nextAlertTime = Time.time + Random.Range(0f, alertInterval);
     }
 
     // 한 번 흩어놔도 여러 유닛이 같은 프레임에 스캔을 마치면 다시 위상이 붙는다.
@@ -46,6 +43,10 @@ public class TargetScanner : MonoBehaviour
     public void Initialize(UnitController owner)
     {
         this.owner = owner;
+
+        // 이미 올라와 있는 지난 소식부터 훑지 않도록 시작 번호를 현재로 맞춘다.
+        // 스폰 직후에는 자기 눈으로 찾는 편이 자연스럽다.
+        if (owner != null) lastThreatVersion = TeamThreatBoard.VersionOf(owner.Team);
     }
 
     public void Tick()
@@ -84,7 +85,8 @@ public class TargetScanner : MonoBehaviour
             target = UnitRegistry.FindNearestVisibleEnemy(owner, owner.Stats.detectRange, viewAngle, GetCloseVisibleRange(), eyeHeight, obstacleMask);
         }
 
-        AlertTeamIfNeeded();
+        ReportThreat();
+        ConsumeTeamThreat();
     }
 
     public UnitController FindTargetNow()
@@ -93,7 +95,7 @@ public class TargetScanner : MonoBehaviour
 
         scanTimer = NextScanDelay();
         target = UnitRegistry.FindNearestVisibleEnemy(owner, owner.Stats.detectRange, viewAngle, GetCloseVisibleRange(), eyeHeight, obstacleMask);
-        AlertTeamIfNeeded();
+        ReportThreat();
 
         return target;
     }
@@ -104,21 +106,23 @@ public class TargetScanner : MonoBehaviour
         return UnitRegistry.IsVisibleTo(owner, candidate, owner.Stats.detectRange, viewAngle, GetCloseVisibleRange());
     }
 
-    // AlertTeam은 팀 전원을 순회하므로 스캔마다 부르면 유닛 수의 제곱만큼 비용이 든다.
-    // 새 타깃을 처음 발견했을 때는 즉시 알리고, 같은 타깃 재공유는 alertInterval로 제한한다.
-    private void AlertTeamIfNeeded()
+    // 발견한 적을 팀 게시판에 올린다. 값 하나만 갱신하므로 팀 인원과 무관하게 일정 비용이다.
+    // 예전에는 여기서 팀 전원을 순회하며 직접 알렸고, 그 비용이 발견한 프레임에 통째로 몰렸다.
+    private void ReportThreat()
     {
-        if (target == null)
-        {
-            lastAlertedTarget = null;
-            return;
-        }
+        if (target == null || owner == null) return;
+        TeamThreatBoard.Report(owner.Team, target);
+    }
 
-        if (target == lastAlertedTarget && Time.time < nextAlertTime) return;
+    // 아직 받아 가지 않은 팀 소식이 있으면 이번 스캔에서 반영한다.
+    // 유닛마다 스캔 시각이 흩어져 있으므로 반응도 자연스럽게 흩어진다.
+    private void ConsumeTeamThreat()
+    {
+        if (owner == null || owner.IsDead) return;
+        if (!TeamThreatBoard.TryConsume(owner.Team, ref lastThreatVersion, out UnitController shared)) return;
+        if (shared == target) return;
 
-        lastAlertedTarget = target;
-        nextAlertTime = Time.time + alertInterval;
-        UnitRegistry.AlertTeam(owner, target);
+        owner.ReceiveSharedTarget(shared);
     }
 
     private bool IsCurrentTargetValid()

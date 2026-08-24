@@ -23,8 +23,8 @@ public class RosterBootstrap : MonoBehaviour
             return;
         }
 
-        // 무엇이든 고치기 전에 원본 값을 붙잡아 둔다. 그 뒤에 세이브를 얹는다.
-        RosterBaseline.CaptureAll(roster.Members);
+        // 성장 값은 CharacterProgress가 런타임에 들고 있으므로 에셋이 더럽혀질 일이 없다.
+        // (예전에는 여기서 RosterBaseline이 원본을 붙잡아 두고 플레이를 나갈 때 되돌렸다.)
         SaveSystem.Load(roster.Members);
 
         // 에셋의 명단은 시작값이다. 소환으로 늘고 합성으로 주는 실제 보유 명단은 런타임 쪽이 든다.
