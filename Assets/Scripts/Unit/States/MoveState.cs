@@ -9,6 +9,8 @@ public class MoveState : UnitBattleState
     public override void Enter()
     {
         base.Enter();
+        // 여기서는 가는 쪽을 보고 달린다. 회전은 NavMeshAgent에게 돌려준다.
+        context.SetCodeDrivenFacing(false);
         if (TrySwitchToIdleWhenNoEnemy()) return;
         if (TrySwitchToDetectedTarget()) return;
         UpdateMovement();

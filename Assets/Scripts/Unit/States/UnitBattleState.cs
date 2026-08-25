@@ -1,8 +1,18 @@
+using UnityEngine;
+
 public abstract class UnitBattleState : State<UnitController>
 {
     protected UnitBattleState(UnitController context) : base(context)
     {
     }
+
+    // 모션 길이로 재는 타이머가 써야 하는 시간.
+    //
+    // 히트스톱이 걸리면 Animator의 재생 배속이 잠깐 떨어진다. 그런데 상태 타이머가
+    // 실제 시간으로만 흐르면 모션은 아직 절반인데 상태가 먼저 끝나 다음 동작으로 튄다
+    // (특히 피격·경직처럼 타격 직후에 시작되는 모션이 그 순간 정확히 눌린다).
+    // 애니메이션 길이를 기준으로 잡은 타이머는 전부 이 값을 써야 한다.
+    protected float AnimationDeltaTime => Time.deltaTime * context.AnimatorSpeed;
 
     protected bool TrySwitchToIdleWhenNoEnemy()
     {

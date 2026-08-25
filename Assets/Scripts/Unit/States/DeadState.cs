@@ -35,7 +35,9 @@ public class DeadState : UnitBattleState
     {
         if (finalized) return;
 
-        elapsed += Time.deltaTime;
+        // 마지막 일격의 히트스톱이 아직 걸려 있을 수 있다. 실제 시간으로만 세면 쓰러지는
+        // 모션이 절반쯤 남았는데 Animator를 꺼서 시체가 넘어지다 만 자세로 굳는다.
+        elapsed += AnimationDeltaTime;
 
         // 전이가 끝나면 실제 재생 중인 상태 길이로 한 번 보정한다.
         if (!durationSynced && context.TryGetDeathStateLength(out float actualLength))

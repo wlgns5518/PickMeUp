@@ -133,7 +133,12 @@ public static class UnitRegistry
         float viewAngle,
         float closeVisibleRange = 0f,
         float eyeHeight = 0f,
-        LayerMask obstacleMask = default)
+        LayerMask obstacleMask = default,
+        float groupingBonusPerAlly = 0f,
+        float tankThreatBonus = 0f,
+        float currentTargetBonus = 0f,
+        int maxAttackersPerTarget = 0,
+        float crowdingPenalty = 0f)
     {
         if (requester == null) return null;
 
@@ -142,10 +147,105 @@ public static class UnitRegistry
         UnitController best = null;
 
         GetHostileLists(requester.Team, out List<UnitController> first, out List<UnitController> second);
-        SearchNearestInList(requester, first, query, eyeHeight, obstacleMask, ref bestSqrDistance, ref best);
-        SearchNearestInList(requester, second, query, eyeHeight, obstacleMask, ref bestSqrDistance, ref best);
+        SearchNearestInList(requester, first, query, eyeHeight, obstacleMask, groupingBonusPerAlly, tankThreatBonus, currentTargetBonus, maxAttackersPerTarget, crowdingPenalty, ref bestSqrDistance, ref best);
+        SearchNearestInList(requester, second, query, eyeHeight, obstacleMask, groupingBonusPerAlly, tankThreatBonus, currentTargetBonus, maxAttackersPerTarget, crowdingPenalty, ref bestSqrDistance, ref best);
 
         return best;
+    }
+
+    // defender를 노리고 공격 모션을 휘두르는 중인 적대 유닛을 찾는다. defender의 CurrentTarget
+    // 하나만 보지 않고 적대 팀 전체를 훑는다 — 여러 적에게 둘러싸이면 defender가 지금 맞서
+    // 싸우는 상대가 아닌 다른 적이 휘두르는 경우가 흔한데, 그 공격도 막을 수 있어야 한다.
+    public static UnitController FindTelegraphingAttacker(UnitController defender)
+    {
+        if (defender == null) return null;
+
+        GetHostileLists(defender.Team, out List<UnitController> first, out List<UnitController> second);
+        UnitController found = FindTelegraphingAttackerInList(defender, first);
+        return found != null ? found : FindTelegraphingAttackerInList(defender, second);
+    }
+
+    private static UnitController FindTelegraphingAttackerInList(UnitController defender, List<UnitController> list)
+    {
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            UnitController candidate = list[i];
+            if (candidate == null || candidate.IsDead || !candidate.isActiveAndEnabled) continue;
+            // 아직 내지르기 전(준비 동작)인 공격만 막을 수 있다. 예전에는 공격 애니메이션이
+            // 재생 중이기만 하면 전부 걸렸는데, 도끼처럼 1.7초짜리 클립은 절반 이상이 칼을
+            // 거두는 동작이라 이미 지나간 공격에 대고 방패를 드는 일이 잦았다.
+            if (!candidate.IsTelegraphing) continue;
+            if (candidate.CurrentTarget != defender) continue;
+
+            return candidate;
+        }
+
+        return null;
+    }
+
+    // 공격자의 스윙 궤적(사거리 + 정면 부채꼴) 안에 있는 적을 하나 찾는다.
+    // 노리던 상대가 스윙 도중 빠져나갔을 때 "그럼 눈앞에 있는 놈이 맞는다"를 위한 것 —
+    // 실제로 칼을 휘두르면 표적으로 삼지 않은 상대도 베인다.
+    public static UnitController FindEnemyInArc(UnitController attacker, float reach, float arcAngle)
+    {
+        if (attacker == null) return null;
+
+        GetHostileLists(attacker.Team, out List<UnitController> first, out List<UnitController> second);
+        UnitController found = FindEnemyInArcInList(attacker, first, reach, arcAngle);
+        return found != null ? found : FindEnemyInArcInList(attacker, second, reach, arcAngle);
+    }
+
+    private static UnitController FindEnemyInArcInList(UnitController attacker, List<UnitController> list, float reach, float arcAngle)
+    {
+        Vector3 origin = attacker.transform.position;
+        Vector3 forward = attacker.transform.forward;
+        forward.y = 0f;
+        bool hasForward = forward.sqrMagnitude > 0.0001f;
+        if (hasForward) forward.Normalize();
+
+        float minDot = Mathf.Cos(Mathf.Clamp(arcAngle * 0.5f, 0f, 180f) * Mathf.Deg2Rad);
+        float reachSqr = reach * reach;
+
+        // 궤적 안에 여럿이 있으면 가장 가까운 하나만 벤다. 광역기가 아니라 스윙이므로
+        // 전부에게 피해가 들어가면 난전에서 근접 유닛이 지나치게 강해진다.
+        float bestSqrDistance = reachSqr;
+        UnitController best = null;
+
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            UnitController candidate = list[i];
+            if (candidate == null || candidate.IsDead || !candidate.isActiveAndEnabled) continue;
+
+            Vector3 toCandidate = candidate.transform.position - origin;
+            toCandidate.y = 0f;
+
+            float sqrDistance = toCandidate.sqrMagnitude;
+            if (sqrDistance > bestSqrDistance || sqrDistance <= 0.0001f) continue;
+            if (hasForward && Vector3.Dot(forward, toCandidate / Mathf.Sqrt(sqrDistance)) < minDot) continue;
+
+            bestSqrDistance = sqrDistance;
+            best = candidate;
+        }
+
+        return best;
+    }
+
+    // 이미 그 적을 타깃으로 삼고 있는 attackerTeam 소속 유닛 수. 대상 선정에 편향을 줘서
+    // 아군이 각자 다른 적으로 흩어지지 않고 같은 적에게 모이도록 만드는 데 쓴다.
+    public static int CountAlliesTargeting(UnitTeam attackerTeam, UnitController target)
+    {
+        if (target == null) return 0;
+
+        List<UnitController> list = GetList(attackerTeam);
+        int count = 0;
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            UnitController unit = list[i];
+            if (unit == null || unit.IsDead || !unit.isActiveAndEnabled) continue;
+            if (unit.CurrentTarget == target) count++;
+        }
+
+        return count;
     }
 
     public static bool HasLineOfSight(Vector3 from, Vector3 to, float eyeHeight, LayerMask obstacleMask)
@@ -290,9 +390,20 @@ public static class UnitRegistry
         in VisionQuery query,
         float eyeHeight,
         LayerMask obstacleMask,
+        float groupingBonusPerAlly,
+        float tankThreatBonus,
+        float currentTargetBonus,
+        int maxAttackersPerTarget,
+        float crowdingPenalty,
         ref float bestSqrDistance,
         ref UnitController best)
     {
+        bool useGrouping = groupingBonusPerAlly > 0f;
+        bool useTankThreat = tankThreatBonus > 0f;
+        bool useStickiness = currentTargetBonus > 0f && requester.IsTargetValid();
+        bool useCrowdCap = maxAttackersPerTarget > 0 && crowdingPenalty > 0f;
+        bool needsAttackerCount = useGrouping || useCrowdCap;
+
         for (int i = list.Count - 1; i >= 0; i--)
         {
             UnitController candidate = list[i];
@@ -300,13 +411,47 @@ public static class UnitRegistry
             if (!AreEnemies(requester, candidate)) continue;
             if (!query.CanSee(candidate.transform.position, out float sqrDistance)) continue;
 
+            // 이미 같은 편이 붙어 있는 후보 수. 아군 입장에서는 "뭉치는" 데, 적 입장에서는
+            // "이미 몇 마리가 이 아군을 물고 있는지"(혼잡도 판정)에 재사용한다.
+            int attackerCount = needsAttackerCount ? CountAlliesTargeting(requester.Team, candidate) : 0;
+
+            // 이미 붙어 있는 적(아군 뭉침), (적 입장에서는) 탱커인 아군, 지금 싸우고 있는 기존
+            // 타깃은 그만큼 더 가깝게 쳐서 우선시킨다. 반대로 이미 상한만큼 붙잡힌 아군은 그만큼
+            // 더 멀게 쳐서(빼는 게 아니라 더해서) 몬스터가 자연히 덜 붙잡힌 아군에게 가도록 한다 —
+            // 아군 한 명당 1~2마리로 붙는 교전을 유도한다. 실제 사거리/시야 판정은 위 query.CanSee가
+            // 이미 원래 거리로 끝냈으므로 여기서는 "누가 이기는지"만 바뀐다.
+            float bias = 0f;
+            if (useGrouping)
+            {
+                bias += attackerCount * groupingBonusPerAlly;
+            }
+            if (useTankThreat && candidate.Stats.isTank)
+            {
+                bias += tankThreatBonus;
+            }
+            if (useStickiness && candidate == requester.CurrentTarget)
+            {
+                bias += currentTargetBonus;
+            }
+            if (useCrowdCap && attackerCount >= maxAttackersPerTarget)
+            {
+                bias -= crowdingPenalty;
+            }
+
+            float effectiveSqrDistance = sqrDistance;
+            if (bias != 0f)
+            {
+                float biasedDistance = Mathf.Max(0f, Mathf.Sqrt(sqrDistance) - bias);
+                effectiveSqrDistance = biasedDistance * biasedDistance;
+            }
+
             // Distance check before the raycast so line-of-sight (the expensive part) only
             // runs for candidates that would actually improve on the current best.
-            if (sqrDistance >= bestSqrDistance) continue;
+            if (effectiveSqrDistance >= bestSqrDistance) continue;
 
             if (!HasLineOfSight(query.Position, candidate.transform.position, eyeHeight, obstacleMask)) continue;
 
-            bestSqrDistance = sqrDistance;
+            bestSqrDistance = effectiveSqrDistance;
             best = candidate;
         }
     }

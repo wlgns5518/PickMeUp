@@ -27,7 +27,7 @@ public class HealState : UnitBattleState
 
     public override void Update()
     {
-        stateTimer -= Time.deltaTime;
+        stateTimer -= AnimationDeltaTime;
         if (stateTimer > 0f) return;
 
         ReturnToCombat();

@@ -22,7 +22,7 @@ public class HitState : UnitBattleState
     {
         UpdateKnockback();
 
-        stateTimer -= Time.deltaTime;
+        stateTimer -= AnimationDeltaTime;
         if (stateTimer > 0f) return;
 
         ReturnToCombat();

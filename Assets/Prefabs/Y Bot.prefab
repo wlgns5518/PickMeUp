@@ -1777,7 +1777,7 @@ MonoBehaviour:
     blockCooldown: 1.5
     knockbackDistance: 0.6
     knockbackDuration: 0.12
-    blockDamageReduction: 0.5
+    blockDamageReduction: 1
     damageReduction: 0
     retreatHpThreshold: 0.25
     canHealAllies: 0

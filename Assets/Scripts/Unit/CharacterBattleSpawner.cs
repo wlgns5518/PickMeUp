@@ -16,15 +16,23 @@ public class CharacterBattleSpawner : MonoBehaviour
     [SerializeField] private UnitController enemyUnitPrefab;
     [SerializeField] private Transform[] enemySpawnPoints;
     [SerializeField] private Vector3 enemySpawnFallbackOffset = new Vector3(2.5f, 0f, 0f);
-    [SerializeField] private int dummyEnemyCount = 1;
 
     [Header("Floor Scaling")]
-    [Tooltip("고른 층이 하나 높아질 때마다 늘어나는 적의 수.")]
-    [SerializeField] private int enemiesPerFloor = 2;
-    [Tooltip("층당 적 체력 증가 비율.")]
-    [SerializeField] private float enemyHpPerFloor = 0.18f;
-    [Tooltip("층당 적 공격력 증가 비율.")]
-    [SerializeField] private float enemyDamagePerFloor = 0.12f;
+    [Tooltip("적 수 = 고른 층 + 이 값. 층이 오를수록 적 수도 같이 늘어난다(예: 1층=2마리, 9층=10마리).")]
+    [SerializeField] private int enemyCountOffset = 1;
+    [Tooltip("적 레벨 = 고른 층 + 이 범위(포함)에서 뽑은 오프셋. 몬스터마다 독립적으로 뽑는다.")]
+    [SerializeField] private int enemyLevelOffsetMin = 1;
+    [SerializeField] private int enemyLevelOffsetMax = 2;
+    [Tooltip("적 레벨 1당 체력 증가 비율. 체력은 이 비율대로 계속 오르게 두고, 그만큼 플레이어 쪽은 " +
+             "attackDamagePerStrength(레벨업으로 쌓이는 힘이 공격력에 반영되는 배율)로 따라잡게 " +
+             "한다 — 몬스터를 약하게 만드는 대신 플레이어를 더 세게 만드는 방향.")]
+    [SerializeField] private float enemyHpPerLevel = 0.18f;
+    [Tooltip("적 레벨 1당 공격력 증가 비율.")]
+    [SerializeField] private float enemyDamagePerLevel = 0.12f;
+    [Tooltip("아군 한 명당 스폰 시점에 미리 배정하는 적 수의 상한(탱커부터 채움). " +
+             "TargetScanner.maxAttackersPerAlly와 같은 값으로 맞춰 둘 것 — 전투 중 편향은 그쪽이 맡고, " +
+             "여기는 스폰 첫 프레임에 몰려서 다 같은 아군을 고르는 문제를 막는 담당이다.")]
+    [SerializeField] private int maxAttackersPerAlly = 2;
 
     [Header("Spawn Formation")]
     [Tooltip("아군이 뭉쳐서 소환될 중심. 비워두면 스포너 위치 + allySpawnFallbackOffset을 쓴다.")]
@@ -41,6 +49,11 @@ public class CharacterBattleSpawner : MonoBehaviour
     // 적을 1~2방에 정리하도록 맞춘 값. 이 수치에 직업/무기 배율이 곱해지므로
     // 공격력이 가장 낮은 생산직(요리사)도 2방, 근접직은 1방이 나온다.
     [SerializeField] private int baseAttackDamage = 200;
+    [Tooltip("힘 1당 붙는 공격력. 몬스터 체력이 레벨(층+1~2)당 18%씩 계속 오르는 걸 그대로 두는 대신, " +
+             "레벨업으로 쌓이는 힘이 공격력에 크게 반영되게 해서 캐릭터가 강해질수록 확실히 한방에 " +
+             "정리하게 만든다. 예전엔 힘 1당 +1(사실상 배율 없음)이었던 걸 5로 올렸다 — 최고층(레벨11, " +
+             "체력 280) 기준으로도 근접직 힘 17~20 정도면 한방이 나오는 값이다.")]
+    [SerializeField] private int attackDamagePerStrength = 5;
     [Tooltip("마나 = baseMana + 지능 x manaPerIntelligence. 지능이 높을수록 스킬을 자주 쓴다.")]
     [SerializeField] private int baseMana = 30;
     [SerializeField] private int manaPerIntelligence = 4;
@@ -88,16 +101,72 @@ public class CharacterBattleSpawner : MonoBehaviour
     {
         if (enemyUnitPrefab == null) return;
 
-        // 메인 씬에서 고른 층이 난이도를 정한다.
+        // 메인 씬에서 고른 층이 난이도를 정한다. 적 수는 층수 + enemyCountOffset로 늘어난다.
         int floor = Mathf.Max(FloorProgress.FirstFloor, FloorProgress.SelectedFloor);
-        int baseCount = enemySpawnPoints != null && enemySpawnPoints.Length > 0 ? enemySpawnPoints.Length : dummyEnemyCount;
-        int count = baseCount + enemiesPerFloor * (floor - FloorProgress.FirstFloor);
+        int count = floor + enemyCountOffset;
+
+        // TargetScanner의 어그로/뭉침 편향만으로는 스폰 첫 프레임에 전원이 같은 아군을
+        // 동시에 고르는 걸 못 막는다 — 그 시점엔 서로 아직 아무도 타깃을 정하지 않아서
+        // "이미 몇 명 붙었는지" 편향이 읽을 정보 자체가 없다(전부 0으로 보임). 그래서
+        // 스폰 시점에 직접 순서대로 배정해 처음부터 1~2마리씩 갈라놓는다. 편향은 이후
+        // 타깃을 잃었을 때(적 사망 등) 다시 고르는 상황에서 계속 역할을 한다 — 그때는
+        // 이미 붙어 있는 정보가 실제로 존재하므로 정상 작동한다.
+        List<UnitController> targetSlots = BuildInitialTargetSlots(count);
 
         for (int i = 0; i < count; i++)
         {
+            int enemyLevel = floor + Random.Range(enemyLevelOffsetMin, enemyLevelOffsetMax + 1);
             Vector3 position = GetEnemySpawnPosition(i);
-            SpawnUnit(enemyUnitPrefab, UnitTeam.Enemy, BuildEnemyStats(floor), position, "Goblin_" + (i + 1));
+            UnitController enemy = SpawnUnit(enemyUnitPrefab, UnitTeam.Enemy, BuildEnemyStats(enemyLevel), position, "Goblin_" + (i + 1));
+
+            if (enemy != null && i < targetSlots.Count)
+            {
+                enemy.SetTarget(targetSlots[i]);
+            }
         }
+    }
+
+    // 탱커부터 상한까지 채우고, 남는 슬롯은 나머지 아군에게 라운드로빈으로 분배한다.
+    // 예: 탱커 1명 + 나머지 2명, 상한 2면 [탱커,탱커,A,B,A,B] 순서로 적을 배정한다.
+    // 파티가 작아서 상한 x 인원수를 넘는 적이 남으면(예: 2인 파티에 적 5마리), 남는 몫은
+    // 탱커로 되돌아가 몰리지 않도록 전체 아군을 고르게 한 바퀴 더 돌려 채운다.
+    private List<UnitController> BuildInitialTargetSlots(int enemyCount)
+    {
+        var slots = new List<UnitController>();
+        IReadOnlyList<UnitController> allies = UnitRegistry.Allies;
+        if (allies.Count == 0) return slots;
+
+        for (int i = 0; i < allies.Count; i++)
+        {
+            UnitController ally = allies[i];
+            if (ally == null || !ally.Stats.isTank) continue;
+            for (int slot = 0; slot < maxAttackersPerAlly; slot++) slots.Add(ally);
+        }
+
+        for (int round = 0; round < maxAttackersPerAlly; round++)
+        {
+            for (int i = 0; i < allies.Count; i++)
+            {
+                UnitController ally = allies[i];
+                if (ally == null || ally.Stats.isTank) continue;
+                slots.Add(ally);
+            }
+        }
+
+        // 탱커가 없거나 상한이 0으로 설정된 경우의 안전장치 — 그래도 아무나 배정은 돼야 한다.
+        if (slots.Count == 0) slots.AddRange(allies);
+
+        // 상한 x 인원수보다 적이 많으면(작은 파티) 남는 몫을 앞에서부터 나머지 연산으로 채우면
+        // 매번 탱커(0번 슬롯)로 되돌아가 몰린다. 그 대신 전체 아군을 순서대로 한 바퀴씩 더 돌려
+        // 넘치는 만큼을 고르게 나눈다.
+        int allyIndex = 0;
+        while (slots.Count < enemyCount)
+        {
+            slots.Add(allies[allyIndex % allies.Count]);
+            allyIndex++;
+        }
+
+        return slots;
     }
 
     // 층이 높아지면 스폰 지점 수를 금방 넘어선다. 남는 적은 배치 중심을 둘러싸고 뭉친다.
@@ -136,18 +205,49 @@ public class CharacterBattleSpawner : MonoBehaviour
         return new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
     }
 
-    // 프리팹 스탯을 복사해 층 보정을 얹는다. 원본을 그대로 쓰면 모든 적이 같은 객체를 공유해
+    // 프리팹 스탯을 복사해 레벨 보정을 얹는다. 원본을 그대로 쓰면 모든 적이 같은 객체를 공유해
     // 한 마리가 맞은 피해가 전부에게 반영된다.
-    private UnitStats BuildEnemyStats(int floor)
+    private UnitStats BuildEnemyStats(int enemyLevel)
     {
         UnitStats source = enemyUnitPrefab != null ? enemyUnitPrefab.Stats : null;
         UnitStats stats = source != null ? source.Clone() : new UnitStats();
 
-        int steps = Mathf.Max(0, floor - FloorProgress.FirstFloor);
-        stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * (1f + enemyHpPerFloor * steps)));
-        stats.attackDamage = Mathf.Max(1, Mathf.RoundToInt(stats.attackDamage * (1f + enemyDamagePerFloor * steps)));
-        stats.skillDamage = Mathf.Max(1, Mathf.RoundToInt(stats.skillDamage * (1f + enemyDamagePerFloor * steps)));
+        int steps = Mathf.Max(0, enemyLevel - 1);
+        stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * (1f + enemyHpPerLevel * steps)));
+        stats.attackDamage = Mathf.Max(1, Mathf.RoundToInt(stats.attackDamage * (1f + enemyDamagePerLevel * steps)));
+        stats.skillDamage = Mathf.Max(1, Mathf.RoundToInt(stats.skillDamage * (1f + enemyDamagePerLevel * steps)));
         return stats;
+    }
+
+    // 스폰 순간부터 상대 진영을 보게 한다.
+    //
+    // 예전에는 전원 Quaternion.identity라 적이 어디 있든 +Z를 보고 시작했다. 최대 180도를
+    // 어긋난 채로 달려가고, 도착해서야 몸을 돌리기 시작하니 첫 교전의 회전이 어색했다
+    // (타격 판정이 정면 부채꼴을 보게 된 뒤로는 첫 공격이 빗나가는 원인이기도 했다).
+    private Quaternion FacingOpposingSide(UnitTeam team, Vector3 position)
+    {
+        Vector3 opposingCenter = team == UnitTeam.Ally ? EnemyCenter() : AllyCenter();
+
+        Vector3 direction = opposingCenter - position;
+        direction.y = 0f;
+        // 두 진영 중심이 같은 자리로 잡혀 있으면(설정 누락) 방향을 정할 근거가 없다.
+        return direction.sqrMagnitude > 0.0001f
+            ? Quaternion.LookRotation(direction.normalized)
+            : Quaternion.identity;
+    }
+
+    private Vector3 AllyCenter()
+    {
+        if (allySpawnCenter != null) return allySpawnCenter.position;
+        if (allySpawnPoints != null && allySpawnPoints.Length > 0 && allySpawnPoints[0] != null) return allySpawnPoints[0].position;
+        return transform.position + allySpawnFallbackOffset;
+    }
+
+    private Vector3 EnemyCenter()
+    {
+        if (enemySpawnCenter != null) return enemySpawnCenter.position;
+        if (enemySpawnPoints != null && enemySpawnPoints.Length > 0 && enemySpawnPoints[0] != null) return enemySpawnPoints[0].position;
+        return transform.position + enemySpawnFallbackOffset;
     }
 
     private Vector3 GetSpawnPosition(Transform[] points, int index, Vector3 fallbackOffset)
@@ -166,7 +266,7 @@ public class CharacterBattleSpawner : MonoBehaviour
         if (NavMesh.SamplePosition(position, out NavMeshHit hit, 5f, NavMesh.AllAreas))
             position = hit.position;
 
-        UnitController instance = Instantiate(prefab, position, Quaternion.identity);
+        UnitController instance = Instantiate(prefab, position, FacingOpposingSide(team, position));
         instance.Configure(team, stats, source);
         if (!string.IsNullOrEmpty(unitName)) instance.name = unitName;
         return instance;
@@ -184,7 +284,7 @@ public class CharacterBattleSpawner : MonoBehaviour
         var stats = new UnitStats
         {
             maxHp = baseHp + so.Vitality * hpPerVitality + so.Level * hpPerLevel,
-            attackDamage = baseAttackDamage + so.Strength,
+            attackDamage = baseAttackDamage + so.Strength * attackDamagePerStrength,
         };
 
         stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * job.HpMultiplier));
@@ -215,6 +315,9 @@ public class CharacterBattleSpawner : MonoBehaviour
 
         // 서포터만 아군을 회복시킬 수 있다.
         stats.canHealAllies = job.IsHealer;
+        // 방패를 든 캐릭터는 직업과 무관하게 적이 우선 노린다 — 방패를 앞에 세우고
+        // 나머지가 뒤에서 때리는 진형은 여기서 시작된다.
+        stats.isTank = so.job == JobType.Tank || hasShield;
 
         stats.ResetHp();
         stats.ResetMana();

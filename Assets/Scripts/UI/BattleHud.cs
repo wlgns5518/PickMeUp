@@ -40,6 +40,14 @@ public class BattleHud : MonoBehaviour
     [Header("Death Announcement")]
     [Tooltip("동료가 죽었을 때 부고를 띄운다.")]
     [SerializeField] private bool showDeathAnnouncement = true;
+    // TODO: 전투 조정 중이라 부고를 임시로 꺼 둔다. 조정이 끝나면 이 필드와 HandleUnitDied의
+    // 검사 한 줄을 함께 지울 것. (BattleManager의 영구 죽음 임시 비활성화와 같은 성격)
+    //
+    // showDeathAnnouncement를 그냥 false로 두지 않은 이유: 그쪽은 이미 Floor1~9 씬에 true로
+    // 직렬화돼 있어서 C# 기본값을 바꿔도 씬 값이 이긴다(게다가 그 씬은 바이너리라 직접 고칠 수도 없다).
+    // 새 필드는 씬에 저장된 적이 없으므로 아래 기본값이 그대로 적용된다.
+    [Tooltip("[임시] 켜 두면 부고를 아예 띄우지 않는다. 전투 조정이 끝나면 꺼서 되돌릴 것.")]
+    [SerializeField] private bool suppressDeathAnnouncement = true;
     [Tooltip("배너 가로 길이(px, 1920x1080 기준). 세로는 그림 비율을 따른다.")]
     [SerializeField] private float deathBannerWidth = 1000f;
     [Tooltip("배너가 저절로 사라지기까지의 시간(초). 누르면 그전에도 사라진다.")]
@@ -197,6 +205,7 @@ public class BattleHud : MonoBehaviour
     // 부고는 전투 중에 뜬다. 결과창을 기다리면 누가 언제 죽었는지 알 수 없다.
     private void HandleUnitDied(UnitController unit)
     {
+        if (suppressDeathAnnouncement) return; // TODO: 전투 조정용 임시 차단. 위 필드 주석 참조.
         if (!showDeathAnnouncement || deathBanner == null) return;
         if (unit == null || unit.Team != UnitTeam.Ally || unit.SourceCharacter == null) return;
 

@@ -8,6 +8,25 @@ public class TargetScanner : MonoBehaviour
     [SerializeField] private float eyeHeight = 1.2f;
     [SerializeField] private LayerMask obstacleMask = ~0;
 
+    [Tooltip("이미 아군이 붙어 있는 적을 이만큼(미터) 더 가깝게 쳐서, 아군끼리 각자 다른 적으로 흩어지지 않고 " +
+             "같은 적에게 모여 싸우게 만든다. 아군 유닛에만 적용되고(적은 항상 0), 0이면 순수 최단거리로 되돌아간다.")]
+    [SerializeField] private float allyGroupingBonusPerAlly = 3f;
+
+    [Tooltip("적이 탱커 아군을 이만큼(미터) 더 가깝게 쳐서 우선 노리게 만든다(어그로) — 탱커가 앞을 막고 " +
+             "원거리/힐러가 뒤에서 안전해지는 역할 분담. 적 유닛에만 적용되고(아군은 항상 0), 0이면 끈다.")]
+    [SerializeField] private float enemyTankThreatBonus = 4f;
+
+    [Tooltip("지금 싸우고 있는 타깃을 이만큼(미터) 더 가깝게 쳐서 계속 유지하려는 성향을 준다. " +
+             "그룹핑/탱커 편향과 겹치면 다른 적이 조금 더 가까워졌다고 갈팡질팡 갈아타지 않게 막아준다. " +
+             "아군·적 모두에 적용된다.")]
+    [SerializeField] private float currentTargetStickiness = 5f;
+
+    [Tooltip("한 아군에게 동시에 붙을 수 있는 적 수의 상한. 이미 이 수만큼 물고 있는 아군은 " +
+             "crowdingPenalty만큼 더 멀게 쳐서, 새로 타깃을 찾는 적이 덜 붙잡힌 아군에게 가도록 한다 " +
+             "— 몬스터와 대부분 1대1~2로 붙게 유도한다. 0이면 끈다.")]
+    [SerializeField] private int maxAttackersPerAlly = 2;
+    [SerializeField] private float crowdingPenalty = 10f;
+
     private UnitController owner;
     private UnitController target;
     private float scanTimer;
@@ -82,7 +101,7 @@ public class TargetScanner : MonoBehaviour
 
         if (target == null)
         {
-            target = UnitRegistry.FindNearestVisibleEnemy(owner, owner.Stats.detectRange, viewAngle, GetCloseVisibleRange(), eyeHeight, obstacleMask);
+            target = UnitRegistry.FindNearestVisibleEnemy(owner, owner.Stats.detectRange, viewAngle, GetCloseVisibleRange(), eyeHeight, obstacleMask, GroupingBonus(), TankThreatBonus(), currentTargetStickiness, MaxAttackersPerTarget(), crowdingPenalty);
         }
 
         ReportThreat();
@@ -94,10 +113,31 @@ public class TargetScanner : MonoBehaviour
         if (owner == null) return null;
 
         scanTimer = NextScanDelay();
-        target = UnitRegistry.FindNearestVisibleEnemy(owner, owner.Stats.detectRange, viewAngle, GetCloseVisibleRange(), eyeHeight, obstacleMask);
+        target = UnitRegistry.FindNearestVisibleEnemy(owner, owner.Stats.detectRange, viewAngle, GetCloseVisibleRange(), eyeHeight, obstacleMask, GroupingBonus(), TankThreatBonus(), currentTargetStickiness, MaxAttackersPerTarget(), crowdingPenalty);
         ReportThreat();
 
         return target;
+    }
+
+    // 흩어짐 방지 편향은 아군에게만 준다. 적까지 서로 뭉치게 하면 한 아군에게 몰려드는
+    // 난이도 변화가 생기는데, 이번 요청은 "플레이어가 흩어지지 않는 것"만 원했다.
+    private float GroupingBonus()
+    {
+        return owner != null && owner.Team == UnitTeam.Ally ? allyGroupingBonusPerAlly : 0f;
+    }
+
+    // 탱커 어그로도 방향이 하나뿐이다 — 적이 아군 탱커를 우선 노리게 한다. 아군이 적 탱커를
+    // 우선 노려야 할 이유는 없으므로(그러면 오히려 잡기 어려운 적부터 때리게 된다) 적에게만 준다.
+    private float TankThreatBonus()
+    {
+        return owner != null && owner.Team == UnitTeam.Enemy ? enemyTankThreatBonus : 0f;
+    }
+
+    // 교전 수 상한도 적에게만 준다 — 아군이 몬스터 하나에 몰려 때리는 건 의도된 동작(그룹핑 편향)이라
+    // 반대로 아군을 몰아 때리는 쪽만 분산시킨다.
+    private int MaxAttackersPerTarget()
+    {
+        return owner != null && owner.Team == UnitTeam.Enemy ? maxAttackersPerAlly : 0;
     }
 
     public bool IsVisible(UnitController candidate)

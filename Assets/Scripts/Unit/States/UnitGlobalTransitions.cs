@@ -48,6 +48,9 @@ public static class UnitGlobalTransitions
             // PanicTransition은 다시 걸리지 않으므로 여기서 따로 막아야 한다.
             if (unit.Emotion != null && unit.Emotion.IsActionBlocked) return null;
             if (unit.IsAttackAnimationLocked) return null;
+            // 자세가 무너져 있는 동안은 스스로 아무것도 못 한다. 그 몇 초가 상대에게 열린
+            // 빈틈인데, 그 사이에 회복약을 들이켜면 무너뜨린 의미가 사라진다.
+            if (unit.IsStaggered) return null;
             if (!unit.CanUsePotion()) return null;
 
             return unit.PotionState;
@@ -63,6 +66,9 @@ public static class UnitGlobalTransitions
             if (current == unit.PotionState) return null;
             if (unit.Emotion != null && unit.Emotion.IsActionBlocked) return null;
             if (unit.IsAttackAnimationLocked) return null;
+            // 자세가 무너져 있는 동안은 스스로 아무것도 못 한다. 그 몇 초가 상대에게 열린
+            // 빈틈인데, 그 사이에 회복약을 들이켜면 무너뜨린 의미가 사라진다.
+            if (unit.IsStaggered) return null;
             if (!unit.CanHealAlly()) return null;
 
             return unit.HealState;

@@ -16,6 +16,8 @@ public class EvadeState : UnitBattleState
     public override void Enter()
     {
         base.Enter();
+        // 여기서는 가는 쪽을 보고 달린다. 회전은 NavMeshAgent에게 돌려준다.
+        context.SetCodeDrivenFacing(false);
         stateTimer = MinEvadeDuration;
 
         if (!context.HasUsableTarget())
@@ -59,7 +61,7 @@ public class EvadeState : UnitBattleState
             return;
         }
 
-        stateTimer -= Time.deltaTime;
+        stateTimer -= AnimationDeltaTime;
         if (stateTimer > 0f) return;
 
         // 목적지에 닿기 전에 최소 시간만 지난 거면, 아직 등을 보이는 중이니 계속 물러난다.
