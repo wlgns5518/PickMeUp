@@ -12,12 +12,11 @@ using UnityEditor;
 public class MeshyCharacterGenerator : MonoBehaviour
 {
     [Header("Meshy API")]
-    [SerializeField] private string apiKey = "msy_YOUR_KEY_HERE";
+    // 키는 인스펙터에 직렬화하지 않는다 — 씬 파일로 커밋되기 때문. ApiKeys 참고.
     [Tooltip("Meshy text-to-image 모델 (nano-banana-pro 등)")]
     [SerializeField] private string aiModel = "nano-banana-pro";
 
     [Header("Gemini (이름 생성용)")]
-    [SerializeField] private string geminiApiKey = "";
     [Tooltip("gemini-2.5-flash-lite (RPM 15) / gemini-2.5-flash (RPM 5)")]
     [SerializeField] private string geminiModel = "gemini-2.5-flash-lite";
     [Tooltip("429 응답 시 응답 본문의 retryDelay를 읽어 자동 재시도")]
@@ -46,6 +45,10 @@ public class MeshyCharacterGenerator : MonoBehaviour
     [SerializeField] private bool saveAsAsset = true;
     [SerializeField] private string imageDir = "Assets/CharacterImage";
     [SerializeField] private string assetDir = "Assets/Characters";
+
+    // API 키는 환경변수 또는 Secrets/apikeys.json 에서 읽는다 (ApiKeys.cs).
+    private static string ApiKey    => ApiKeys.Meshy;
+    private static string GeminiKey => ApiKeys.Gemini;
 
     // ─────────────────────────────────────────────────────────────────────────
     // 상수 / 데이터 테이블
@@ -124,7 +127,7 @@ public class MeshyCharacterGenerator : MonoBehaviour
         var result = new List<string>(count);
         if (count <= 0) { onComplete?.Invoke(result); yield break; }
 
-        if (string.IsNullOrEmpty(geminiApiKey))
+        if (string.IsNullOrEmpty(GeminiKey))
         {
             FillFallback(result, count);
             onComplete?.Invoke(result);
@@ -451,7 +454,7 @@ public class MeshyCharacterGenerator : MonoBehaviour
 
     private IEnumerator GenerateName(Action<string> onComplete)
     {
-        if (string.IsNullOrEmpty(geminiApiKey))
+        if (string.IsNullOrEmpty(GeminiKey))
         {
             Debug.LogWarning("[Gemini] API 키 없음 → 이름없음");
             onComplete?.Invoke("이름없음");
@@ -484,7 +487,7 @@ public class MeshyCharacterGenerator : MonoBehaviour
             yield break;
         }
 
-        string url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={geminiApiKey}";
+        string url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GeminiKey}";
         string body =
             "{\"contents\":[{\"parts\":[{\"text\":" + EscapeJson(prompt) + "}]}]," +
             "\"generationConfig\":{" +
@@ -618,7 +621,7 @@ public class MeshyCharacterGenerator : MonoBehaviour
                 req.downloadHandler = new DownloadHandlerBuffer();
                 req.SetRequestHeader("Content-Type", "application/json");
             }
-            req.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            req.SetRequestHeader("Authorization", "Bearer " + ApiKey);
 
             using (req)
             {

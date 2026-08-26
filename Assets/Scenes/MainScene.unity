@@ -21634,9 +21634,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6d8e9e32cbf187a45895689905721a5f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  apiKey: msy_udxbbvyR42H1mj8Tt2Jah415k1fla8pSmYQd
   aiModel: nano-banana-pro
-  geminiApiKey: AIzaSyDzGraQUb0LtnTQMjRkbY8Me56sHgBHo-8
   geminiModel: gemini-2.5-flash-lite
   gemini429MaxRetries: 2
   gemini429FallbackWait: 30

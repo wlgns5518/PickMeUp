@@ -85,3 +85,8 @@ crashlytics-build.properties
 # The terrain data under "Gaia User Data" is the actual map content, so it stays tracked.
 /[Aa]ssets/[Pp]rocedural [Ww]orlds/
 /[Aa]ssets/[Pp]rocedural [Ww]orlds.meta
+
+# API 키 — 절대 커밋 금지 (Secrets/README.md 참고)
+/Secrets/apikeys.json
+!/Secrets/apikeys.example.json
+*.apikeys.json
