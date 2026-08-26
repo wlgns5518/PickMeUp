@@ -21646,8 +21646,8 @@ MonoBehaviour:
   whiteThreshold: 200
   softEdge: 1
   saveAsAsset: 1
-  imageDir: Assets/CharacterImage
-  assetDir: Assets/Characters
+  imageDir: Assets/Character/CharacterImage
+  assetDir: Assets/Character/Characters
 --- !u!1 &1280484787
 GameObject:
   m_ObjectHideFlags: 0

@@ -42,7 +42,7 @@ public class CharacterSO : ScriptableObject
     public string characterName;
     [TextArea] public string description;
     public Sprite portrait;
-    public string portraitAssetPath; // Assets/CharacterImage/*.png
+    public string portraitAssetPath; // Assets/Character/CharacterImage/*.png
 
     // Rarity ------------------------------------------------------------
     [Header("Rarity")]

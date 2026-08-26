@@ -8,7 +8,7 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "WeaponAnimationLibrary", menuName = "PickMeUp/Weapon Animation Library")]
 public class WeaponAnimationLibrary : ScriptableObject
 {
-    // Assets/Resources/WeaponAnimationLibrary.asset
+    // Assets/Equipment/Resources/WeaponAnimationLibrary.asset
     public const string ResourceName = "WeaponAnimationLibrary";
 
     [System.Serializable]

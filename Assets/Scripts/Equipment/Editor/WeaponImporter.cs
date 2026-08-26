@@ -13,9 +13,9 @@ using UnityEngine;
 // 손에 맞추는 값은 코드가 아니라 그 프리팹 안에 남는다.
 public static class WeaponImporter
 {
-    private const string SourceFolder = "Assets/Hivemind";
+    private const string SourceFolder = "Assets/Equipment/Source/Hivemind";
     private const string OutputFolder = "Assets/Equipment/Definitions";
-    private const string CatalogFolder = "Assets/Resources";
+    private const string CatalogFolder = "Assets/Equipment/Resources";
 
     // 칼집은 무기가 아니라 허리에 다는 소품이라 장비 목록에 끼면 곤란하다.
     private static readonly string[] Excluded = { "scabbard" };

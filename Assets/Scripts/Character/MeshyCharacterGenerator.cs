@@ -43,8 +43,8 @@ public class MeshyCharacterGenerator : MonoBehaviour
     [Header("Asset Save")]
     [Tooltip("에디터에서 생성된 캐릭터를 .asset으로 저장")]
     [SerializeField] private bool saveAsAsset = true;
-    [SerializeField] private string imageDir = "Assets/CharacterImage";
-    [SerializeField] private string assetDir = "Assets/Characters";
+    [SerializeField] private string imageDir = "Assets/Character/CharacterImage";
+    [SerializeField] private string assetDir = "Assets/Character/Characters";
 
     // API 키는 환경변수 또는 Secrets/apikeys.json 에서 읽는다 (ApiKeys.cs).
     private static string ApiKey    => ApiKeys.Meshy;

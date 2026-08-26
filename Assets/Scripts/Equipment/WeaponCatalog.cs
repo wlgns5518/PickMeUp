@@ -12,7 +12,7 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "WeaponCatalog", menuName = "PickMeUp/Weapon Catalog")]
 public class WeaponCatalog : ScriptableObject
 {
-    // Assets/Resources/WeaponCatalog.asset
+    // Assets/Equipment/Resources/WeaponCatalog.asset
     public const string ResourceName = "WeaponCatalog";
 
     public List<WeaponDefinition> weapons = new List<WeaponDefinition>();
@@ -37,7 +37,7 @@ public class WeaponCatalog : ScriptableObject
             searched = true;
             cached = Resources.Load<WeaponCatalog>(ResourceName);
             if (cached == null)
-                Debug.LogWarning($"[WeaponCatalog] Assets/Resources/{ResourceName}.asset 이 없다. " +
+                Debug.LogWarning($"[WeaponCatalog] Assets/Equipment/Resources/{ResourceName}.asset 이 없다. " +
                                  "메뉴 PickMeUp/Equipment/Import Weapon Models 로 만들 수 있다.");
             return cached;
         }

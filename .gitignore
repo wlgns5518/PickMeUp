@@ -82,7 +82,10 @@ crashlytics-build.properties
 /[Aa]ssets/[Ss]tructure/**/*.meta
 
 # Gaia (Asset Store package) - reinstallable, ~5.5GB
-# The terrain data under "Gaia User Data" is the actual map content, so it stays tracked.
+# The terrain data under "Environment/Gaia" (formerly "Gaia User Data") is the actual map content, so it stays tracked.
+# NOTE: GaiaSettings.asset inside this ignored folder points its directories at Assets/Environment/Gaia/.
+# If Gaia is ever reinstalled fresh from the Asset Store, that setting reverts to the default
+# "Assets/Gaia User Data/" and must be repointed to "Assets/Environment/Gaia/" again.
 /[Aa]ssets/[Pp]rocedural [Ww]orlds/
 /[Aa]ssets/[Pp]rocedural [Ww]orlds.meta
 

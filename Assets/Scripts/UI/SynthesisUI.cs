@@ -28,7 +28,7 @@ public class SynthesisUI : MonoBehaviour, ICardDragHost, IFacilityWindow
     [SerializeField] private CharacterRosterSO roster;
 
     [Header("Card")]
-    [Tooltip("영웅 카드 프리팹 (Assets/Prefabs/CharacterCard.prefab).")]
+    [Tooltip("영웅 카드 프리팹 (Assets/Character/CharacterCard.prefab).")]
     [SerializeField] private CharacterCard cardPrefab;
 
     [Header("Font")]
@@ -364,7 +364,7 @@ public class SynthesisUI : MonoBehaviour, ICardDragHost, IFacilityWindow
 
         resolvedFont = HudFactory.ResolveFont(koreanFont, this);
         if (cardPrefab == null)
-            Debug.LogError("[SynthesisUI] 카드 프리팹이 없어 카드를 그릴 수 없습니다. Assets/Prefabs/CharacterCard.prefab을 지정하세요.", this);
+            Debug.LogError("[SynthesisUI] 카드 프리팹이 없어 카드를 그릴 수 없습니다. Assets/Character/CharacterCard.prefab을 지정하세요.", this);
 
         // 참조만 잃고 남아 있는 이전 캔버스를 먼저 치운다(도메인 리로드 대비).
         Transform stale = transform.Find("SynthesisCanvas");
