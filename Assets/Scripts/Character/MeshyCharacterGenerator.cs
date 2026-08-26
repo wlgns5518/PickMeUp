@@ -661,7 +661,12 @@ public class MeshyCharacterGenerator : MonoBehaviour
         return json.Substring(s, e - s);
     }
 
-    // "field": "value" 문자열 필드 추출 (JSON 트리 파싱 없이)
+    // "field": "value" 문자열 필드 추출 (JSON 트리 파싱 없이).
+    //
+    // 값의 이스케이프는 반드시 되돌려야 한다. 배치 이름은 "가\n나\n다"처럼 한 문자열에 담겨 오는데,
+    // 되돌리지 않으면 줄바꿈이 역슬래시+n 두 글자로 남아 전부 한 줄이 된다.
+    // 그러면 이름을 줄 단위로 끊는 쪽이 첫 이름만 건지고 나머지는 "이름없음"으로 떨어졌다.
+    // 닫는 따옴표를 찾을 때도 이스케이프된 따옴표(\")에 걸려 값이 잘리지 않도록 한 글자씩 읽는다.
     private static string ExtractStringField(string json, string field)
     {
         if (string.IsNullOrEmpty(json)) return null;
@@ -672,9 +677,37 @@ public class MeshyCharacterGenerator : MonoBehaviour
         i++;
         while (i < json.Length && (json[i] == ' ' || json[i] == '\t')) i++;
         if (i >= json.Length || json[i] != '"') return null;
-        int s = i + 1;
-        int e = json.IndexOf('"', s);
-        return e < 0 ? null : json.Substring(s, e - s);
+
+        var value = new StringBuilder();
+        for (int p = i + 1; p < json.Length; p++)
+        {
+            char c = json[p];
+            if (c == '"') return value.ToString();
+            if (c != '\\') { value.Append(c); continue; }
+
+            if (++p >= json.Length) break;
+            switch (json[p])
+            {
+                case 'n': value.Append('\n'); break;
+                case 'r': value.Append('\r'); break;
+                case 't': value.Append('\t'); break;
+                case 'b': value.Append('\b'); break;
+                case 'f': value.Append('\f'); break;
+                case 'u':
+                    int code;
+                    if (p + 4 < json.Length &&
+                        int.TryParse(json.Substring(p + 1, 4), System.Globalization.NumberStyles.HexNumber,
+                                     System.Globalization.CultureInfo.InvariantCulture, out code))
+                    {
+                        value.Append((char)code);
+                        p += 4;
+                    }
+                    break;
+                // \" \\ \/ 는 뒤 글자가 곧 값이다.
+                default: value.Append(json[p]); break;
+            }
+        }
+        return null;
     }
 
     private static bool ContainsHangul(string s)

@@ -1179,11 +1179,11 @@ public partial class UnitController : MonoBehaviour
         Transform origin = equipment.ProjectileOrigin;
         if (origin == null) return false;
 
-        // 겨눈 상대가 있으면 그쪽으로, 빗나갔으면 보고 있던 쪽으로 날린다.
-        Vector3 direction = victim != null ? victim.AimPoint - origin.position : transform.forward;
+        // 겨눈 상대가 있으면 그쪽으로, 없으면 화살이 향한 쪽으로 그대로 날린다 — 그 방향이 곧 활이 겨눈 방향이다.
+        Vector3 direction = victim != null ? victim.AimPoint - origin.position : origin.forward;
         WeaponProjectile.Fire(weapon.projectile, origin.position, direction, this, victim, damage, poiseDamage, fromSkill);
 
-        equipment.ShowNockedArrow(false);
+        equipment.ReleaseArrow();
         return true;
     }
 
@@ -1237,7 +1237,7 @@ public partial class UnitController : MonoBehaviour
         HasAttackedSinceEvade = true;
 
         // 시위를 당기기 시작한다. 앞선 화살이 떠나면서 감춰 둔 화살을 다시 물린다.
-        if (equipment != null) equipment.ShowNockedArrow(true);
+        if (equipment != null) equipment.BeginDraw();
 
         lungeRemaining = stats.lungeMaxDistance;
 

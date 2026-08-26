@@ -1507,6 +1507,37 @@ Transform:
   - {fileID: 6228466888172534928}
   m_Father: {fileID: 2859700201264527350}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &5311476629456373735
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3276450147365793686}
+  m_Layer: 0
+  m_Name: LeftHandWeaponSocket
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &3276450147365793686
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5311476629456373735}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.0002420061, y: -0.00028963058, z: -0.64143234, w: 0.76717955}
+  m_LocalPosition: {x: 0.00000014661326, y: 0.07665333, z: 0.000000015920937}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 3749291126926741980}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &5344683053361566821
 GameObject:
   m_ObjectHideFlags: 0
@@ -1650,6 +1681,7 @@ GameObject:
   - component: {fileID: 380708866839357895}
   - component: {fileID: 6204127898441601742}
   - component: {fileID: 7608228464112898524}
+  - component: {fileID: 4122659743410037250}
   m_Layer: 0
   m_Name: Y Bot
   m_TagString: Untagged
@@ -1960,12 +1992,63 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WeaponEquipper
   animator: {fileID: 8160989353832506121}
-  mainHandSocket: {fileID: 0}
-  offHandSocket: {fileID: 0}
+  rightHandSocket: {fileID: 624602828718958954}
+  leftHandSocket: {fileID: 3276450147365793686}
   palmGripRatio: 0.6
-  defaultMainHand: {fileID: 11400000, guid: 0e8f6f2931d6579409ae6da1f2e1d490, type: 2}
+  defaultMainHand: {fileID: 11400000, guid: df9ba5e658c010c4fbbf04705fa5fdba, type: 2}
   defaultOffHand: {fileID: 0}
+  drawTime: 0.35
+  releaseTime: 0.12
   debugLogs: 0
+--- !u!114 &4122659743410037250
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5603326327895470372}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 69673abb3d7b3884b8e788f78d48d4cc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PickMeUp::WeaponHandIK
+  equipment: {fileID: 7608228464112898524}
+  secondaryGripWeight: 1
+  secondaryGripRotationWeight: 0
+  stringHandWeight: 1
+  stringHandRotationWeight: 0
+  blendSpeed: 8
+--- !u!1 &5689108989764965949
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 624602828718958954}
+  m_Layer: 0
+  m_Name: RightHandWeaponSocket
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &624602828718958954
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5689108989764965949}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.64143246, y: 0.7671794, z: 0.00024213713, w: -0.0002898438}
+  m_LocalPosition: {x: -0.000000074884824, y: 0.07665315, z: -0.000000056632818}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 4763364047800229426}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &5772722272943569221
 GameObject:
   m_ObjectHideFlags: 0
@@ -2063,6 +2146,7 @@ Transform:
   - {fileID: 8537336568157581811}
   - {fileID: 3517315852390978747}
   - {fileID: 5947166808820118546}
+  - {fileID: 624602828718958954}
   m_Father: {fileID: 1815763416683258807}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &6058773604163699835
@@ -2162,6 +2246,7 @@ Transform:
   - {fileID: 2089019684238596436}
   - {fileID: 571651205252722537}
   - {fileID: 8460487195349526456}
+  - {fileID: 3276450147365793686}
   m_Father: {fileID: 3880515533181118105}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &6427989453523735716

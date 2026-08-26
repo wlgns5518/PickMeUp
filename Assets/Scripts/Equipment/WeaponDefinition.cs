@@ -21,24 +21,15 @@ public class WeaponDefinition : ScriptableObject
     public WeaponType type = WeaponType.SwordOneHand;
     public EquipSlot slot = EquipSlot.MainHand;
 
-    [Tooltip("이 종류의 대표 모델. 캐릭터가 WeaponType만 지정했을 때 손에 들리는 무기다.")]
-    public bool representsType;
-
     [Header("Model")]
-    [Tooltip("손 소켓 아래에 생성될 프리팹. 비어 있으면 수치만 적용되고 아무것도 보이지 않는다.")]
+    [Tooltip("WeaponSocket 아래에 그대로 생성될 무기 프리팹. 루트가 곧 손이 쥐는 지점(Grip Point)이다. " +
+             "비어 있으면 수치만 적용되고 아무것도 보이지 않는다 — 맨손 시전이 그 경우다.")]
     public GameObject model;
 
     [Header("Projectile")]
     [Tooltip("손을 떠나 날아가는 것. 활의 화살이 여기 들어간다. " +
              "비워두면 타격이 그 자리에서 들어간다 — 근접 무기는 전부 비어 있다.")]
     public GameObject projectile;
-
-    [Header("Grip (손 소켓 기준 보정)")]
-    [Tooltip("모델의 피벗이 손잡이에 있지 않을 때 밀어 넣는 값. 소켓 로컬 좌표.")]
-    public Vector3 gripPosition;
-    [Tooltip("모델의 긴 축이 소켓 +Y(날이 뻗는 방향)를 향하도록 돌리는 값.")]
-    public Vector3 gripRotation;
-    [Min(0.0001f)] public float gripScale = 1f;
 
     public bool IsTwoHanded => CharacterRules.IsTwoHanded(type);
 

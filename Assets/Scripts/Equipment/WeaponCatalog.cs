@@ -3,9 +3,9 @@ using UnityEngine;
 
 // 프로젝트에 존재하는 무기 에셋 목록.
 //
-// CharacterSO가 모델을 직접 가리키는 게 기본이지만, 기존 캐릭터들은 WeaponType만 들고 있고
-// 앞으로 만들 상점/인벤토리 UI도 "한손검 목록"처럼 종류로 물어보게 된다.
-// 그래서 종류 → 대표 모델을 찾아 주는 표를 하나 둔다.
+// 무기는 무기고에서 실물을 골라 들고 전투에 나간다. 그래서 캐릭터는 언제나 무기 에셋을 가리키고,
+// "종류만 정해 두면 알아서 골라 주는" 길은 두지 않는다 — 무엇을 드는지는 고르는 순간에 정해진다.
+// 이 표가 하는 일은 무기고가 "이 슬롯에 들 수 있는 것"을 늘어놓도록 목록을 내주는 것이다(Collect).
 //
 // Resources에 두는 이유: 스포너나 UI가 인스펙터로 이 에셋을 물고 있어야 할 이유가 없는데
 // 참조를 하나 더 만들면 씬마다 연결을 빠뜨릴 여지가 생긴다.
@@ -41,27 +41,6 @@ public class WeaponCatalog : ScriptableObject
                                  "메뉴 PickMeUp/Equipment/Import Weapon Models 로 만들 수 있다.");
             return cached;
         }
-    }
-
-    // 종류에 맞는 대표 무기. 캐릭터가 모델을 안 골랐을 때의 기본값으로 쓴다.
-    // 대표로 찍힌 게 없으면 목록 순서대로 첫 번째를 쓴다 — 한손검을 달랬는데 레이피어가
-    // 나오는 식이 되지만, 적어도 아무것도 안 들리는 것보다는 낫다.
-    public static WeaponDefinition FindByType(WeaponType type, EquipSlot slot)
-    {
-        if (type == WeaponType.None) return null;
-
-        WeaponCatalog catalog = Instance;
-        if (catalog == null) return null;
-
-        WeaponDefinition fallback = null;
-        for (int i = 0; i < catalog.weapons.Count; i++)
-        {
-            WeaponDefinition w = catalog.weapons[i];
-            if (w == null || w.type != type || w.slot != slot) continue;
-            if (w.representsType) return w;
-            if (fallback == null) fallback = w;
-        }
-        return fallback;
     }
 
     public static WeaponDefinition Find(string weaponName)

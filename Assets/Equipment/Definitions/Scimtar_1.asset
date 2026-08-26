@@ -17,7 +17,5 @@ MonoBehaviour:
   type: 1
   slot: 0
   representsType: 0
-  model: {fileID: 4129206862544174261, guid: a97a4694013fe35449c2a8e0d9dea91c, type: 3}
-  gripPosition: {x: 0.0037370587, y: 0.04421901, z: -0.00004847813}
-  gripRotation: {x: -0, y: 0, z: 180}
-  gripScale: 1
+  model: {fileID: 5815277667313122712, guid: 2e445fa7fc99ee841bbe7bd2c426258d, type: 3}
+  projectile: {fileID: 0}

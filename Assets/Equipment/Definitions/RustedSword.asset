@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ac4266020fb0ab40ab6cc2d249a77ce, type: 3}
+  m_Name: RustedSword
+  m_EditorClassIdentifier: PickMeUp::WeaponDefinition
+  displayName: "\uB0A1\uC740 \uCCA0\uAC80"
+  description: "\uC544\uBB34\uAC83\uB3C4 \uB4E4\uC9C0 \uC54A\uC740 \uCE90\uB9AD\uD130\uAC00
+    \uAE30\uBCF8\uC73C\uB85C \uC950\uB294 \uAC80. \uC774\uAC00 \uB098\uAC00\uACE0
+    \uB179\uC774 \uC2AC\uC5C8\uC9C0\uB9CC \uB9E8\uC190\uBCF4\uB2E4\uB294 \uB0AB\uB2E4."
+  type: 1
+  slot: 0
+  representsType: 0
+  model: {fileID: 8962066486646476186, guid: 8a6b4905d1a20904da9b0a3bad5caa3b, type: 3}
+  projectile: {fileID: 0}

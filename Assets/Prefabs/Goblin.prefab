@@ -354,6 +354,7 @@ Transform:
   - {fileID: 5511032476900390668}
   - {fileID: 5846117802284074287}
   - {fileID: 972563430975193346}
+  - {fileID: 6975025264037111758}
   m_Father: {fileID: 3553716775476750779}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1016171901990886978
@@ -1023,6 +1024,37 @@ Transform:
   - {fileID: 4695041768904062619}
   m_Father: {fileID: 439496903745491828}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &4791378984482463020
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4442331991482277861}
+  m_Layer: 0
+  m_Name: LeftHandWeaponSocket
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4442331991482277861
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4791378984482463020}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.0033050545, y: 0.086919285, z: -0.0036344633}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 8214623467656745067}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &5121327650087278035
 GameObject:
   m_ObjectHideFlags: 0
@@ -1214,6 +1246,37 @@ Transform:
   m_Children:
   - {fileID: 9181313911561516947}
   m_Father: {fileID: 5846117802284074287}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &6288950292185501953
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6975025264037111758}
+  m_Layer: 0
+  m_Name: RightHandWeaponSocket
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6975025264037111758
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6288950292185501953}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.003112598, y: 0.08757411, z: -0.0051869284}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1412052215587128187}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &6340853651969519926
 GameObject:
@@ -1686,6 +1749,7 @@ GameObject:
   - component: {fileID: 5529877855878719790}
   - component: {fileID: 281879652692025786}
   - component: {fileID: 227019616673139552}
+  - component: {fileID: 8823752046770547280}
   m_Layer: 0
   m_Name: Goblin
   m_TagString: Untagged
@@ -1773,6 +1837,11 @@ MonoBehaviour:
   obstacleMask:
     serializedVersion: 2
     m_Bits: 4294967295
+  allyGroupingBonusPerAlly: 3
+  enemyTankThreatBonus: 4
+  currentTargetStickiness: 5
+  maxAttackersPerAlly: 2
+  crowdingPenalty: 10
 --- !u!114 &5529877855878719790
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1785,6 +1854,24 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 67f8771370cf6cd4780f894f49dbc223, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  hitFrontStateName: HitFront
+  hitBackStateName: HitBack
+  hitLeftStateName: HitLeft
+  hitRightStateName: HitRight
+  blockHitStateName: BlockHit
+  blockBreakStateName: BlockBreak
+  staggerStateName: Stagger
+  strafeLeftStateName: StrafeLeft
+  strafeRightStateName: StrafeRight
+  strafeBackStateName: StrafeBack
+  combatIdleStateName: CombatIdle
+  separationMargin: 0.15
+  attackFacingTolerance: 35
+  minFootworkWindow: 0.35
+  footworkAcceleration: 6
+  movingAvoidanceQuality: 3
+  engagedAvoidancePriority: 35
+  movingAvoidancePriority: 60
   team: 1
   stats:
     maxHp: 100
@@ -1804,8 +1891,10 @@ MonoBehaviour:
     moveStopDistance: 0.25
     attackRange: 1.2
     detectRange: 8
+    isTank: 0
     attackDamage: 40
     skillDamage: 24
+    kickDamageMultiplier: 0.6
     skillCooldown: 5
     evadeRange: 2.5
     blockDuration: 0.8
@@ -1814,6 +1903,36 @@ MonoBehaviour:
     knockbackDuration: 0.12
     blockDamageReduction: 1
     damageReduction: 0
+    maxPoise: 100
+    currentPoise: 100
+    poiseDamagePerHit: 15
+    poiseDamageComboFinisherBonus: 25
+    poiseDamageSkill: 60
+    poiseDamageKick: 45
+    poiseBreakImmunity: 2.5
+    poiseHitPushback: 0.15
+    attackArcAngle: 130
+    attackHitTolerance: 0.4
+    cleaveOffTarget: 1
+    attackRecoveryTime: 0
+    attackRecoveryRandomness: 0.4
+    comboFinisherRecoveryTime: 0
+    lungeSpeed: 2.4
+    lungeMaxDistance: 0.8
+    combatSpacingRatio: 0.82
+    footworkSpeedRatio: 0.65
+    strafeFlipInterval: 1.8
+    backstabDamageMultiplier: 1.6
+    backstabPoiseMultiplier: 2
+    recoveryVulnerabilityMultiplier: 1.35
+    blockReactionTime: 0.18
+    perfectGuardWindow: 0.2
+    perfectGuardChance: 0.35
+    perfectGuardStaggerDuration: 0.9
+    staggerDuration: 1.2
+    staggerDamageMultiplier: 1.4
+    hitStopDuration: 0.06
+    hitStopScale: 0.12
     retreatHpThreshold: 0.25
     canHealAllies: 0
     healAmount: 25
@@ -1848,6 +1967,7 @@ MonoBehaviour:
   destinationUpdateInterval: 0.15
   chasePredictionTime: 0.25
   rotationSpeed: 720
+  blockTurnSpeed: 240
   minKeepDistanceRange: 4
   keepDistanceRatio: 0.5
   targetChangeInterval: 0.5
@@ -1863,6 +1983,7 @@ MonoBehaviour:
   attackStateName: Attack
   attackComboLength: 1
   skillStateName: 
+  kickStateName: Kick
   blockStateName: 
   potionStateName: 
   healStateName: Cast
@@ -1873,6 +1994,10 @@ MonoBehaviour:
   moveSpeedParameterName: MoveSpeedMultiplier
   walkClipSpeed: 2.29
   runClipSpeed: 2.29
+  strafeClipSpeed: 1.92
+  strafeBackClipSpeed: 2.19
+  backpedalSpeed: 3.3
+  dodgeClipSpeed: 4.08
   moveSpeedMultiplierRange: {x: 0.6, y: 2.2}
   animatorCullingMode: 1
   disableAnimatorAfterDeath: 1
@@ -1934,12 +2059,32 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WeaponEquipper
   animator: {fileID: 5990844632052732308}
-  mainHandSocket: {fileID: 0}
-  offHandSocket: {fileID: 0}
+  rightHandSocket: {fileID: 6975025264037111758}
+  leftHandSocket: {fileID: 4442331991482277861}
   palmGripRatio: 0.6
   defaultMainHand: {fileID: 0}
   defaultOffHand: {fileID: 0}
+  drawTime: 0.35
+  releaseTime: 0.12
   debugLogs: 0
+--- !u!114 &8823752046770547280
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8310206343971930320}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 69673abb3d7b3884b8e788f78d48d4cc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PickMeUp::WeaponHandIK
+  equipment: {fileID: 227019616673139552}
+  secondaryGripWeight: 1
+  secondaryGripRotationWeight: 0
+  stringHandWeight: 1
+  stringHandRotationWeight: 0
+  blendSpeed: 8
 --- !u!1 &8367701340600988516
 GameObject:
   m_ObjectHideFlags: 0
@@ -2229,6 +2374,7 @@ Transform:
   - {fileID: 5616327500884414441}
   - {fileID: 6883046051954800912}
   - {fileID: 3358069993659622876}
+  - {fileID: 4442331991482277861}
   m_Father: {fileID: 9181606356178734587}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &789682672278611689

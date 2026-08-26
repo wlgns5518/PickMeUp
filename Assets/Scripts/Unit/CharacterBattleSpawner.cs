@@ -278,13 +278,28 @@ public class CharacterBattleSpawner : MonoBehaviour
         return instance;
     }
 
+    // 아군이 실제로 손에 들고 나갈 무기의 분류.
+    //
+    // 장비를 하나도 고르지 않은 캐릭터는 아군 프리팹의 기본 무기(낡은 철검)를 쥐고 나간다(WeaponEquipper).
+    // 수치를 so.MainHandType 그대로 뽑으면 검을 든 채로 맨손 배율을 맞게 되므로 여기서 같은 무기를 본다.
+    // 적은 이 경로를 타지 않는다(BuildEnemyStats) — 맨손 고블린은 그대로 맨손이다.
+    private WeaponType AllyMainHandType(CharacterSO so)
+    {
+        WeaponType type = so.MainHandType;
+        if (type != WeaponType.None || allyUnitPrefab == null) return type;
+
+        var equipment = allyUnitPrefab.GetComponent<WeaponEquipper>();
+        WeaponDefinition fallback = equipment != null ? equipment.DefaultMainHand : null;
+        return fallback != null ? fallback.type : type;
+    }
+
     // CharacterSO 스탯 → UnitStats 매핑.
     // 기본 능력치를 먼저 뽑고, 그 위에 직업과 장비 보정을 얹는다.
     // 이 순서 덕분에 같은 지능이라도 마법사가 든 마나가 더 크고, 같은 힘이라도 두손검이 더 아프다.
     private UnitStats MapStats(CharacterSO so)
     {
         JobCombatProfile job = JobProfile.For(so.job);
-        WeaponCombatProfile weapon = JobProfile.For(so.MainHandType);
+        WeaponCombatProfile weapon = JobProfile.For(AllyMainHandType(so));
         bool hasShield = so.HasShield;
 
         var stats = new UnitStats

@@ -24,6 +24,7 @@ public class CharacterCard : MonoBehaviour
     {
         Character = null;
         if (characterNameText != null) characterNameText.text = "";
+        ShowPortrait(null);
         ClearStars();
         appliedStarCount = -1;
     }
@@ -36,17 +37,27 @@ public class CharacterCard : MonoBehaviour
         if (characterNameText != null)
             characterNameText.text = string.IsNullOrEmpty(so.characterName) ? "이름 없음" : so.characterName;
 
-        if (so.portrait != null && characterImage != null)
-        {
-            characterImage.sprite = so.portrait;
-            characterImage.preserveAspect = true;
-        }
+        ShowPortrait(so.portrait);
 
         if (appliedStarCount != so.starCount)
         {
             DisplayStars(so.starCount);
             appliedStarCount = so.starCount;
         }
+    }
+
+    // 초상화 칸을 채우거나, 없으면 통째로 꺼 둔다.
+    //
+    // 스프라이트를 비운 Image는 사라지는 게 아니라 흰 사각형으로 그려진다. 그 사각형이
+    // 카드 한가운데를 덮고 이름바 뒤까지 내려와서, 소환 직후처럼 초상화가 아직 없는 카드는
+    // 이름이 흰 바탕에 묻혀 읽히지 않았다. 초상화가 없으면 카드 그림이 그대로 보이는 편이 낫다.
+    private void ShowPortrait(Sprite portrait)
+    {
+        if (characterImage == null) return;
+
+        characterImage.sprite = portrait;
+        characterImage.preserveAspect = true;
+        characterImage.enabled = portrait != null;
     }
 
     private void DisplayStars(int count)
