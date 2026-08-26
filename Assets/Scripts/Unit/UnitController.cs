@@ -577,10 +577,53 @@ public partial class UnitController : MonoBehaviour
 
     public void ClearTarget()
     {
+        ReleaseTargetCount();
         CurrentTarget = null;
 #if UNITY_EDITOR
         currentTargetName = "";
 #endif
+    }
+
+    // ------------------------------------------------------------------
+    // 나를 노리고 있는 적 수
+    //
+    // "이 유닛에게 몇 명이 붙어 있는가"는 타깃을 고를 때마다 후보마다 필요하다(뭉치기·혼잡도).
+    // 그때그때 팀 전체를 훑으면 유닛 수의 세제곱으로 커진다 — 67유닛이면 스캔 한 주기에 7만 번,
+    // 유닛이 두 배면 여덟 배가 된다. 그래서 세지 않고 들고 있는다.
+    //
+    // 더하고 빼는 자리는 네 곳뿐이다: 타깃을 잡을 때(AssignTarget), 놓을 때(ClearTarget),
+    // 전장에 들어올 때(Register), 나갈 때(Unregister — 죽거나 꺼지면 여기로 온다).
+    // 그 넷 밖에서 CurrentTarget을 건드리면 숫자가 어긋나므로 대입은 AssignTarget 한 곳으로 모아 둔다.
+    // ------------------------------------------------------------------
+
+    private readonly int[] attackersByTeam = new int[3];
+    private bool countedOnTarget;
+
+    // 지금 이 유닛을 노리고 있는 team 소속 유닛 수.
+    public int AttackersFrom(UnitTeam team) => attackersByTeam[(int)team];
+
+    private void AddAttacker(UnitTeam team, int delta)
+    {
+        int index = (int)team;
+        attackersByTeam[index] = Mathf.Max(0, attackersByTeam[index] + delta);
+    }
+
+    // 레지스트리에 들고 날 때 호출된다. 죽은 유닛은 레지스트리에서 빠지므로 자연히 숫자에서도 빠진다.
+    internal void HoldTargetCount()
+    {
+        if (countedOnTarget || CurrentTarget == null) return;
+
+        countedOnTarget = true;
+        CurrentTarget.AddAttacker(team, 1);
+    }
+
+    internal void ReleaseTargetCount()
+    {
+        if (!countedOnTarget) return;
+
+        countedOnTarget = false;
+        // 대상이 이미 파괴됐으면 숫자도 그와 함께 사라진 것이라 뺄 곳이 없다.
+        if (CurrentTarget != null) CurrentTarget.AddAttacker(team, -1);
     }
 
     public bool TrySetTarget(UnitController target)
@@ -1673,9 +1716,12 @@ public partial class UnitController : MonoBehaviour
         ApplyAgentSpeed(requestedAgentSpeed);
     }
 
+    // CurrentTarget에 값을 넣는 유일한 자리. 여기서만 넣어야 "붙어 있는 적 수"가 어긋나지 않는다.
     private void AssignTarget(UnitController target)
     {
+        ReleaseTargetCount();
         CurrentTarget = target;
+        HoldTargetCount();
         lastTargetChangeTime = Time.time;
 #if UNITY_EDITOR
         currentTargetName = CurrentTarget != null ? CurrentTarget.name : "";

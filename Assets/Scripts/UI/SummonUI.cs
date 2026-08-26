@@ -17,15 +17,11 @@ using UnityEngine.UI;
 //
 // FloorSelectUI와 같은 방식으로 캔버스부터 코드에서 만든다. 클릭을 받아야 하므로 GraphicRaycaster를 붙인다.
 [DisallowMultipleComponent]
-public class SummonUI : MonoBehaviour, IFacilityWindow
+public class SummonUI : FacilityWindow
 {
     [Header("Spawner")]
     [Tooltip("뽑기를 실제로 돌리는 곳. 비워두면 씬에서 찾는다.")]
     [SerializeField] private CardSpawner cardSpawner;
-
-    [Header("Font")]
-    [Tooltip("한글이 포함되므로 한국어 SDF 폰트를 지정해야 한다 (Assets/Fonts/NotoSansKR-Black SDF).")]
-    [SerializeField] private TMP_FontAsset koreanFont;
 
     [Header("Layout")]
     [SerializeField] private Vector2 panelPadding = new Vector2(36f, 30f);
@@ -72,11 +68,7 @@ public class SummonUI : MonoBehaviour, IFacilityWindow
 
     private static readonly StringBuilder Builder = new StringBuilder(96);
 
-    private Canvas canvas;
-    private RectTransform canvasRect;
-    private GameObject popupRoot;
     private AnnouncementBanner warningBanner;
-    private TMP_FontAsset resolvedFont;
 
     private RectTransform panelRect;
     private RectTransform lowerSection;
@@ -96,7 +88,7 @@ public class SummonUI : MonoBehaviour, IFacilityWindow
     private SummonKind selected = SummonKind.Free;
     private bool summoning;
 
-    public bool IsOpen => popupRoot != null && popupRoot.activeSelf;
+    protected override string CanvasName => "SummonCanvas";
 
     private void Awake()
     {
@@ -106,32 +98,20 @@ public class SummonUI : MonoBehaviour, IFacilityWindow
         SetOpen(openOnStart);
     }
 
-    private void Update()
+    protected override void TickWindow(float deltaTime)
     {
-        // 배너는 MonoBehaviour가 아니라 코루틴을 쓸 수 없다. 시간을 여기서 굴린다.
-        warningBanner?.Tick(Time.deltaTime);
+        warningBanner?.Tick(deltaTime);
     }
 
-    public void Show()
+    public override void Show()
     {
         EnsureBuilt();
         SetOpen(true);
     }
 
-    public void Hide()
+    public override void Hide()
     {
         SetOpen(false);
-    }
-
-    public void Toggle()
-    {
-        if (IsOpen) Hide();
-        else Show();
-    }
-
-    private void SetOpen(bool open)
-    {
-        if (popupRoot != null) popupRoot.SetActive(open);
     }
 
     // ---- 소환 -----------------------------------------------------------
@@ -223,16 +203,8 @@ public class SummonUI : MonoBehaviour, IFacilityWindow
 
     // ---- 만들기 ---------------------------------------------------------
 
-    private void EnsureBuilt()
+    protected override void BuildWindow()
     {
-        if (canvas != null) return;
-
-        resolvedFont = HudFactory.ResolveFont(koreanFont, this);
-
-        // 참조만 잃고 남아 있는 이전 캔버스를 먼저 치운다(도메인 리로드 대비).
-        Transform stale = transform.Find("SummonCanvas");
-        if (stale != null) DestroyImmediate(stale.gameObject);
-
         tabBackgrounds.Clear();
         drawButtons.Clear();
         rateRows.Clear();

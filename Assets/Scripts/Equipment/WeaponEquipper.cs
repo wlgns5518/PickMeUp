@@ -74,6 +74,10 @@ public class WeaponEquipper : MonoBehaviour
     // UnitController가 캐시해 둔 공격 애니메이션 길이는 이 이벤트를 구독해 다시 계산한다.
     public event Action WeaponAnimatorChanged;
 
+    // 두 손에 든 것이 바뀌었다. 손을 무기에 붙이는 쪽(WeaponHandIK)이 이걸 듣고 깨어난다 —
+    // 잡을 것이 없는 동안에는 아예 잠들어 있다가 이 신호에만 일어난다.
+    public event Action LoadoutChanged;
+
     // 현재 물려 있는 무기 컨트롤러가 가진 공격 단계 수. 0이면 무기 컨트롤러가 적용되지 않은 상태라
     // (맨손이거나, 애초에 이 리그가 무기 컨트롤러를 쓰지 않는 유닛) 호출 쪽이 자기 기본값을 쓴다.
     public int WeaponAttackCount { get; private set; }
@@ -272,6 +276,13 @@ public class WeaponEquipper : MonoBehaviour
         ResolveBowRig();
         ResolveProjectileOrigin();
         ApplyWeaponAnimator(MainHand != null ? MainHand.type : WeaponType.None);
+
+        // 시위를 굴릴 일이 없으면 매 프레임 불려올 이유도 없다. 유닛 수만큼 쌓이는 호출이라
+        // 대부분이 근접인 전장에서는 그 전부가 헛돈다. 활을 드는 순간 Equip이 다시 켠다.
+        // (Start가 하는 일은 appliedOnce가 이미 참이면 없으므로, 여기서 꺼도 잃는 것이 없다.)
+        enabled = BowGrip != null;
+
+        LoadoutChanged?.Invoke();
     }
 
     // ------------------------------------------------------------------

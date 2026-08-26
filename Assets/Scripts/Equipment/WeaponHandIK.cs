@@ -44,6 +44,32 @@ public class WeaponHandIK : MonoBehaviour
     {
         rig = GetComponent<Animator>();
         if (equipment == null) equipment = GetComponentInParent<WeaponEquipper>();
+
+        // 잡을 것이 없으면 스스로 잠든다(LateUpdate). 다시 깨우는 건 장비가 바뀌는 순간뿐이다.
+        if (equipment != null) equipment.LoadoutChanged += Wake;
+    }
+
+    private void OnDestroy()
+    {
+        if (equipment != null) equipment.LoadoutChanged -= Wake;
+    }
+
+    private void Wake()
+    {
+        enabled = true;
+    }
+
+    // 지금 이 손이 할 일이 있는가.
+    // 활은 언제 당길지 모르니 들고 있는 동안 계속 깨어 있어야 하고,
+    // 양손 무기는 빈 손이 자루를 잡고 있어야 한다. 그 밖에는 애니메이션이 알아서 한다.
+    private bool HasWork()
+    {
+        if (equipment == null) return false;
+        if (equipment.BowGrip != null) return true;
+
+        EquipHand hand;
+        Transform target;
+        return equipment.TryGetSecondaryGrip(out hand, out target);
     }
 
     // 베이스 레이어에서만 손을 옮긴다. 레이어마다 한 번씩 불려 오는 콜백이라
@@ -101,7 +127,15 @@ public class WeaponHandIK : MonoBehaviour
     private void LateUpdate()
     {
         // 애니메이션과 IK가 모두 끝난 뒤라, 지금 손바닥이 있는 자리가 이번 프레임의 결과다.
-        if (!targeting || equipment == null) { correction = Vector3.zero; return; }
+        if (!targeting || equipment == null)
+        {
+            correction = Vector3.zero;
+
+            // 잡을 것도 없고 손도 다 풀렸으면 다음 장비 변경까지 쉰다.
+            // 손이 아직 붙어 있는 동안 꺼 버리면 그 자리에서 뚝 끊기므로 가중치가 0이 된 뒤에 끈다.
+            if (appliedWeight <= 0f && !HasWork()) enabled = false;
+            return;
+        }
 
         Transform socket = equipment.SocketOf(appliedHand);
         if (socket == null) return;

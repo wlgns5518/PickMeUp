@@ -15,7 +15,7 @@ using UnityEngine.UI;
 // 퍼즐이 뜨는 동안은 이 창을 접어 둔다. 창이 떠 있으면 배경막이 퍼즐 판을 가린다.
 // SummonUI와 같은 방식으로 캔버스부터 코드에서 만든다.
 [DisallowMultipleComponent]
-public class EquipmentWorkshopUI : MonoBehaviour, IFacilityWindow
+public class EquipmentWorkshopUI : FacilityWindow
 {
     private enum Mode { Auto, Manual }
 
@@ -23,9 +23,6 @@ public class EquipmentWorkshopUI : MonoBehaviour, IFacilityWindow
     [Tooltip("비워두면 씬에서 찾는다.")]
     [SerializeField] private Forge forge;
 
-    [Header("Font")]
-    [Tooltip("한글이 포함되므로 한국어 SDF 폰트를 지정해야 한다 (Assets/Fonts/NotoSansKR-Black SDF).")]
-    [SerializeField] private TMP_FontAsset koreanFont;
 
     [Header("Open State")]
     [Tooltip("장비제작소를 누르지 않아도 처음부터 열려 있게 하려면 켠다.")]
@@ -77,11 +74,11 @@ public class EquipmentWorkshopUI : MonoBehaviour, IFacilityWindow
     private static readonly Color TabSelected = new Color(0.38f, 0.31f, 0.12f, 0.96f);
     private static readonly Color HintText = new Color(0.62f, 0.62f, 0.66f);
 
-    private Canvas canvas;
-    private RectTransform canvasRect;
-    private GameObject popupRoot;
+
+
+
     private AnnouncementBanner warningBanner;
-    private TMP_FontAsset resolvedFont;
+
 
     private RectTransform panelRect;
     private RectTransform autoSection;
@@ -102,7 +99,7 @@ public class EquipmentWorkshopUI : MonoBehaviour, IFacilityWindow
     private EquipmentGrade selectedMaterial = EquipmentGrade.E;
     private PuzzleDifficulty selectedDifficulty = PuzzleDifficulty.Easy;
 
-    public bool IsOpen => popupRoot != null && popupRoot.activeSelf;
+    protected override string CanvasName => "EquipmentWorkshopCanvas";
 
     private void Awake()
     {
@@ -118,31 +115,20 @@ public class EquipmentWorkshopUI : MonoBehaviour, IFacilityWindow
         }
     }
 
-    private void Update()
+    protected override void TickWindow(float deltaTime)
     {
-        warningBanner?.Tick(Time.deltaTime);
+        warningBanner?.Tick(deltaTime);
     }
 
-    public void Show()
+    public override void Show()
     {
         EnsureBuilt();
         SetOpen(true);
     }
 
-    public void Hide()
+    public override void Hide()
     {
         SetOpen(false);
-    }
-
-    public void Toggle()
-    {
-        if (IsOpen) Hide();
-        else Show();
-    }
-
-    private void SetOpen(bool open)
-    {
-        if (popupRoot != null) popupRoot.SetActive(open);
     }
 
     // ---- 제작 -------------------------------------------------------------
@@ -190,15 +176,8 @@ public class EquipmentWorkshopUI : MonoBehaviour, IFacilityWindow
 
     // ---- 만들기 -------------------------------------------------------------
 
-    private void EnsureBuilt()
+    protected override void BuildWindow()
     {
-        if (canvas != null) return;
-
-        resolvedFont = HudFactory.ResolveFont(koreanFont, this);
-
-        Transform stale = transform.Find("EquipmentWorkshopCanvas");
-        if (stale != null) DestroyImmediate(stale.gameObject);
-
         materialTabBackgrounds.Clear();
         modeTabBackgrounds.Clear();
         diffTabBackgrounds.Clear();

@@ -85,6 +85,8 @@ public static class UnitRegistry
         if (list.Contains(unit)) return;
 
         list.Add(unit);
+        // 들고 있던 타깃이 있으면 그 대상의 "붙어 있는 적 수"에 다시 포함된다.
+        unit.HoldTargetCount();
     }
 
     // 콜라이더 등록은 팀 리스트가 아니라 오브젝트 수명에 묶는다.
@@ -125,6 +127,8 @@ public static class UnitRegistry
         allies.Remove(unit);
         enemies.Remove(unit);
         neutrals.Remove(unit);
+        // 죽거나 꺼진 유닛은 더 이상 누구를 물고 있는 것으로 세지 않는다.
+        unit.ReleaseTargetCount();
     }
 
     public static UnitController FindNearestVisibleEnemy(
@@ -232,20 +236,14 @@ public static class UnitRegistry
 
     // 이미 그 적을 타깃으로 삼고 있는 attackerTeam 소속 유닛 수. 대상 선정에 편향을 줘서
     // 아군이 각자 다른 적으로 흩어지지 않고 같은 적에게 모이도록 만드는 데 쓴다.
+    // 이 대상을 노리고 있는 attackerTeam 유닛 수.
+    //
+    // 예전에는 부를 때마다 팀 전체를 훑었다. 타깃을 고를 때 후보마다 부르는 값이라
+    // 유닛 수의 세제곱으로 커졌다(67유닛 기준 스캔 한 주기에 약 7만 회, 두 배면 여덟 배).
+    // 지금은 타깃을 잡고 놓는 순간에 대상이 직접 세어 두므로 조회는 배열 한 번이다.
     public static int CountAlliesTargeting(UnitTeam attackerTeam, UnitController target)
     {
-        if (target == null) return 0;
-
-        List<UnitController> list = GetList(attackerTeam);
-        int count = 0;
-        for (int i = list.Count - 1; i >= 0; i--)
-        {
-            UnitController unit = list[i];
-            if (unit == null || unit.IsDead || !unit.isActiveAndEnabled) continue;
-            if (unit.CurrentTarget == target) count++;
-        }
-
-        return count;
+        return target != null ? target.AttackersFrom(attackerTeam) : 0;
     }
 
     public static bool HasLineOfSight(Vector3 from, Vector3 to, float eyeHeight, LayerMask obstacleMask)

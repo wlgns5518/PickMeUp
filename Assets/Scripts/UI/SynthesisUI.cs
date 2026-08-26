@@ -21,7 +21,7 @@ using UnityEngine.UI;
 //
 // FloorSelectUI/DeckBuildUI와 같이 캔버스부터 코드에서 만든다.
 [DisallowMultipleComponent]
-public class SynthesisUI : MonoBehaviour, ICardDragHost, IFacilityWindow
+public class SynthesisUI : FacilityWindow, ICardDragHost
 {
     [Header("Roster")]
     [Tooltip("시작 명단. 실제 보유 목록은 런타임(OwnedRoster)이 들고, 이건 씬에 부트스트랩이 없을 때의 대비책이다.")]
@@ -31,9 +31,6 @@ public class SynthesisUI : MonoBehaviour, ICardDragHost, IFacilityWindow
     [Tooltip("영웅 카드 프리팹 (Assets/Character/CharacterCard.prefab).")]
     [SerializeField] private CharacterCard cardPrefab;
 
-    [Header("Font")]
-    [Tooltip("한글이 포함되므로 한국어 SDF 폰트를 지정해야 한다 (Assets/Fonts/NotoSansKR-Black SDF).")]
-    [SerializeField] private TMP_FontAsset koreanFont;
 
     [Header("Open State")]
     [Tooltip("합성소를 누르지 않아도 처음부터 열려 있게 하려면 켠다.")]
@@ -104,12 +101,12 @@ public class SynthesisUI : MonoBehaviour, ICardDragHost, IFacilityWindow
         public CharacterSO Character;
     }
 
-    private Canvas canvas;
-    private RectTransform canvasRect;
+
+
     private RectTransform dragLayer;
-    private GameObject popupRoot;
+
     private AnnouncementBanner warningBanner;
-    private TMP_FontAsset resolvedFont;
+
 
     private CardSlot mainSlot;
     private CardSlot materialSlot;
@@ -128,7 +125,7 @@ public class SynthesisUI : MonoBehaviour, ICardDragHost, IFacilityWindow
     // 창이 닫혀 있는 동안 인원이 바뀌었다. 다음에 열 때 다시 깐다.
     private bool rosterDirty;
 
-    public bool IsOpen => popupRoot != null && popupRoot.activeSelf;
+    protected override string CanvasName => "SynthesisCanvas";
 
     private void Awake()
     {
@@ -150,13 +147,12 @@ public class SynthesisUI : MonoBehaviour, ICardDragHost, IFacilityWindow
         OwnedRoster.Changed -= HandleRosterChanged;
     }
 
-    private void Update()
+    protected override void TickWindow(float deltaTime)
     {
-        // 배너는 MonoBehaviour가 아니라 코루틴을 쓸 수 없다. 시간을 여기서 굴린다.
-        warningBanner?.Tick(Time.deltaTime);
+        warningBanner?.Tick(deltaTime);
     }
 
-    public void Show()
+    public override void Show()
     {
         EnsureBuilt();
         if (rosterDirty) RebuildRoster();
@@ -166,24 +162,13 @@ public class SynthesisUI : MonoBehaviour, ICardDragHost, IFacilityWindow
     // 창을 닫으면 올려둔 카드를 내려놓는다. 지난번에 뭘 올렸는지 창이 기억하고 있으면,
     // 다시 열었을 때 재료가 걸려 있는 줄 모르고 합성을 눌러 엉뚱한 카드를 태우게 된다.
     // X와 배경막 어느 쪽으로 닫아도 같아야 하므로 두 버튼이 함께 부르는 여기서 비운다.
-    public void Hide()
+    public override void Hide()
     {
         main = null;
         material = null;
         RefreshSlots();
 
         SetOpen(false);
-    }
-
-    public void Toggle()
-    {
-        if (IsOpen) Hide();
-        else Show();
-    }
-
-    private void SetOpen(bool open)
-    {
-        if (popupRoot != null) popupRoot.SetActive(open);
     }
 
     // ---- 고르기 ---------------------------------------------------------
@@ -358,17 +343,10 @@ public class SynthesisUI : MonoBehaviour, ICardDragHost, IFacilityWindow
         SetOpen(wasOpen);
     }
 
-    private void EnsureBuilt()
+    protected override void BuildWindow()
     {
-        if (canvas != null) return;
-
-        resolvedFont = HudFactory.ResolveFont(koreanFont, this);
         if (cardPrefab == null)
             Debug.LogError("[SynthesisUI] 카드 프리팹이 없어 카드를 그릴 수 없습니다. Assets/Character/CharacterCard.prefab을 지정하세요.", this);
-
-        // 참조만 잃고 남아 있는 이전 캔버스를 먼저 치운다(도메인 리로드 대비).
-        Transform stale = transform.Find("SynthesisCanvas");
-        if (stale != null) DestroyImmediate(stale.gameObject);
 
         rosterSlots.Clear();
         mainSlot = null;

@@ -16,15 +16,11 @@ using UnityEngine.UI;
 // BattleHud와 같은 방식으로 캔버스부터 코드에서 만든다.
 // 이쪽은 클릭을 받아야 하므로 BattleHud와 달리 GraphicRaycaster를 붙인다.
 [DisallowMultipleComponent]
-public class FloorSelectUI : MonoBehaviour
+public class FloorSelectUI : FacilityWindow
 {
     [Header("Scene")]
     [Tooltip("모든 층이 함께 쓰는 전투 씬. 난이도는 고른 층 번호로 조정된다. Build Settings에 등록돼 있어야 한다.")]
     [SerializeField] private string battleSceneName = "Floor1~9";
-
-    [Header("Font")]
-    [Tooltip("한글이 포함되므로 한국어 SDF 폰트를 지정해야 한다 (Assets/Fonts/NotoSansKR-Black SDF).")]
-    [SerializeField] private TMP_FontAsset koreanFont;
 
     [Header("Layout")]
     [Tooltip("화면에 늘어놓을 층 버튼 개수. 모든 층이 전투 씬 하나를 함께 쓰므로 난이도 단계 수와 같다.")]
@@ -56,15 +52,11 @@ public class FloorSelectUI : MonoBehaviour
     private const float TitleHeight = 72f;
     private const float CloseHeight = 60f;
 
-    private Canvas canvas;
-    private RectTransform canvasRect;
-    private GameObject popupRoot;
     private AnnouncementBanner warningBanner;
-    private TMP_FontAsset resolvedFont;
     private readonly List<Button> floorButtons = new List<Button>();
     private readonly List<TMP_Text> floorLabels = new List<TMP_Text>();
 
-    public bool IsOpen => popupRoot != null && popupRoot.activeSelf;
+    protected override string CanvasName => "FloorSelectCanvas";
 
     private void Awake()
     {
@@ -84,46 +76,26 @@ public class FloorSelectUI : MonoBehaviour
         RefreshButtons();
     }
 
-    private void Update()
+    protected override void TickWindow(float deltaTime)
     {
-        // 배너는 MonoBehaviour가 아니라 코루틴을 쓸 수 없다. 시간을 여기서 굴린다.
-        warningBanner?.Tick(Time.deltaTime);
+        warningBanner?.Tick(deltaTime);
     }
 
     // 문을 눌렀을 때 불린다. 열기 직전에 해금 상태를 다시 읽는다.
-    public void Show()
+    public override void Show()
     {
         EnsureBuilt();
         RefreshButtons();
         SetOpen(true);
     }
 
-    public void Hide()
+    public override void Hide()
     {
         SetOpen(false);
     }
 
-    public void Toggle()
+    protected override void BuildWindow()
     {
-        if (IsOpen) Hide();
-        else Show();
-    }
-
-    private void SetOpen(bool open)
-    {
-        if (popupRoot != null) popupRoot.SetActive(open);
-    }
-
-    private void EnsureBuilt()
-    {
-        if (canvas != null) return;
-
-        resolvedFont = HudFactory.ResolveFont(koreanFont, this);
-
-        // 참조만 잃고 남아 있는 이전 캔버스를 먼저 치운다(도메인 리로드 대비).
-        Transform stale = transform.Find("FloorSelectCanvas");
-        if (stale != null) DestroyImmediate(stale.gameObject);
-
         floorButtons.Clear();
         floorLabels.Clear();
         BuildCanvas();

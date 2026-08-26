@@ -14,7 +14,7 @@ using UnityEngine.UI;
 // FloorSelectUI와 같이 캔버스부터 코드에서 만든다.
 // 카드 수는 로스터에 달려 있어서, 씬에 미리 깔아두면 캐릭터가 늘 때마다 씬을 다시 만져야 한다.
 [DisallowMultipleComponent]
-public class DeckBuildUI : MonoBehaviour, ICardDragHost, IFacilityWindow
+public class DeckBuildUI : FacilityWindow, ICardDragHost
 {
     [Header("Roster")]
     [Tooltip("보유 캐릭터 전원의 명단. 여기 있는 캐릭터가 카드로 나열된다.")]
@@ -47,9 +47,6 @@ public class DeckBuildUI : MonoBehaviour, ICardDragHost, IFacilityWindow
     [SerializeField] private float screenMargin = 30f;
     [SerializeField] private float cardSpacing = 16f;
 
-    [Header("Font")]
-    [Tooltip("한글이 포함되므로 한국어 SDF 폰트를 지정해야 한다 (Assets/Fonts/NotoSansKR-Black SDF).")]
-    [SerializeField] private TMP_FontAsset koreanFont;
 
     private const string BannerText = "파티를 구성합니다.\n영웅을 드래그 앤 드롭!";
 
@@ -122,12 +119,12 @@ public class DeckBuildUI : MonoBehaviour, ICardDragHost, IFacilityWindow
         public GameObject DeadOverlay;
     }
 
-    private Canvas canvas;
-    private RectTransform canvasRect;
+
+
     private RectTransform dragLayer;
-    private GameObject popupRoot;
+
     private AnnouncementBanner announcement;
-    private TMP_FontAsset resolvedFont;
+
     private TMP_Text countLabel;
     private RectTransform openButton;
     private TMP_Text openButtonLabel;
@@ -141,7 +138,7 @@ public class DeckBuildUI : MonoBehaviour, ICardDragHost, IFacilityWindow
     // 창이 닫혀 있는 동안 인원이 바뀌었다. 다음에 열 때 다시 깐다.
     private bool rosterDirty;
 
-    public bool IsOpen => popupRoot != null && popupRoot.activeSelf;
+    protected override string CanvasName => "DeckBuildCanvas";
 
     private void Awake()
     {
@@ -204,15 +201,14 @@ public class DeckBuildUI : MonoBehaviour, ICardDragHost, IFacilityWindow
         Refresh();
     }
 
-    private void Update()
+    protected override void TickWindow(float deltaTime)
     {
-        // 배너는 MonoBehaviour가 아니라 코루틴을 쓸 수 없다. 시간을 여기서 굴린다.
-        announcement?.Tick(Time.deltaTime);
+        announcement?.Tick(deltaTime);
     }
 
     // ---- 열고 닫기 --------------------------------------------------------
 
-    public void Show()
+    public override void Show()
     {
         EnsureBuilt();
         if (rosterDirty) RebuildRoster();
@@ -222,17 +218,11 @@ public class DeckBuildUI : MonoBehaviour, ICardDragHost, IFacilityWindow
         announcement?.Show(BannerText);
     }
 
-    public void Hide()
+    public override void Hide()
     {
         SetOpen(false);
         // 창이 닫혔는데 안내만 화면에 남아 있으면 앞뒤가 맞지 않는다.
         announcement?.Clear();
-    }
-
-    public void Toggle()
-    {
-        if (IsOpen) Hide();
-        else Show();
     }
 
     // 편성을 마치고 층 선택으로 넘어간다. 편성 창은 닫는다 — 두 창이 겹쳐 떠 있으면
@@ -257,9 +247,9 @@ public class DeckBuildUI : MonoBehaviour, ICardDragHost, IFacilityWindow
         floorSelect.Show();
     }
 
-    private void SetOpen(bool open)
+    protected override void SetOpen(bool open)
     {
-        if (popupRoot != null) popupRoot.SetActive(open);
+        base.SetOpen(open);
         // 창이 화면을 덮으면 여는 버튼은 아래쪽에 삐져나온 조각으로만 보인다. 함께 감춘다.
         if (openButton != null) openButton.gameObject.SetActive(!open);
     }
@@ -341,16 +331,9 @@ public class DeckBuildUI : MonoBehaviour, ICardDragHost, IFacilityWindow
     private float partyCardScale = 0.5f;
     private float rosterCardScale = 0.5f;
 
-    private void EnsureBuilt()
+    protected override void BuildWindow()
     {
-        if (canvas != null) return;
-
         PartyDeck.SetCapacity(deckCapacity);
-        resolvedFont = HudFactory.ResolveFont(koreanFont, this);
-
-        // 참조만 잃고 남아 있는 이전 캔버스를 먼저 치운다(도메인 리로드 대비).
-        Transform stale = transform.Find("DeckBuildCanvas");
-        if (stale != null) DestroyImmediate(stale.gameObject);
 
         partySlots.Clear();
         rosterSlots.Clear();
