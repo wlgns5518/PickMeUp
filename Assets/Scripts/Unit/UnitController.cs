@@ -37,8 +37,12 @@ public partial class UnitController : MonoBehaviour
     [Header("Ranged")]
     [Tooltip("사거리가 이 값 이상인 유닛만 원거리로 취급해 거리를 벌린다. 근접 유닛은 해당 없음.")]
     [SerializeField] private float minKeepDistanceRange = 4f;
-    [Tooltip("사거리의 이 비율 안쪽까지 적이 붙으면 물러선다.")]
-    [SerializeField, Range(0f, 1f)] private float keepDistanceRatio = 0.5f;
+    [Tooltip("사거리의 이 비율 안쪽까지 적이 붙으면 물러선다. " +
+             "쫓아오는 근접 유닛과 이동 속도가 비슷해서 물러나 봐야 거의 못 벌리므로, " +
+             "\"적이 실제로 때릴 수 있게 되는 순간\"에 맞춰 잡는다 — 사거리 9짜리에 0.3이면 2.7m로, " +
+             "고블린의 타격 도달(1.85m) 바로 바깥이다. 더 올리면 사정권 밖의 적에게도 물러나느라 " +
+             "쏘는 시간이 사라진다.")]
+    [SerializeField, Range(0f, 1f)] private float keepDistanceRatio = 0.3f;
 
     [Header("Targeting")]
     [SerializeField] private float targetChangeInterval = 0.5f;
@@ -59,7 +63,12 @@ public partial class UnitController : MonoBehaviour
     [SerializeField] private string attackStateName = "Attack";
     [Tooltip("공격 콤보 단계 수. 무기별 Override Controller가 Attack1~N 상태를 모두 갖고 있어야 한다.")]
     [SerializeField, Min(1)] private int attackComboLength = 3;
-    [SerializeField] private string skillStateName = "Kick";
+    [Tooltip("액티브 스킬 모션. 지금은 비워 둔다 — 기획상 공격 스킬이 없고, 발차기는 스킬이 아니라 " +
+             "기본공격으로 옮겼다(kickStateName). 진짜 액티브 스킬이 생기면 그때 채운다.")]
+    [SerializeField] private string skillStateName = "";
+    [Tooltip("발차기 모션. 기본공격의 한 갈래로, 상대가 방패를 올렸을 때 골라 쓴다. " +
+             "이 상태가 없는 리그는 발차기를 쓰지 않고 무기 콤보만 돈다.")]
+    [SerializeField] private string kickStateName = "Kick";
     [SerializeField] private string blockStateName = "Block";
     [Tooltip("회복약을 마시는 모션. 비워두거나 애니메이터에 없으면 Idle로 대체된다.")]
     [SerializeField] private string potionStateName = "Potion";
@@ -78,6 +87,17 @@ public partial class UnitController : MonoBehaviour
     [SerializeField, Min(0.1f)] private float walkClipSpeed = 1.99f;
     [Tooltip("달리기 클립이 원래 나아가는 속도(m/s). PlayerRun = 4.2, 고블린 Run = 2.29")]
     [SerializeField, Min(0.1f)] private float runClipSpeed = 4.2f;
+    [Tooltip("옆걸음 클립이 원래 나아가는 속도(m/s). StrafeLeft = 1.94, StrafeRight = 1.90")]
+    [SerializeField, Min(0.1f)] private float strafeClipSpeed = 1.92f;
+    [Tooltip("뒷걸음 클립이 원래 나아가는 속도(m/s). StrafeBack = 2.19 — 옆걸음보다 빨라서 " +
+             "같은 값으로 계산하면 뒤로 물러설 때만 발이 밀린다.")]
+    [SerializeField, Min(0.1f)] private float strafeBackClipSpeed = 2.19f;
+    [Tooltip("거리를 벌릴 때 뒤로 빠지는 속도. 달리기(4)로 물러나면 뒷걸음 클립이 2배속으로 " +
+             "돌아 다리가 눈에 띄게 헛돈다. 클립이 원래 나아가는 속도(2.19)의 1.5배쯤이 한계다.")]
+    [SerializeField, Min(0.1f)] private float backpedalSpeed = 3.3f;
+    [Tooltip("회피 도약 클립이 원래 나아가는 속도(m/s). Dodge = 4.08(0.67초에 2.72m). " +
+             "도약은 이 속도를 밑으로 두고 회피 거리에 맞춰 최대 1.8배까지 올려 민다.")]
+    [SerializeField, Min(0.1f)] private float dodgeClipSpeed = 4.08f;
     [Tooltip("배속 허용 범위. 너무 벌어지면 발이 미끄러지는 대신 다리가 헛돈다.")]
     [SerializeField] private Vector2 moveSpeedMultiplierRange = new Vector2(0.6f, 2.2f);
 
@@ -145,6 +165,8 @@ public partial class UnitController : MonoBehaviour
     private float attackLockedUntil;
     private float poiseImmuneUntil;
     private bool pendingIsComboFinisher;
+    // 이번 스윙이 발차기인가. 피해와 강인도 계산이 갈린다.
+    private bool pendingIsKick;
     private float nextDestinationUpdateTime;
     private Vector3 lastAgentDestination;
     private float lastAgentStoppingDistance;
@@ -161,6 +183,10 @@ public partial class UnitController : MonoBehaviour
 
     // 이 유닛에 속한 콜라이더 전부. UnitRegistry가 시야 레이의 히트 중 유닛 몸통을 걸러내는 데 쓴다.
     public Collider[] BodyColliders => bodyColliders;
+
+    // 원거리 공격이 겨누는 지점. 발밑이 아니라 몸통 한가운데다 —
+    // transform.position으로 쏘면 화살이 발등에 꽂힌다.
+    public Vector3 AimPoint => bodyCollider != null ? bodyCollider.bounds.center : transform.position + Vector3.up;
 
     // 전투 매니저가 유닛 하나하나를 구독하지 않아도 되도록 정적 이벤트로 알린다.
     public static event Action<UnitController> OnAnyUnitDied;
@@ -181,6 +207,7 @@ public partial class UnitController : MonoBehaviour
     private int attackComboIndex;
     private bool hasAttackAnimation;
     private int skillAnimationHash;
+    private int kickAnimationHash;
     private int blockAnimationHash;
     private int potionAnimationHash;
     private int healAnimationHash;
@@ -193,6 +220,7 @@ public partial class UnitController : MonoBehaviour
 
     private float attackAnimationDuration;
     private float skillAnimationDuration;
+    private float kickAnimationDuration;
     private float potionAnimationDuration;
     private float healAnimationDuration;
     private float dodgeAnimationDuration;
@@ -205,6 +233,56 @@ public partial class UnitController : MonoBehaviour
     public float HealAnimationDuration => healAnimationDuration;
     // 회피 모션이 없는 리그(고블린)는 0. EvadeState가 이 값으로 "구를지 달릴지"를 정한다.
     public float DodgeAnimationDuration => dodgeAnimationHash != 0 ? dodgeAnimationDuration : 0f;
+
+    public float BackpedalSpeed => backpedalSpeed;
+
+    // 도약이 실제로 나아갈 속도. 클립이 원래 나아가는 속도를 밑으로 두고, 회피 거리를
+    // 클립 길이 안에 소화할 만큼 올린다. 위로는 1.8배까지만 — 그 이상은 뛰는 중에도 눈에 띄게 밀린다.
+    public float DodgeMoveSpeed(float distance)
+    {
+        float duration = Mathf.Max(0.05f, dodgeAnimationDuration);
+        return Mathf.Clamp(distance / duration, dodgeClipSpeed, dodgeClipSpeed * 1.8f);
+    }
+
+    // 회피 도약을 실제 이동으로 옮긴다.
+    //
+    // NavMeshAgent에 목적지를 주지 않고 직접 미는 이유: 에이전트는 가속(8m/s^2)을 거치므로
+    // 4m/s에 닿는 데만 0.5초가 걸리는데 도약 자체가 0.67초다. 목적지를 주면 클립은 뛰는데
+    // 몸은 기어간다. 발놀림(UpdateCombatFootwork)이 같은 이유로 agent.Move를 쓴다.
+    // 뛰는 동안은 발이 땅에 닿아 있지 않으므로 등속으로 밀어도 미끄러져 보이지 않는다.
+    public void MoveDodge(Vector3 direction, float speed, float deltaTime)
+    {
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
+        agent.Move(direction * (speed * deltaTime));
+    }
+
+    // 지금 실제로 땅 위를 나아가는 속도.
+    // 재생 배속은 "요청한 속도"가 아니라 이 값에 맞춰야 한다 — NavMeshAgent는 가속 중이거나
+    // 코너를 돌 때, 다른 유닛을 피할 때 요청보다 느리게 간다. 그 구간마다 다리가 헛돈다.
+    public float CurrentMoveSpeed
+    {
+        get
+        {
+            if (agent == null || !agent.enabled) return 0f;
+            Vector3 v = agent.velocity;
+            v.y = 0f;
+            return v.magnitude;
+        }
+    }
+
+    // 마지막으로 물러난 뒤에 한 번이라도 공격했는가.
+    //
+    // 원거리 유닛의 "가까워지면 즉시 물러난다"를 조건 없이 지키면, 한 번 물러나서 벌어지는
+    // 거리가 임계보다 작을 때 Attack에 들어서자마자 다시 Evade로 나가 한 발도 쏘지 못한다
+    // (물러나는 0.9초 동안 적도 따라오므로 실제로 벌어지는 건 0.5m 남짓이다).
+    // 물러난 직후 한 발은 반드시 쏘게 해서 그 왕복을 끊는다.
+    public bool HasAttackedSinceEvade { get; private set; }
+
+    // EvadeState가 물러나기 시작할 때 부른다.
+    public void MarkEvadeStarted()
+    {
+        HasAttackedSinceEvade = false;
+    }
     public float HitAnimationDuration => hitAnimationDuration;
     public float DeathAnimationDuration => deathAnimationDuration;
 
@@ -283,6 +361,7 @@ public partial class UnitController : MonoBehaviour
         walkAnimationHash = ResolveStateHash(walkStateName);
         jumpAnimationHash = ResolveStateHash(jumpStateName);
         skillAnimationHash = ResolveStateHash(skillStateName);
+        kickAnimationHash = ResolveStateHash(kickStateName);
         blockAnimationHash = ResolveStateHash(blockStateName);
         potionAnimationHash = ResolveStateHash(potionStateName);
         healAnimationHash = ResolveStateHash(healStateName);
@@ -295,6 +374,7 @@ public partial class UnitController : MonoBehaviour
         CacheMoveSpeedParameter();
 
         skillAnimationDuration = GetAnimationClipDuration(skillStateName, 1f);
+        kickAnimationDuration = GetAnimationClipDuration(kickStateName, 0.8f);
         potionAnimationDuration = GetAnimationClipDuration(potionStateName, 0.8f);
         healAnimationDuration = healAnimationHash != 0
             ? GetAnimationClipDuration(healStateName, skillAnimationDuration)
@@ -348,15 +428,21 @@ public partial class UnitController : MonoBehaviour
         }
 
         attackComboIndex = 0;
+        hasSwungAtLeastOnce = false;
     }
 
     // 공격 모션이 하나라도 있는가. 없으면 CanAttack이 false가 되어 공격 상태로 들어가지 않는다.
     public bool HasAttackAnimation => hasAttackAnimation;
 
     // 콤보가 한 바퀴를 다 돌아 다음 스윙이 다시 1번부터 시작하는 시점. AttackState가 이때만
-    // 스킬/방어/카이팅 같은 재량 전환을 검토한다 — 콤보 스텝 사이마다 검토하면 스윙 하나
-    // 끝날 때마다 다른 상태로 튀어서 콤보가 거의 끝까지 이어지지 않는다.
-    public bool IsComboRecoveryPoint => attackComboIndex == 0;
+    // 스킬 같은 재량 전환을 검토한다 — 콤보 스텝 사이마다 검토하면 스윙 하나 끝날 때마다
+    // 다른 상태로 튀어서 콤보가 거의 끝까지 이어지지 않는다.
+    //
+    // 한 번도 휘두르지 않은 상태를 레커버리로 세면 안 된다. attackComboIndex는 처음부터 0이라
+    // 교전에 들어선 첫 프레임에 이 값이 참이 되고, 유닛이 공격을 하기도 전에 스킬부터 쓴다.
+    // 원거리 유닛에서 특히 드러났다 — 스폰되자마자 사거리 안이라 첫 행동이 곧바로 스킬이 되는데,
+    // 스킬 모션은 근접 동작이라 7m 밖에서 발차기를 하며 피해를 넣었다.
+    public bool IsComboRecoveryPoint => hasSwungAtLeastOnce && attackComboIndex == 0;
 
     // WeaponEquipper가 무기를 갈아 끼운 뒤 호출. Awake는 장비가 붙기 전에 한 번 끝나므로
     // 처음 캐시된 길이는 맨손 기준이라 무기 장착 후 다시 계산해야 한다.
@@ -659,6 +745,11 @@ public partial class UnitController : MonoBehaviour
     public bool CanUseSkill()
     {
         return skillAnimationHash != 0 &&
+               // 스킬은 여는 수가 아니다. 한 번도 휘두르지 않았는데 먼저 나가면 교전의 첫 동작이
+               // 늘 스킬로 똑같아진다. 원거리 유닛에서 특히 두드러졌다 — 스폰되자마자 사거리에
+               // 들어서므로 "입장하자마자 스킬"이 매 전투 고정 연출이 됐다.
+               // AttackState는 콤보 레커버리로 한 번 더 거르지만, ChaseState는 이 검사가 전부다.
+               hasSwungAtLeastOnce &&
                IsTargetValid() &&
                IsTargetInAttackRange() &&
                stats.HasMana(stats.skillManaCost) &&
@@ -1055,14 +1146,45 @@ public partial class UnitController : MonoBehaviour
         hasStruckThisSwing = true;
 
         UnitController victim = ResolveSwingVictim();
+        // 발차기는 베는 대신 무너뜨린다 — 피해는 낮고 강인도 피해는 크다.
+        float poiseDamage = pendingIsKick
+            ? stats.poiseDamageKick
+            : stats.poiseDamagePerHit + (pendingIsComboFinisher ? stats.poiseDamageComboFinisherBonus : 0f);
+        int damage = ScaleDamage(pendingIsKick
+            ? Mathf.RoundToInt(stats.attackDamage * stats.kickDamageMultiplier)
+            : stats.attackDamage);
+
+        // 활은 맞았는지를 근접과 똑같이 여기서 정하되, 그 한 방을 화살에 실어 보낸다.
+        // 빗나간 스윙도 화살은 떠난다 — 허공으로 날아가는 화살이 곧 빗나갔다는 표시다.
+        bool fired = TryFireProjectile(victim, damage, poiseDamage, false);
+
         if (victim == null)
         {
             OnSwingMissed();
             return;
         }
 
-        float poiseDamage = stats.poiseDamagePerHit + (pendingIsComboFinisher ? stats.poiseDamageComboFinisherBonus : 0f);
-        victim.TakeDamage(ScaleDamage(stats.attackDamage), this, false, false, poiseDamage);
+        // 화살이 떠났으면 피해는 투사체가 도착할 때 들어간다(WeaponProjectile).
+        if (!fired) victim.TakeDamage(damage, this, false, false, poiseDamage);
+    }
+
+    // 주무기가 투사체를 들고 있으면 쏘고 true. 근접 무기는 false를 돌려주고 그 자리에서 때린다.
+    private bool TryFireProjectile(UnitController victim, int damage, float poiseDamage, bool fromSkill)
+    {
+        if (equipment == null) return false;
+
+        WeaponDefinition weapon = equipment.MainHand;
+        if (weapon == null || weapon.projectile == null) return false;
+
+        Transform origin = equipment.ProjectileOrigin;
+        if (origin == null) return false;
+
+        // 겨눈 상대가 있으면 그쪽으로, 빗나갔으면 보고 있던 쪽으로 날린다.
+        Vector3 direction = victim != null ? victim.AimPoint - origin.position : transform.forward;
+        WeaponProjectile.Fire(weapon.projectile, origin.position, direction, this, victim, damage, poiseDamage, fromSkill);
+
+        equipment.ShowNockedArrow(false);
+        return true;
     }
 
     public void ApplySkillDamage()
@@ -1072,13 +1194,19 @@ public partial class UnitController : MonoBehaviour
         hasStruckThisSwing = true;
 
         UnitController victim = ResolveSwingVictim();
+        int damage = ScaleDamage(stats.skillDamage);
+
+        // 스킬도 평타와 같은 규칙을 따른다 — 원거리 무기면 그 한 방을 투사체에 실어 보낸다.
+        // 그러지 않으면 화살은 평타에만 날아가고, 스킬은 허공을 향해 피해만 들어간다.
+        bool fired = TryFireProjectile(victim, damage, stats.poiseDamageSkill, true);
+
         if (victim == null)
         {
             OnSwingMissed();
             return;
         }
 
-        victim.TakeDamage(ScaleDamage(stats.skillDamage), this, true, true, stats.poiseDamageSkill);
+        if (!fired) victim.TakeDamage(damage, this, true, true, stats.poiseDamageSkill);
     }
 
     // 공포에 빠진 유닛은 원작 설정대로 능력치가 깎인다. 0이 되어 무해해지지는 않도록 최소 1.
@@ -1089,33 +1217,145 @@ public partial class UnitController : MonoBehaviour
 
     public void TriggerAttack()
     {
-        int step = attackComboIndex % attackAnimationHashes.Length;
-        attackAnimationDuration = attackAnimationDurationsPerStep[step];
+        // 무엇으로 칠지는 지금 상황이 정한다. 콤보 순환은 그중 기본값일 뿐이다(ChooseAttack).
+        AttackChoice choice = ChooseAttack();
+
+        pendingIsKick = choice.IsKick;
+        attackAnimationDuration = choice.Duration;
         attackLockedUntil = Time.time + attackAnimationDuration;
+
         // 콤보 마무리 보너스는 "여러 단을 끝까지 이어붙인 것"에 대한 보상이다.
-        // 공격 모션이 하나뿐인 유닛(고블린)은 이어붙일 콤보가 없으므로 해당 없다 —
-        // 예전에는 step 0 == length-1 이 항상 참이라 고블린의 모든 스윙이 마무리로 잡혔고,
-        // 강인도 피해가 15가 아니라 40이 되어 3대(등 뒤면 2대)마다 경직이 터졌다.
-        pendingIsComboFinisher = attackAnimationHashes.Length > 1 && step == attackAnimationHashes.Length - 1;
+        // 공격 모션이 하나뿐인 유닛(고블린)은 이어붙일 콤보가 없으므로 해당 없다.
+        pendingIsComboFinisher = choice.IsFinisher;
 
         // 이번 스윙은 아직 아무도 때리지 않았다. 이 플래그가 준비 동작(막을 수 있는 구간)과
         // 회수 동작(무방비 구간)을 가른다 — 클립 길이로 추정하지 않고 타격 이벤트로 안다.
         hasStruckThisSwing = false;
+        hasSwungAtLeastOnce = true;
+
+        // 물러난 뒤 한 발은 쐈다는 표시. 원거리 유닛이 Attack↔Evade만 오가는 것을 막는다.
+        HasAttackedSinceEvade = true;
+
+        // 시위를 당기기 시작한다. 앞선 화살이 떠나면서 감춰 둔 화살을 다시 물린다.
+        if (equipment != null) equipment.ShowNockedArrow(true);
+
         lungeRemaining = stats.lungeMaxDistance;
 
         // 다음 스윙까지의 호흡. 콤보를 완주한 뒤에는 길게 숨을 고르고, 그 밖에는 짧게 끊는다.
-        // 무작위 폭을 주는 건 여러 유닛이 합창하듯 같은 박자로 휘두르는 것을 막기 위해서다.
         float recovery = pendingIsComboFinisher ? stats.comboFinisherRecoveryTime : stats.attackRecoveryTime;
         recovery *= 1f + Random.Range(-stats.attackRecoveryRandomness, stats.attackRecoveryRandomness);
         recovery = Mathf.Max(0f, recovery);
         nextSwingReadyTime = attackLockedUntil + recovery;
 
-        // 이번 틈에 자리를 옮길지 여기서 한 번만 정한다. 발놀림 쪽에서 매 프레임 남은 시간으로
-        // 판단하면 스윙 직전 minFootworkWindow만큼은 무조건 멈춰 서게 된다(FootworkThisGap 주석 참조).
+        // 이번 틈에 자리를 옮길지 여기서 한 번만 정한다(FootworkThisGap 주석 참조).
         footworkThisGap = recovery >= minFootworkWindow;
 
-        PlayAnimation(attackAnimationHashes[step], true);
-        attackComboIndex = (step + 1) % attackAnimationHashes.Length;
+        PlayAnimation(choice.Hash, true);
+        attackComboIndex = choice.NextComboIndex;
+    }
+
+    // 이번 스윙에 낼 것 하나.
+    private struct AttackChoice
+    {
+        public int Hash;
+        public float Duration;
+        public bool IsKick;
+        public bool IsFinisher;
+        public int NextComboIndex;
+    }
+
+    // 기본공격을 상황으로 고른다.
+    //
+    // 예전에는 콤보 인덱스만 돌렸다. 무기를 든 손이 늘 같은 순서로 움직이니, 상대가 방패를
+    // 올리고 있든 자세가 무너져 있든 똑같은 스윙이 나갔다 — 고를 것이 없는 전투였다.
+    //
+    // 규칙은 위에서부터 본다. 어느 것도 걸리지 않으면 콤보 순환으로 떨어지므로,
+    // 규칙을 전부 지우면 예전 동작 그대로가 된다.
+    private AttackChoice ChooseAttack()
+    {
+        int step = attackComboIndex % attackAnimationHashes.Length;
+
+        AttackChoice choice;
+        choice.Hash = attackAnimationHashes[step];
+        choice.Duration = attackAnimationDurationsPerStep[step];
+        choice.IsKick = false;
+        choice.IsFinisher = attackAnimationHashes.Length > 1 && step == attackAnimationHashes.Length - 1;
+        choice.NextComboIndex = (step + 1) % attackAnimationHashes.Length;
+
+        // ① 상대가 방패를 올렸다 → 발차기.
+        //
+        // 무기 스윙은 막히면 피해가 통째로 흘러가고 강인도만 조금 깎는다. 같은 스윙을 계속
+        // 넣으면 가드가 열릴 때까지 아무 일도 일어나지 않는다. 발차기는 그 강인도를 크게
+        // 깎아(poiseDamageKick) 가드 자체를 연다.
+        //
+        // 다만 지금 콘텐츠에서는 이 규칙이 거의 잠들어 있다 — CanEverBlock 주석대로
+        // "방어는 아군만" 하기 때문에, 아군이 때리는 적은 애초에 방패를 올리지 않는다.
+        // 막는 적이 생기면 그때 저절로 살아난다.
+        if (CanKick() && IsTargetGuarding()) return KickChoice();
+
+        // ② 한 번 더 밀면 무너진다 → 발차기로 끊는다.
+        //
+        // 평타로는 모자라고 발차기면 깨지는 구간이 있다(평타 15 / 발차기 45). 그 구간에서
+        // 평타를 넣으면 상대는 버티고, 발차기를 넣으면 그 자리에서 무너져 다음 콤보가 통째로
+        // 들어간다. 적이 방어를 하지 않는 지금, 실제로 발차기가 나가는 것은 대개 이 규칙이다.
+        if (CanKick() && IsTargetPoiseRipe()) return KickChoice();
+
+        // ③ 상대가 무너져 있다 → 콤보의 마지막 단으로 건너뛴다.
+        //
+        // 무너진 몇 초는 상대가 내준 진짜 빈틈이고 받는 피해도 커진다(staggerDamageMultiplier).
+        // 그 자리에 콤보 1단을 넣으면 가장 약한 스윙으로 가장 좋은 기회를 쓰는 셈이 된다.
+        // ②가 무너뜨린 직후가 대개 여기로 이어진다.
+        if (attackAnimationHashes.Length > 1 && IsTargetStaggered())
+        {
+            int last = attackAnimationHashes.Length - 1;
+            choice.Hash = attackAnimationHashes[last];
+            choice.Duration = attackAnimationDurationsPerStep[last];
+            choice.IsFinisher = true;
+            choice.NextComboIndex = 0;
+        }
+
+        return choice;
+    }
+
+    private AttackChoice KickChoice()
+    {
+        AttackChoice choice;
+        choice.Hash = kickAnimationHash;
+        choice.Duration = kickAnimationDuration;
+        choice.IsKick = true;
+        choice.IsFinisher = false;
+        // 발차기는 콤보의 일부가 아니다. 순서를 소비하지 않고 제자리에 둬서,
+        // 무너뜨린 뒤에 하던 콤보를 그대로 이어 붙인다.
+        choice.NextComboIndex = attackComboIndex;
+        return choice;
+    }
+
+    // 발차기 한 번이면 무너지지만 평타로는 안 되는 구간에 상대가 들어와 있는가.
+    // 기준은 때리는 쪽의 수치다 — 강인도를 깎는 것은 이 유닛의 발과 무기이기 때문이다.
+    private bool IsTargetPoiseRipe()
+    {
+        if (!IsTargetValid()) return false;
+        if (stats.poiseDamageKick <= stats.poiseDamagePerHit) return false;
+
+        float poise = CurrentTarget.Stats.currentPoise;
+        return poise > stats.poiseDamagePerHit && poise <= stats.poiseDamageKick;
+    }
+
+    // 발차기를 쓸 수 있는가. 모션이 있어야 하고, 근접 유닛이어야 한다 — 사거리가
+    // minKeepDistanceRange 이상인 원거리 유닛은 애초에 발이 닿지 않는 거리에서 싸운다.
+    private bool CanKick()
+    {
+        return kickAnimationHash != 0 && stats.attackRange < minKeepDistanceRange;
+    }
+
+    private bool IsTargetGuarding()
+    {
+        return IsTargetValid() && CurrentTarget.IsBlocking;
+    }
+
+    private bool IsTargetStaggered()
+    {
+        return IsTargetValid() && CurrentTarget.IsStaggered;
     }
 
     public void TriggerSkill()

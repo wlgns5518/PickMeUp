@@ -18,6 +18,7 @@ public class SearchState : UnitBattleState
         }
 
         if (TrySwitchToTarget()) return;
+        if (TryJoinFight()) return;
         TrySwitchToMove();
     }
 
@@ -26,7 +27,26 @@ public class SearchState : UnitBattleState
         if (TrySwitchToIdleWhenNoEnemy()) return;
 
         if (TrySwitchToTarget()) return;
+        if (TryJoinFight()) return;
         TrySwitchToMove();
+    }
+
+    // 시야에 다음 적이 없으면 싸움이 벌어지고 있는 자리로 걸어간다.
+    //
+    // 예전에는 곧바로 배회(TrySetRoamDestination)로 떨어졌다. 적을 잡은 유닛은 다음 적이
+    // 탐지 범위(8~14m) 밖인 경우가 흔해서, 아군이 아직 싸우고 있는데 혼자 제자리를 맴돌았다.
+    //
+    // 목적지에 닿기 전에 적이 시야에 들어오면 MoveState가 스캐너로 잡아 평소대로 교전에 넘긴다.
+    // 닿은 뒤에도 못 찾으면 다시 이 상태로 돌아와 그때의 전선으로 다시 잡는다 —
+    // 목적지를 한 번 찍고 마는 것이라 상대가 움직여도 따라붙는 비용이 들지 않는다.
+    private bool TryJoinFight()
+    {
+        UnitController rally = UnitRegistry.FindRallyEnemy(context);
+        if (rally == null) return false;
+
+        context.SetMoveDestination(rally.transform.position);
+        context.ChangeState(context.MoveState);
+        return true;
     }
 
     private bool TrySwitchToTarget()

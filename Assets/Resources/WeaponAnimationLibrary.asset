@@ -37,3 +37,6 @@ MonoBehaviour:
   - type: 8
     controller: {fileID: 22100000, guid: ed161e9e265d5504fb943edcab97431c, type: 2}
     attackCount: 6
+  - type: 10
+    controller: {fileID: 22100000, guid: f5094e6861e5c33409b436e12ac53d26, type: 2}
+    attackCount: 3

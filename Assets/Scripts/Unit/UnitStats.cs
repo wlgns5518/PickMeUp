@@ -55,6 +55,9 @@ public class UnitStats
     [Header("Damage")]
     public int attackDamage = 8;
     public int skillDamage = 24;
+    [Tooltip("발차기 피해 배율. 무기로 베는 것보다 약하다 — 발차기의 값어치는 피해가 아니라 " +
+             "가드를 여는 강인도 피해(poiseDamageKick)에 있다.")]
+    [Range(0.1f, 2f)] public float kickDamageMultiplier = 0.6f;
 
     [Header("Cooldowns")]
     public float skillCooldown = 5.0f;
@@ -85,8 +88,12 @@ public class UnitStats
     public float poiseDamagePerHit = 15f;
     [Tooltip("콤보 마지막 타격에 추가로 깎이는 강인도.")]
     public float poiseDamageComboFinisherBonus = 25f;
-    [Tooltip("스킬(강타)이 깎는 강인도. 그 자체로 거의 항상 강인도를 깬다.")]
+    [Tooltip("스킬이 깎는 강인도. 그 자체로 거의 항상 강인도를 깬다.")]
     public float poiseDamageSkill = 60f;
+    [Tooltip("발차기가 깎는 강인도. 발차기는 베는 수단이 아니라 가드를 여는 수단이라 " +
+             "평타보다 크게 잡는다. 무기 스윙은 막히면 강인도만 깎고 끝나지만 발차기는 그 강인도를 " +
+             "무너뜨려 다음 스윙이 들어갈 자리를 만든다.")]
+    public float poiseDamageKick = 45f;
     [Tooltip("강인도가 깨진 뒤 다시 깨지지 않는 면역 시간(초). 무한 경직을 막는다.")]
     public float poiseBreakImmunity = 2.5f;
     [Tooltip("강인도가 안 깨졌을 때 즉시 밀려나는 거리(미터). 경직 없이 타격감만 준다.")]

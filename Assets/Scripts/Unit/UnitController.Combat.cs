@@ -102,6 +102,9 @@ public partial class UnitController
     // 이번 스윙의 타격 이벤트가 이미 지나갔는가. 준비 동작(아직 안 지나감)과 회수 동작(지나감)을
     // 가르는 유일한 근거다. 클립마다 이벤트 시각이 다르므로 시간으로 추정하지 않고 실제 이벤트로 안다.
     private bool hasStruckThisSwing;
+    // 이 유닛이 한 번이라도 공격을 휘둘렀는가. 스킬을 여는 수로 쓰지 않기 위한 것이다
+    // (CanUseSkill, IsComboRecoveryPoint 주석 참조).
+    private bool hasSwungAtLeastOnce;
     private float nextSwingReadyTime;
     private float lungeRemaining;
 
@@ -393,7 +396,12 @@ public partial class UnitController
         float rightDot = Vector3.Dot(move, Vector3.Cross(Vector3.up, forward));
 
         int hash = 0;
-        if (forwardDot < -0.5f) hash = strafeBackAnimationHash;
+        float clipSpeed = strafeClipSpeed;
+        if (forwardDot < -0.5f)
+        {
+            hash = strafeBackAnimationHash;
+            clipSpeed = strafeBackClipSpeed;
+        }
         else if (Mathf.Abs(rightDot) > 0.4f) hash = rightDot > 0f ? strafeRightAnimationHash : strafeLeftAnimationHash;
 
         if (hash == 0)
@@ -402,9 +410,25 @@ public partial class UnitController
             return;
         }
 
-        // 스트레이프 클립은 걷기 속도를 기준으로 만들어져 있다. 실제 이동 속도에 맞춰 배속을 준다.
-        ApplyMoveAnimationSpeed(speed, walkClipSpeed);
+        // 클립마다 원래 나아가는 속도가 다르다. 실제 이동 속도를 그 값으로 나눠 배속을 준다.
+        // 이 배속은 StrafeLeft/Right/Back 상태의 Speed Multiplier가 MoveSpeedMultiplier에 묶여
+        // 있어야 실제로 먹는다 — 안 묶여 있으면 값만 넘어가고 클립은 제 속도로 재생된다.
+        ApplyMoveAnimationSpeed(speed, clipSpeed);
         PlayAnimation(hash, false);
+    }
+
+    // 물러날 때의 다리. 뒷걸음 클립이 있으면 그것으로, 없는 리그는 예전처럼 달리기로 물러난다.
+    // 회피 모션(Dodge)은 한 번 재생되고 끝나므로, 남은 거리는 이쪽이 이어받는다.
+    public void PlayRetreatAnimation(float speed)
+    {
+        if (strafeBackAnimationHash == 0)
+        {
+            SetMoveAnimation(speed, true, false);
+            return;
+        }
+
+        ApplyMoveAnimationSpeed(speed, strafeBackClipSpeed);
+        PlayAnimation(strafeBackAnimationHash, false);
     }
 
     // ---------------------------------------------------------------- 방향 리액션

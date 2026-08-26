@@ -15081,7 +15081,7 @@ AnimationClip:
   m_HasMotionFloatCurves: 1
   m_Events:
   - time: 0.35952875
-    functionName: ApplySkillDamage
+    functionName: ApplyAttackDamage
     data: 
     objectReferenceParameter: {fileID: 0}
     floatParameter: 0

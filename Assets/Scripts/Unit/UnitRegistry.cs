@@ -327,6 +327,58 @@ public static class UnitRegistry
         AddEnemiesInRange(requester, second, range, results);
     }
 
+    // 시야에 적이 없을 때 걸어갈 곳 — "지금 싸움이 벌어지고 있는 자리".
+    //
+    // 적을 잡고 나면 다음 적이 시야 밖인 경우가 흔하다(탐지 범위가 8~14m뿐이다).
+    // 그때 Search가 제자리 근처를 배회하면, 아군은 아직 싸우고 있는데 유닛 하나가
+    // 전투에서 조용히 빠져 버린다. 그래서 배회 대신 이쪽으로 걸어가게 한다.
+    //
+    // 아군이 이미 붙어 있는 적을 먼저 고른다 — 그 자리가 곧 전선이다.
+    // 아무도 교전 중이 아니면(첫 진입, 또는 모두 놓친 뒤) 가장 가까운 적으로 떨어진다.
+    public static UnitController FindRallyEnemy(UnitController seeker)
+    {
+        if (seeker == null) return null;
+
+        GetHostileLists(seeker.Team, out List<UnitController> first, out List<UnitController> second);
+
+        UnitController engaged = null;
+        UnitController nearest = null;
+        float engagedSqr = float.MaxValue;
+        float nearestSqr = float.MaxValue;
+
+        AccumulateRallyCandidates(seeker, first, ref engaged, ref engagedSqr, ref nearest, ref nearestSqr);
+        AccumulateRallyCandidates(seeker, second, ref engaged, ref engagedSqr, ref nearest, ref nearestSqr);
+
+        return engaged != null ? engaged : nearest;
+    }
+
+    private static void AccumulateRallyCandidates(UnitController seeker, List<UnitController> list,
+        ref UnitController engaged, ref float engagedSqr, ref UnitController nearest, ref float nearestSqr)
+    {
+        if (list == null) return;
+
+        Vector3 from = seeker.transform.position;
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            UnitController candidate = list[i];
+            if (candidate == null || candidate.IsDead || !candidate.isActiveAndEnabled) continue;
+
+            float sqr = (candidate.transform.position - from).sqrMagnitude;
+            if (sqr < nearestSqr)
+            {
+                nearestSqr = sqr;
+                nearest = candidate;
+            }
+
+            // 우리 편 누군가가 이미 이 적을 노리고 있는가.
+            if (CountAlliesTargeting(seeker.Team, candidate) <= 0) continue;
+            if (sqr >= engagedSqr) continue;
+
+            engagedSqr = sqr;
+            engaged = candidate;
+        }
+    }
+
     // Idle/Search/Move 상태가 매 프레임 모든 유닛에서 호출하는 핫패스.
     // allies/enemies/neutrals 리스트는 죽거나 비활성화된 유닛이 OnDisable→Unregister로
     // 즉시 제거되므로 항상 "살아있는 유닛만" 담고 있다 → 리스트 순회 없이 개수만으로 판단 가능(O(1)).

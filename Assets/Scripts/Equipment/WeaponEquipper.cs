@@ -10,6 +10,11 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public class WeaponEquipper : MonoBehaviour
 {
+    private const string NockedArrowName = "NockedArrow";
+    // 투사체가 떠나는 지점을 무기 모델 안에 직접 표시해 두고 싶을 때 쓰는 자식 이름.
+    // 지팡이의 보석 끝처럼 "쏘는 자리"와 "보이는 물건"이 다른 무기를 위한 것이다.
+    private const string ProjectileOriginName = "ProjectileOrigin";
+
     [Header("Components")]
     [SerializeField] private Animator animator;
 
@@ -41,6 +46,11 @@ public class WeaponEquipper : MonoBehaviour
     // (맨손이거나, 애초에 이 리그가 무기 컨트롤러를 쓰지 않는 유닛) 호출 쪽이 자기 기본값을 쓴다.
     public int WeaponAttackCount { get; private set; }
 
+    // 화살이 떠나는 지점. 활 모델 안의 NockedArrow(시위에 물려 둔 화살)를 그대로 쓴다 —
+    // 그 자리가 곧 시위이고, 그 화살이 향한 쪽(+Z)이 곧 날아갈 방향이다.
+    // 그런 자식이 없는 무기는 모델 원점이 대신 쓰인다.
+    public Transform ProjectileOrigin { get; private set; }
+
     private GameObject mainHandInstance;
     private GameObject offHandInstance;
     private bool socketsResolved;
@@ -48,6 +58,7 @@ public class WeaponEquipper : MonoBehaviour
     private RuntimeAnimatorController defaultController;
     private bool defaultControllerCaptured;
     private WeaponType appliedAnimatorWeapon = (WeaponType)(-1);
+    private GameObject nockedArrow;
 
     private void Awake()
     {
@@ -104,10 +115,52 @@ public class WeaponEquipper : MonoBehaviour
         OffHand = off;
 
         ResolveSockets();
-        mainHandInstance = Respawn(mainHandInstance, main, mainHandSocket);
+        // 활은 주무기인데도 왼손에 들린다. 활대를 미는 손과 시위를 당기는 손이 나뉘어 있어서,
+        // 오른손 소켓에 붙이면 활대가 시위를 당기는 손을 따라 뒤로 끌려간다
+        // (Bow 오버라이드 컨트롤러의 클립이 전부 왼손으로 활을 미는 자세다).
+        // 활은 두손 무기라 보조 손이 어차피 비어 있으므로 소켓이 겹칠 일은 없다.
+        Transform mainSocket = IsLeftHanded(main) ? offHandSocket : mainHandSocket;
+        mainHandInstance = Respawn(mainHandInstance, main, mainSocket);
+        ResolveProjectileOrigin(mainSocket);
         offHandInstance = Respawn(offHandInstance, off, offHandSocket);
 
         ApplyWeaponAnimator(main != null ? main.type : WeaponType.None);
+    }
+
+    private static bool IsLeftHanded(WeaponDefinition weapon)
+    {
+        return weapon != null && weapon.type == WeaponType.Bow;
+    }
+
+    // 활 모델 안의 NockedArrow를 찾아 발사 지점으로 잡아 둔다. 무기를 바꿀 때마다 다시 찾는다 —
+    // Respawn이 이전 모델을 통째로 파괴하므로 들고 있던 Transform은 그때 죽는다.
+    private void ResolveProjectileOrigin(Transform fallbackSocket)
+    {
+        nockedArrow = null;
+        ProjectileOrigin = null;
+
+        // 손에 드는 것이 없는 무기(맨손 시전)도 투사체는 나간다. 그때는 손 자체가 발사 지점이다 —
+        // 소켓이 곧 주먹이 자루를 쥐는 자리라 손 한가운데다.
+        if (mainHandInstance == null)
+        {
+            ProjectileOrigin = fallbackSocket;
+            return;
+        }
+
+        Transform nock = mainHandInstance.transform.Find(NockedArrowName);
+        if (nock != null) nockedArrow = nock.gameObject;
+
+        // 전용 표시가 있으면 그쪽, 없으면 시위에 물려 둔 화살(활), 그것도 없으면 모델 원점.
+        Transform muzzle = mainHandInstance.transform.Find(ProjectileOriginName);
+        if (muzzle == null) muzzle = nock;
+        ProjectileOrigin = muzzle != null ? muzzle : mainHandInstance.transform;
+    }
+
+    // 시위를 떠나는 순간 물려 둔 화살을 감춘다. 화살은 날아갔는데 활에도 그대로 붙어 있으면
+    // 화살이 두 대로 보인다. 다음 공격을 시작할 때(시위를 당길 때) 다시 물린다.
+    public void ShowNockedArrow(bool visible)
+    {
+        if (nockedArrow != null) nockedArrow.SetActive(visible);
     }
 
     // 주무기 종류에 맞는 Attack1~3 Override Controller로 갈아 끼운다.
@@ -129,6 +182,15 @@ public class WeaponEquipper : MonoBehaviour
         RuntimeAnimatorController weaponController = entry != null ? entry.controller : null;
 
         animator.runtimeAnimatorController = weaponController != null ? weaponController : defaultController;
+
+        // 컨트롤러를 갈아 끼우면 Animator는 다음 갱신에서야 새 상태 기계로 다시 묶인다.
+        // 그 사이에 들어온 CrossFade와 HasState는 바뀌기 전 컨트롤러를 기준으로 해석되므로,
+        // 무기를 들었는데도 맨손 공격(Unarmed-Attack)이 재생될 수 있다.
+        //
+        // 원거리 유닛이 정확히 이 창에 걸린다. 스폰된 프레임에 이미 사거리 안이라 그 자리에서
+        // 첫 공격을 내기 때문이다(근접은 적에게 걸어가는 동안 프레임이 지나 저절로 비껴간다).
+        // 0초 갱신으로 묶기를 여기서 끝내 둔다.
+        if (animator.isInitialized) animator.Update(0f);
         WeaponAttackCount = weaponController != null ? Mathf.Max(1, entry.attackCount) : 0;
 
         WeaponAnimatorChanged?.Invoke();

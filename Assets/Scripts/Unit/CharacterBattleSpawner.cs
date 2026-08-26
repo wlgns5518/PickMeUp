@@ -58,6 +58,12 @@ public class CharacterBattleSpawner : MonoBehaviour
     [SerializeField] private int baseMana = 30;
     [SerializeField] private int manaPerIntelligence = 4;
 
+    [Header("Debug (임시)")]
+    [Tooltip("양쪽 진영의 최대 체력에 곱한다. 전투가 한두 방에 끝나서 흐름을 볼 수 없을 때 " +
+             "길이만 늘려 보려고 둔 임시 손잡이다. 밸런싱은 baseAttackDamage/attackDamagePerStrength 쪽이 " +
+             "맡아야 하므로, 확인이 끝나면 1로 되돌린다.")]
+    [SerializeField, Min(0.01f)] private float debugHealthMultiplier = 100f;
+
     private void Start()
     {
         SpawnAllies();
@@ -213,7 +219,7 @@ public class CharacterBattleSpawner : MonoBehaviour
         UnitStats stats = source != null ? source.Clone() : new UnitStats();
 
         int steps = Mathf.Max(0, enemyLevel - 1);
-        stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * (1f + enemyHpPerLevel * steps)));
+        stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * (1f + enemyHpPerLevel * steps) * debugHealthMultiplier));
         stats.attackDamage = Mathf.Max(1, Mathf.RoundToInt(stats.attackDamage * (1f + enemyDamagePerLevel * steps)));
         stats.skillDamage = Mathf.Max(1, Mathf.RoundToInt(stats.skillDamage * (1f + enemyDamagePerLevel * steps)));
         return stats;
@@ -287,14 +293,16 @@ public class CharacterBattleSpawner : MonoBehaviour
             attackDamage = baseAttackDamage + so.Strength * attackDamagePerStrength,
         };
 
-        stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * job.HpMultiplier));
+        stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * job.HpMultiplier * debugHealthMultiplier));
         stats.attackDamage = Mathf.Max(1, Mathf.RoundToInt(stats.attackDamage * job.AttackMultiplier * weapon.AttackMultiplier));
         stats.skillDamage = stats.attackDamage * 2;
 
         stats.maxMana = Mathf.RoundToInt((baseMana + so.Intelligence * manaPerIntelligence) * job.ManaMultiplier);
 
-        // 사거리: 직업 사거리에 무기 배율을 곱하되, 활처럼 무기가 강제하는 최소치가 있으면 그쪽을 따른다.
-        stats.attackRange = Mathf.Max(job.AttackRange * weapon.RangeMultiplier, weapon.MinRange);
+        // 사거리: 직업 사거리에 무기 배율을 곱하되, 무기가 강제하는 범위를 벗어나지 않는다.
+        // 활은 아래로(최소 9m), 근접 무기는 위로(제 리치까지) 붙잡는다 — 그렇지 않으면
+        // 사거리가 긴 직업이 단검을 들고도 제자리에서 허공을 그으며 피해를 넣는다.
+        stats.attackRange = Mathf.Clamp(job.AttackRange * weapon.RangeMultiplier, weapon.MinRange, weapon.MaxRange);
         // 자기 사거리 밖을 못 보면 원거리 유닛이 영원히 접근만 하다 끝난다.
         stats.detectRange = Mathf.Max(job.DetectRange, stats.attackRange + JobProfile.DetectRangeMargin);
 

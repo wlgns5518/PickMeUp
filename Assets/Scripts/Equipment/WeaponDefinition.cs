@@ -28,6 +28,11 @@ public class WeaponDefinition : ScriptableObject
     [Tooltip("손 소켓 아래에 생성될 프리팹. 비어 있으면 수치만 적용되고 아무것도 보이지 않는다.")]
     public GameObject model;
 
+    [Header("Projectile")]
+    [Tooltip("손을 떠나 날아가는 것. 활의 화살이 여기 들어간다. " +
+             "비워두면 타격이 그 자리에서 들어간다 — 근접 무기는 전부 비어 있다.")]
+    public GameObject projectile;
+
     [Header("Grip (손 소켓 기준 보정)")]
     [Tooltip("모델의 피벗이 손잡이에 있지 않을 때 밀어 넣는 값. 소켓 로컬 좌표.")]
     public Vector3 gripPosition;

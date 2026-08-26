@@ -32,6 +32,8 @@ public enum WeaponType
     Blunt,    // 둔기 — 망치/철퇴. 가장 아프고 가장 느리다.
     Polearm,  // 장병기 — 할버드/폴액스/전투낫. 두손이고 사거리가 길다.
     Shield,   // 보조 손 전용. 주무기 자리에 오면 맨손으로 취급된다.
+    Magic,    // 맨손 시전 — 손에 드는 것이 없다. 무기 모델 없이 두 손으로 탄환을 던진다.
+              // 새 종류는 반드시 끝에 붙인다 — 중간에 끼우면 이미 저장된 캐릭터의 무기가 통째로 밀린다.
 }
 
 public enum OffHandType { None, Shield }
@@ -113,7 +115,7 @@ public static class CharacterRules
 
     public static bool IsTwoHanded(WeaponType w) =>
         w == WeaponType.SwordTwoHand || w == WeaponType.Bow || w == WeaponType.Spear ||
-        w == WeaponType.Polearm;
+        w == WeaponType.Polearm || w == WeaponType.Magic;
 
     public static bool IsShield(WeaponType w) => w == WeaponType.Shield;
 

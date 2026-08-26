@@ -49,13 +49,24 @@ public readonly struct WeaponCombatProfile
     public readonly float RangeMultiplier;
     // 무기 자체가 강제하는 최소 사거리. 활은 누가 들어도 원거리가 된다.
     public readonly float MinRange;
+    // 무기 자체가 강제하는 최대 사거리. 근접 무기는 누가 들어도 붙어야 닿는다 —
+    // MinRange의 짝이다. 이게 없으면 직업 사거리가 그대로 통과해서, 사거리 7.5m짜리
+    // 마법사가 단검을 들고 6.75m 밖의 적을 찌른다(허공을 긋는데 피해는 들어간다).
+    // 값은 "근접 직업 사거리 1.8m x 무기 배율" 기준이라 근접 직업은 영향을 받지 않는다.
+    public readonly float MaxRange;
     public readonly float AttackSpeedMultiplier;
 
     public WeaponCombatProfile(float attackMultiplier, float rangeMultiplier, float minRange, float attackSpeedMultiplier)
+        : this(attackMultiplier, rangeMultiplier, minRange, float.PositiveInfinity, attackSpeedMultiplier)
+    {
+    }
+
+    public WeaponCombatProfile(float attackMultiplier, float rangeMultiplier, float minRange, float maxRange, float attackSpeedMultiplier)
     {
         AttackMultiplier = attackMultiplier;
         RangeMultiplier = rangeMultiplier;
         MinRange = minRange;
+        MaxRange = maxRange;
         AttackSpeedMultiplier = attackSpeedMultiplier;
     }
 }
@@ -83,20 +94,27 @@ public static class JobProfile
     {
         switch (weapon)
         {
-            //                                          ATK   사거리배율 최소사거리 공속
-            case WeaponType.SwordOneHand: return new WeaponCombatProfile(1.00f, 1.00f, 0f, 1.00f);
-            case WeaponType.SwordTwoHand: return new WeaponCombatProfile(1.30f, 1.10f, 0f, 0.80f);
-            case WeaponType.Spear:        return new WeaponCombatProfile(1.05f, 1.60f, 0f, 0.90f);
-            case WeaponType.Dagger:       return new WeaponCombatProfile(0.85f, 0.90f, 0f, 1.35f);
-            case WeaponType.Axe:          return new WeaponCombatProfile(1.15f, 0.95f, 0f, 0.90f);
-            case WeaponType.Blunt:        return new WeaponCombatProfile(1.25f, 0.95f, 0f, 0.75f);
+            // 최대 사거리는 "근접 직업 사거리 1.8m x 사거리배율"이다. 근접 직업(1.8)과 탱커(1.8)는
+            // 이 값에 정확히 걸리므로 달라지는 것이 없고, 사거리가 긴 직업(마법사 7.5, 서포터 6.0)이
+            // 근접 무기를 들었을 때만 붙잡아 준다.
+            //                                          ATK   사거리배율 최소 최대  공속
+            case WeaponType.SwordOneHand: return new WeaponCombatProfile(1.00f, 1.00f, 0f, 1.80f, 1.00f);
+            case WeaponType.SwordTwoHand: return new WeaponCombatProfile(1.30f, 1.10f, 0f, 1.98f, 0.80f);
+            case WeaponType.Spear:        return new WeaponCombatProfile(1.05f, 1.60f, 0f, 2.88f, 0.90f);
+            case WeaponType.Dagger:       return new WeaponCombatProfile(0.85f, 0.90f, 0f, 1.62f, 1.35f);
+            case WeaponType.Axe:          return new WeaponCombatProfile(1.15f, 0.95f, 0f, 1.71f, 0.90f);
+            case WeaponType.Blunt:        return new WeaponCombatProfile(1.25f, 0.95f, 0f, 1.71f, 0.75f);
             // 장병기는 창보다 무겁지만 사거리는 비슷하게 가져간다.
-            case WeaponType.Polearm:      return new WeaponCombatProfile(1.20f, 1.55f, 0f, 0.80f);
-            // 활은 직업과 무관하게 원거리를 보장한다.
+            case WeaponType.Polearm:      return new WeaponCombatProfile(1.20f, 1.55f, 0f, 2.79f, 0.80f);
+            // 활은 직업과 무관하게 원거리를 보장한다. 위쪽 한계는 없다.
             case WeaponType.Bow:          return new WeaponCombatProfile(1.00f, 1.00f, 9f, 0.85f);
+            // 맨손 시전. 손에 든 것이 없어도 마법은 멀리 나간다. 활보다 가깝게 잡은 건
+            // 마법사가 활보다 앞에 서서 탄환을 던지는 그림을 원해서다 — 활 9m, 마법 6m.
+            case WeaponType.Magic:        return new WeaponCombatProfile(1.10f, 1.00f, 6f, 0.80f);
             // 방패가 주무기 자리에 오는 건 설계상 없어야 하지만, 와도 맨손과 같게 둔다.
-            case WeaponType.Shield:       return new WeaponCombatProfile(0.80f, 1.00f, 0f, 1.00f);
-            default:                      return new WeaponCombatProfile(0.80f, 1.00f, 0f, 1.00f); // 맨손
+            case WeaponType.Shield:       return new WeaponCombatProfile(0.80f, 1.00f, 0f, 1.80f, 1.00f);
+            // 맨손도 근접이다. 주먹이 7.5m를 때리면 안 된다.
+            default:                      return new WeaponCombatProfile(0.80f, 1.00f, 0f, 1.80f, 1.00f);
         }
     }
 

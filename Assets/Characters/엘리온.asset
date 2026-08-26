@@ -12,10 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dc9fd870c5559754d8d253c21c558de4, type: 3}
   m_Name: "\uC5D8\uB9AC\uC628"
   m_EditorClassIdentifier: Assembly-CSharp::CharacterSO
+  id: 1b6d441c27b54681a5dc185778bb4888
   characterName: "\uC5D8\uB9AC\uC628"
   description: "\uB099\uCC9C\uC801\uC778 \uC778\uAC04 \uB9C8\uBC95\uC0AC"
-  portrait: {fileID: 0}
-  portraitAssetPath: 
+  portrait: {fileID: 21300000, guid: 2adb81f8bb32edf4ca5e70830bfe11b0, type: 3}
+  portraitAssetPath: "Assets/CharacterImage/\uC5D8\uB9AC\uC628.png"
   starCount: 1
   level: 1
   exp: 0
@@ -40,8 +41,9 @@ MonoBehaviour:
     skill: 8
     body: 8
     sanity: 6
-  mainHand: 0
+  mainHand: 10
   offHand: 0
-  mainHandWeapon: {fileID: 0}
+  mainHandWeapon: {fileID: 11400000, guid: 50fd84e90e0fd1a4d9e2731a3516c929, type: 2}
   offHandWeapon: {fileID: 0}
+  skillIds: []
   friendships: []

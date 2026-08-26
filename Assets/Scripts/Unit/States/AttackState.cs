@@ -91,6 +91,19 @@ public class AttackState : UnitBattleState
             return true;
         }
 
+        // 원거리 유닛의 근접 회피. 콤보를 완주할 때까지 기다리지 않는다 —
+        // 활은 6단이라 레커버리까지 여섯 발이 걸리고, 그동안 적은 코앞에서 계속 때린다.
+        // 위 잠금 검사를 지나온 시점이라 이번 발은 이미 시위를 떠났다. 쏘자마자 물러나는 셈이다.
+        //
+        // HasAttackedSinceEvade가 없으면 여기서 무한 왕복이 생긴다. 한 번 물러나 봐야
+        // 실제로 벌어지는 거리는 0.5m 남짓이라, 복귀하자마자 다시 임계 안이면 한 발도
+        // 쏘지 못한 채 Evade로 되돌아간다(EvadeState 안에서 반복하던 문제가 자리만 옮긴 꼴).
+        if (context.HasAttackedSinceEvade && context.ShouldKeepDistance())
+        {
+            context.ChangeState(context.EvadeState);
+            return true;
+        }
+
         // 방어는 재량이 아니라 반응이다. 아래 레커버리 게이트 뒤에 두면 안 된다 —
         // 적의 준비 동작은 0.4초뿐인데 콤보 한 바퀴는 무기에 따라 수 초에서 십수 초다
         // (창은 11단이라 한 바퀴에 13초). 막을 창이 그때까지 남아 있을 리가 없어서,
@@ -103,17 +116,10 @@ public class AttackState : UnitBattleState
             return true;
         }
 
-        // 여기서부터가 "재량" 전환이다(카이팅/스킬). 콤보 스텝 하나가 끝날 때마다 검토하면
+        // 여기서부터가 "재량" 전환이다(스킬). 콤보 스텝 하나가 끝날 때마다 검토하면
         // 스윙 하나 끝날 때마다 다른 상태로 튀어서 콤보가 거의 끝까지 이어지지 않는다("뚝배기 깨기").
         // 콤보가 한 바퀴 돌아 레커버리 시점에 온 경우에만 검토한다.
         if (!context.IsComboRecoveryPoint) return false;
-
-        // 원거리 유닛의 근접 회피.
-        if (context.ShouldKeepDistance())
-        {
-            context.ChangeState(context.EvadeState);
-            return true;
-        }
 
         // 잠금 검사는 위에서 이미 끝났다.
         if (context.CanUseSkill())

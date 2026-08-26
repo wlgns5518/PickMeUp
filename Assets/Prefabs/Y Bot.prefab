@@ -1738,6 +1738,11 @@ MonoBehaviour:
   obstacleMask:
     serializedVersion: 2
     m_Bits: 4294967295
+  allyGroupingBonusPerAlly: 3
+  enemyTankThreatBonus: 4
+  currentTargetStickiness: 5
+  maxAttackersPerAlly: 2
+  crowdingPenalty: 10
 --- !u!114 &380708866839357895
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1750,6 +1755,24 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 67f8771370cf6cd4780f894f49dbc223, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  hitFrontStateName: HitFront
+  hitBackStateName: HitBack
+  hitLeftStateName: HitLeft
+  hitRightStateName: HitRight
+  blockHitStateName: BlockHit
+  blockBreakStateName: BlockBreak
+  staggerStateName: Stagger
+  strafeLeftStateName: StrafeLeft
+  strafeRightStateName: StrafeRight
+  strafeBackStateName: StrafeBack
+  combatIdleStateName: CombatIdle
+  separationMargin: 0.15
+  attackFacingTolerance: 35
+  minFootworkWindow: 0.35
+  footworkAcceleration: 6
+  movingAvoidanceQuality: 3
+  engagedAvoidancePriority: 35
+  movingAvoidancePriority: 60
   team: 0
   stats:
     maxHp: 100
@@ -1769,8 +1792,10 @@ MonoBehaviour:
     moveStopDistance: 0.25
     attackRange: 1.6
     detectRange: 8
+    isTank: 0
     attackDamage: 8
     skillDamage: 24
+    kickDamageMultiplier: 0.6
     skillCooldown: 5
     evadeRange: 2.5
     blockDuration: 0.8
@@ -1779,6 +1804,36 @@ MonoBehaviour:
     knockbackDuration: 0.12
     blockDamageReduction: 1
     damageReduction: 0
+    maxPoise: 100
+    currentPoise: 100
+    poiseDamagePerHit: 15
+    poiseDamageComboFinisherBonus: 25
+    poiseDamageSkill: 60
+    poiseDamageKick: 45
+    poiseBreakImmunity: 2.5
+    poiseHitPushback: 0.15
+    attackArcAngle: 130
+    attackHitTolerance: 0.4
+    cleaveOffTarget: 1
+    attackRecoveryTime: 0
+    attackRecoveryRandomness: 0.4
+    comboFinisherRecoveryTime: 0
+    lungeSpeed: 2.4
+    lungeMaxDistance: 0.8
+    combatSpacingRatio: 0.82
+    footworkSpeedRatio: 0.65
+    strafeFlipInterval: 1.8
+    backstabDamageMultiplier: 1.6
+    backstabPoiseMultiplier: 2
+    recoveryVulnerabilityMultiplier: 1.35
+    blockReactionTime: 0.18
+    perfectGuardWindow: 0.2
+    perfectGuardChance: 0.35
+    perfectGuardStaggerDuration: 0.9
+    staggerDuration: 1.2
+    staggerDamageMultiplier: 1.4
+    hitStopDuration: 0.06
+    hitStopScale: 0.12
     retreatHpThreshold: 0.25
     canHealAllies: 0
     healAmount: 25
@@ -1813,8 +1868,9 @@ MonoBehaviour:
   destinationUpdateInterval: 0.15
   chasePredictionTime: 0.25
   rotationSpeed: 720
+  blockTurnSpeed: 240
   minKeepDistanceRange: 4
-  keepDistanceRatio: 0.5
+  keepDistanceRatio: 0.3
   targetChangeInterval: 0.5
   targetSwitchDistanceRatio: 0.75
   roamWhenSearching: 1
@@ -1827,7 +1883,8 @@ MonoBehaviour:
   jumpStateName: Jump
   attackStateName: Attack
   attackComboLength: 6
-  skillStateName: Kick
+  skillStateName: 
+  kickStateName: Kick
   blockStateName: Block
   potionStateName: Potion
   healStateName: Cast
@@ -1838,6 +1895,10 @@ MonoBehaviour:
   moveSpeedParameterName: MoveSpeedMultiplier
   walkClipSpeed: 1.99
   runClipSpeed: 4.2
+  strafeClipSpeed: 1.92
+  strafeBackClipSpeed: 2.19
+  backpedalSpeed: 3.3
+  dodgeClipSpeed: 4.08
   moveSpeedMultiplierRange: {x: 0.6, y: 2.2}
   animatorCullingMode: 1
   disableAnimatorAfterDeath: 1
