@@ -254,7 +254,7 @@ public class PartyStatusPanel
         // 어디를 눌러도 같은 슬롯이 선택된다. HudFactory 기본값이 raycastTarget=false이므로
         // 여기서만 명시적으로 켜서, 나머지 HUD는 여전히 클릭을 가로채지 않게 둔다.
         slot.SelectionHighlight = HudFactory.CreateImage(slot.Root, "SelectionHighlight", SlotIdleColor);
-        SetTopLeft(slot.SelectionHighlight.rectTransform, new Vector2(GaugeLeft + GaugeWidth, RowHeight), Vector2.zero);
+        HudFactory.SetTopLeft(slot.SelectionHighlight.rectTransform, new Vector2(GaugeLeft + GaugeWidth, RowHeight), Vector2.zero);
         slot.SelectionHighlight.raycastTarget = true;
 
         // 클릭을 슬롯 인덱스로 되돌려 받는다. 슬롯은 재사용되므로 유닛이 아니라 인덱스를 넘긴다.
@@ -265,38 +265,30 @@ public class PartyStatusPanel
         trigger.triggers.Add(entry);
 
         slot.PortraitFrame = HudFactory.CreateImage(slot.Root, "PortraitFrame", BattleHudPalette.PortraitFrame);
-        SetTopLeft(slot.PortraitFrame.rectTransform, new Vector2(PortraitSize, PortraitSize), Vector2.zero);
+        HudFactory.SetTopLeft(slot.PortraitFrame.rectTransform, new Vector2(PortraitSize, PortraitSize), Vector2.zero);
 
         slot.Portrait = HudFactory.CreateImage(slot.Root, "Portrait", BattleHudPalette.AliveTint);
-        SetTopLeft(slot.Portrait.rectTransform, new Vector2(PortraitSize - 6f, PortraitSize - 6f), new Vector2(3f, -3f));
+        HudFactory.SetTopLeft(slot.Portrait.rectTransform, new Vector2(PortraitSize - 6f, PortraitSize - 6f), new Vector2(3f, -3f));
 
         Image hpBackground = HudFactory.CreateImage(slot.Root, "HpBackground", BattleHudPalette.GaugeBackground);
-        SetTopLeft(hpBackground.rectTransform, new Vector2(GaugeWidth, HpHeight), new Vector2(GaugeLeft, -8f));
+        HudFactory.SetTopLeft(hpBackground.rectTransform, new Vector2(GaugeWidth, HpHeight), new Vector2(GaugeLeft, -8f));
 
         slot.HpFill = HudFactory.CreateImage(slot.Root, "HpFill", BattleHudPalette.PartyHp);
-        SetTopLeft(slot.HpFill.rectTransform, new Vector2(GaugeWidth, HpHeight), new Vector2(GaugeLeft, -8f));
+        HudFactory.SetTopLeft(slot.HpFill.rectTransform, new Vector2(GaugeWidth, HpHeight), new Vector2(GaugeLeft, -8f));
 
         Image manaBackground = HudFactory.CreateImage(slot.Root, "ManaBackground", BattleHudPalette.GaugeBackground);
-        SetTopLeft(manaBackground.rectTransform, new Vector2(GaugeWidth, ManaHeight), new Vector2(GaugeLeft, -28f));
+        HudFactory.SetTopLeft(manaBackground.rectTransform, new Vector2(GaugeWidth, ManaHeight), new Vector2(GaugeLeft, -28f));
 
         slot.ManaFill = HudFactory.CreateImage(slot.Root, "ManaFill", BattleHudPalette.Mana);
-        SetTopLeft(slot.ManaFill.rectTransform, new Vector2(GaugeWidth, ManaHeight), new Vector2(GaugeLeft, -28f));
+        HudFactory.SetTopLeft(slot.ManaFill.rectTransform, new Vector2(GaugeWidth, ManaHeight), new Vector2(GaugeLeft, -28f));
 
         slot.EmotionLabel = HudFactory.CreateText(slot.Root, "EmotionLabel", font, 20f, BattleHudPalette.Fear);
         slot.EmotionLabel.alignment = TextAlignmentOptions.TopLeft;
-        SetTopLeft(slot.EmotionLabel.rectTransform, new Vector2(GaugeWidth, 26f), new Vector2(GaugeLeft, -40f));
+        HudFactory.SetTopLeft(slot.EmotionLabel.rectTransform, new Vector2(GaugeWidth, 26f), new Vector2(GaugeLeft, -40f));
         slot.EmotionLabel.text = "";
 
         return slot;
     }
 
     // 좌상단을 기준으로 배치. 게이지가 왼쪽에서 오른쪽으로 줄어들도록 피벗도 왼쪽에 둔다.
-    private static void SetTopLeft(RectTransform rect, Vector2 size, Vector2 offset)
-    {
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(0f, 1f);
-        rect.pivot = new Vector2(0f, 1f);
-        rect.sizeDelta = size;
-        rect.anchoredPosition = offset;
-    }
 }

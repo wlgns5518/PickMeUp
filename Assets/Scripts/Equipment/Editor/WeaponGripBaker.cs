@@ -220,7 +220,7 @@ public static class WeaponGripBaker
             return;
         }
 
-        Transform arrow = FindDeep(contents.transform, NockedArrowName);
+        Transform arrow = WeaponGrip.FindDeep(contents.transform, NockedArrowName);
         if (arrow == null)
         {
             Debug.LogWarning("[WeaponGripBaker] " + contents.name + ": 활인데 " + NockedArrowName +
@@ -313,18 +313,6 @@ public static class WeaponGripBaker
         return child;
     }
 
-    private static Transform FindDeep(Transform root, string childName)
-    {
-        for (int i = 0; i < root.childCount; i++)
-        {
-            Transform child = root.GetChild(i);
-            if (child.name == childName) return child;
-
-            Transform found = FindDeep(child, childName);
-            if (found != null) return found;
-        }
-        return null;
-    }
 
     // ------------------------------------------------------------------
     // 메뉴

@@ -15,4 +15,18 @@ public class CharacterRosterSO : ScriptableObject
     [SerializeField] private List<CharacterSO> members = new List<CharacterSO>();
 
     public IReadOnlyList<CharacterSO> Members => members;
+
+#if UNITY_EDITOR
+    // 에디터에서 소환으로 새 캐릭터가 만들어졌을 때 명단에 얹는다.
+    // 여기 없는 캐릭터는 다음 플레이에서 보유 명단에 오르지 못한다 —
+    // .asset 파일은 남아 있는데 편성 창에는 나오지 않는 상태가 된다.
+    public bool EditorRegister(CharacterSO character)
+    {
+        if (character == null || members.Contains(character)) return false;
+
+        members.Add(character);
+        UnityEditor.EditorUtility.SetDirty(this);
+        return true;
+    }
+#endif
 }

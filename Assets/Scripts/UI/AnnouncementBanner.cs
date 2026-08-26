@@ -65,16 +65,16 @@ public class AnnouncementBanner
         {
             frame = HudFactory.CreateImage(root, "Frame", Color.white);
             frame.sprite = frameSprite;
-            Stretch(frame.rectTransform);
+            HudFactory.Stretch(frame.rectTransform);
         }
         else
         {
             // 배너 아트를 아직 넣지 않았을 때의 대비책 — 금색 테두리에 검은 판.
             frame = HudFactory.CreateImage(root, "Frame", BattleHudPalette.Mvp);
-            Stretch(frame.rectTransform);
+            HudFactory.Stretch(frame.rectTransform);
 
             Image body = HudFactory.CreateImage(frame.rectTransform, "Body", new Color(0.03f, 0.03f, 0.04f, 0.97f));
-            Stretch(body.rectTransform);
+            HudFactory.Stretch(body.rectTransform);
             body.rectTransform.offsetMin = new Vector2(3f, 3f);
             body.rectTransform.offsetMax = new Vector2(-3f, -3f);
         }
@@ -86,7 +86,7 @@ public class AnnouncementBanner
         button.onClick.AddListener(Dismiss);
 
         messageText = HudFactory.CreateText(root, "Message", font, MaxFontSize, BattleHudPalette.PanelText);
-        Stretch(messageText.rectTransform);
+        HudFactory.Stretch(messageText.rectTransform);
         messageText.rectTransform.offsetMin = new Vector2(size.x * PaddingRatioX, size.y * PaddingRatioY);
         messageText.rectTransform.offsetMax = new Vector2(-size.x * PaddingRatioX, -size.y * PaddingRatioY);
         messageText.alignment = TextAlignmentOptions.Center;
@@ -207,11 +207,4 @@ public class AnnouncementBanner
         root.SetAsLastSibling();
     }
 
-    private static void Stretch(RectTransform rect)
-    {
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = Vector2.zero;
-        rect.offsetMax = Vector2.zero;
-    }
 }

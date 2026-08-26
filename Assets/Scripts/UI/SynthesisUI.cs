@@ -31,7 +31,6 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
     [Tooltip("영웅 카드 프리팹 (Assets/Character/CharacterCard.prefab).")]
     [SerializeField] private CharacterCard cardPrefab;
 
-
     [Header("Open State")]
     [Tooltip("합성소를 누르지 않아도 처음부터 열려 있게 하려면 켠다.")]
     [SerializeField] private bool openOnStart;
@@ -101,12 +100,9 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         public CharacterSO Character;
     }
 
-
-
     private RectTransform dragLayer;
 
     private AnnouncementBanner warningBanner;
-
 
     private CardSlot mainSlot;
     private CardSlot materialSlot;
@@ -120,12 +116,9 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
     // 목록 카드의 배율. 끌고 다니는 유령 카드를 같은 크기로 만들어야 손끝에서 크기가 튀지 않는다.
     private float rosterCardScale = 0.34f;
 
-    // 카드를 몇 장 깔아 두고 만들었는지. 보유 인원이 여기서 달라지면 목록을 새로 깔아야 한다.
-    private int builtRosterCount = -1;
-    // 창이 닫혀 있는 동안 인원이 바뀌었다. 다음에 열 때 다시 깐다.
-    private bool rosterDirty;
-
     protected override string CanvasName => "SynthesisCanvas";
+    // 소환 창(96)보다 위.
+    protected override int SortingOrder => 97;
 
     private void Awake()
     {
@@ -332,17 +325,6 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         if (IsOpen) RebuildRoster();
     }
 
-    private void RebuildRoster()
-    {
-        rosterDirty = false;
-
-        bool wasOpen = IsOpen;
-        // canvas를 놓으면 EnsureBuilt가 남아 있는 캔버스를 치우고 처음부터 다시 만든다.
-        canvas = null;
-        EnsureBuilt();
-        SetOpen(wasOpen);
-    }
-
     protected override void BuildWindow()
     {
         if (cardPrefab == null)
@@ -357,7 +339,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
 
         // 끌고 다니는 카드가 창 밖으로 나가도 잘리지 않도록 캔버스 최상단에 따로 층을 둔다.
         dragLayer = HudFactory.CreateGroup(canvasRect, "DragLayer");
-        Stretch(dragLayer);
+        HudFactory.Stretch(dragLayer);
 
         // 경고 배너는 팝업 밖(캔버스 직속)에 둔다. 창이 닫혀도 같은 자리에 뜬다.
         warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, bannerSprite, null, bannerWidth);
@@ -365,46 +347,15 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         RefreshSlots();
     }
 
-    private void BuildCanvas()
-    {
-        var canvasGo = new GameObject("SynthesisCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-        canvasGo.transform.SetParent(transform, false);
-        canvasGo.layer = LayerMask.NameToLayer("UI");
-
-        canvas = canvasGo.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        // 소환 창(96)보다 위. 두 창이 함께 열릴 일은 없지만 순서를 정해 두면 겹칠 때 헷갈리지 않는다.
-        canvas.sortingOrder = 97;
-
-        var scaler = canvasGo.GetComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-        scaler.matchWidthOrHeight = 0.5f;
-
-        canvasRect = (RectTransform)canvasGo.transform;
-    }
-
     private void BuildPopup()
     {
-        RectTransform popup = HudFactory.CreateGroup(canvasRect, "Popup");
-        Stretch(popup);
-        popupRoot = popup.gameObject;
-
-        // 배경막과 창은 형제로 둔다. 창을 자식으로 넣으면 창 안을 누른 클릭이
-        // 배경막까지 거슬러 올라가 창이 곧바로 닫힌다.
-        Image backdrop = HudFactory.CreateImage(popup, "Backdrop", BattleHudPalette.PanelBackdrop);
-        backdrop.raycastTarget = true;
-        Stretch(backdrop.rectTransform);
-        var backdropButton = backdrop.gameObject.AddComponent<Button>();
-        backdropButton.transition = Selectable.Transition.None;
-        backdropButton.onClick.AddListener(Hide);
+        RectTransform popup = BuildPopupRoot();
 
         Image panel = HudFactory.CreateImage(popup, "Panel", BattleHudPalette.PanelBody);
         // 창 안을 누른 클릭이 배경막으로 내려가지 않도록 여기서 받아 둔다.
         panel.raycastTarget = true;
         RectTransform panelRect = panel.rectTransform;
-        Stretch(panelRect);
+        HudFactory.Stretch(panelRect);
         panelRect.offsetMin = new Vector2(screenMargin, screenMargin);
         panelRect.offsetMax = new Vector2(-screenMargin, -screenMargin);
 
@@ -460,7 +411,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
 
         TMP_Text label = HudFactory.CreateText(panel, "RosterLabel", resolvedFont, 28f, BattleHudPalette.PanelText);
         label.alignment = TextAlignmentOptions.Left;
-        SetTopLeft(label.rectTransform, new Vector2(availableWidth, SectionLabelHeight), new Vector2(PanelPadding, -y));
+        HudFactory.SetTopLeft(label.rectTransform, new Vector2(availableWidth, SectionLabelHeight), new Vector2(PanelPadding, -y));
         label.text = "보유 영웅";
         y += SectionLabelHeight + 6f;
 
@@ -472,12 +423,12 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
     {
         TMP_Text title = HudFactory.CreateText(panel, "Title", resolvedFont, 40f, BattleHudPalette.PanelText);
         title.alignment = TextAlignmentOptions.Left;
-        SetTopLeft(title.rectTransform, new Vector2(width - CloseSize, HeaderHeight), new Vector2(PanelPadding, -y));
+        HudFactory.SetTopLeft(title.rectTransform, new Vector2(width - CloseSize, HeaderHeight), new Vector2(PanelPadding, -y));
         title.text = "합성소";
 
         Image close = HudFactory.CreateImage(panel, "Close", BattleHudPalette.PanelBackdrop);
         close.raycastTarget = true;
-        SetTopLeft(close.rectTransform, new Vector2(CloseSize, CloseSize),
+        HudFactory.SetTopLeft(close.rectTransform, new Vector2(CloseSize, CloseSize),
             new Vector2(PanelPadding + width - CloseSize, -y));
 
         var button = close.gameObject.AddComponent<Button>();
@@ -485,7 +436,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         button.onClick.AddListener(Hide);
 
         TMP_Text closeLabel = HudFactory.CreateText(close.rectTransform, "Label", resolvedFont, 24f, BattleHudPalette.PanelText);
-        Stretch(closeLabel.rectTransform);
+        HudFactory.Stretch(closeLabel.rectTransform);
         // 곱셈 기호(U+2715 등)는 NotoSansKR 아틀라스에 없어 네모로 그려진다. 알파벳 X를 쓴다.
         closeLabel.text = "X";
     }
@@ -517,7 +468,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         TMP_Text empty = HudFactory.CreateText(frame.rectTransform, "Empty", resolvedFont, 24f, HintText);
         // 기본은 줄바꿈 없음이라 안내 문구가 자리 밖으로 삐져나와 가운데 "+"를 덮는다.
         empty.textWrappingMode = TextWrappingModes.Normal;
-        Stretch(empty.rectTransform);
+        HudFactory.Stretch(empty.rectTransform);
         empty.rectTransform.offsetMin = new Vector2(10f, 10f);
         empty.rectTransform.offsetMax = new Vector2(-10f, -10f);
         empty.text = emptyText;
@@ -566,7 +517,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         synthesizeButton.onClick.AddListener(Synthesize);
 
         TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 28f, BattleHudPalette.Mvp);
-        Stretch(label.rectTransform);
+        HudFactory.Stretch(label.rectTransform);
         label.text = "합성하기";
     }
 
@@ -575,7 +526,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         Image area = HudFactory.CreateImage(panel, "RosterArea", new Color(1f, 1f, 1f, 0.03f));
         // 카드 사이 빈 곳에 놓아도 받아야 하므로 바닥 전체가 레이캐스트 대상이어야 한다.
         area.raycastTarget = true;
-        SetTopLeft(area.rectTransform, new Vector2(width, height), new Vector2(PanelPadding, -y));
+        HudFactory.SetTopLeft(area.rectTransform, new Vector2(width, height), new Vector2(PanelPadding, -y));
 
         // 위쪽 자리에서 집어 온 카드를 여기 놓으면 그 자리에서 내려온다.
         area.gameObject.AddComponent<CardDropTarget>().Bind(this, CardDragSource.RosterSlot);
@@ -586,7 +537,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         if (members.Count == 0)
         {
             TMP_Text empty = HudFactory.CreateText(area.rectTransform, "Empty", resolvedFont, 22f, HintText);
-            Stretch(empty.rectTransform);
+            HudFactory.Stretch(empty.rectTransform);
             empty.text = "보유한 영웅이 없습니다. 소환소에서 먼저 영웅을 뽑아주세요.";
             return;
         }
@@ -618,7 +569,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
     {
         Image frame = HudFactory.CreateImage(parent, "Card_" + index, BattleHudPalette.PortraitFrame);
         frame.raycastTarget = true;
-        SetTopLeft(frame.rectTransform, slotSize, position);
+        HudFactory.SetTopLeft(frame.rectTransform, slotSize, position);
 
         var button = frame.gameObject.AddComponent<Button>();
         button.targetGraphic = frame;
@@ -800,15 +751,6 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         return size;
     }
 
-    private static void SetTopLeft(RectTransform rect, Vector2 size, Vector2 offset)
-    {
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(0f, 1f);
-        rect.pivot = new Vector2(0f, 1f);
-        rect.sizeDelta = size;
-        rect.anchoredPosition = offset;
-    }
-
     // 창 가로 한가운데를 기준으로 offsetX만큼 옆에. 두 자리를 좌우 대칭으로 놓을 때 쓴다.
     private static void SetTopCenter(RectTransform rect, Vector2 size, float offsetX, float y)
     {
@@ -819,11 +761,4 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         rect.anchoredPosition = new Vector2(offsetX, -y);
     }
 
-    private static void Stretch(RectTransform rect)
-    {
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = Vector2.zero;
-        rect.offsetMax = Vector2.zero;
-    }
 }

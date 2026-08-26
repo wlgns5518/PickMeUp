@@ -34,12 +34,12 @@ public class EnemyHealthBar
 
         // 테두리 → 안쪽 어두운 판 → 붉은 채움 순으로 겹친다.
         Image border = HudFactory.CreateImage(root, "Border", BattleHudPalette.Mvp);
-        Stretch(border.rectTransform);
+        HudFactory.Stretch(border.rectTransform);
 
         // 팔레트의 게이지 배경은 알파 0.85라 금색 테두리 위에 얹으면 금색이 배어 올라와 빈 구간이 누렇게 보인다.
         // 이 바는 테두리를 자기 배경으로 깔고 있으므로 불투명한 판을 쓴다.
         Image background = HudFactory.CreateImage(border.rectTransform, "Background", new Color(0.05f, 0.05f, 0.08f, 1f));
-        Stretch(background.rectTransform);
+        HudFactory.Stretch(background.rectTransform);
         background.rectTransform.offsetMin = new Vector2(BorderThickness, BorderThickness);
         background.rectTransform.offsetMax = new Vector2(-BorderThickness, -BorderThickness);
 
@@ -139,11 +139,4 @@ public class EnemyHealthBar
         rect.localRotation = Quaternion.Euler(0f, 0f, 45f);
     }
 
-    private static void Stretch(RectTransform rect)
-    {
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = Vector2.zero;
-        rect.offsetMax = Vector2.zero;
-    }
 }

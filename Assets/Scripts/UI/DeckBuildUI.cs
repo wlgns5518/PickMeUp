@@ -47,7 +47,6 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
     [SerializeField] private float screenMargin = 30f;
     [SerializeField] private float cardSpacing = 16f;
 
-
     private const string BannerText = "파티를 구성합니다.\n영웅을 드래그 앤 드롭!";
 
     // 다른 파티에 있는 영웅은 받지 않는다. 막기만 하면 왜 안 들어가는지 알 수 없어 문구로 알린다.
@@ -119,8 +118,6 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         public GameObject DeadOverlay;
     }
 
-
-
     private RectTransform dragLayer;
 
     private AnnouncementBanner announcement;
@@ -133,12 +130,11 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
     private readonly List<PartySlot> partySlots = new List<PartySlot>();
     private readonly List<RosterSlot> rosterSlots = new List<RosterSlot>();
 
-    // 카드를 몇 장 깔아 두고 만들었는지. 보유 인원이 여기서 달라지면 슬롯을 새로 깔아야 한다.
-    private int builtRosterCount = -1;
-    // 창이 닫혀 있는 동안 인원이 바뀌었다. 다음에 열 때 다시 깐다.
-    private bool rosterDirty;
-
     protected override string CanvasName => "DeckBuildCanvas";
+    protected override int SortingOrder => 91;
+
+    // 카드를 다시 깐 뒤 편성 상태(선택 표시·인원수)를 화면에 맞춘다.
+    protected override void AfterRosterRebuilt() => Refresh();
 
     private void Awake()
     {
@@ -180,18 +176,6 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         // 그때마다 캔버스를 통째로 다시 지으면 그대로 멈춤이 된다. 다음에 열 때로 미룬다.
         rosterDirty = true;
         if (IsOpen) RebuildRoster();
-    }
-
-    private void RebuildRoster()
-    {
-        rosterDirty = false;
-
-        bool wasOpen = IsOpen;
-        // canvas를 놓으면 EnsureBuilt가 남아 있는 캔버스를 치우고 처음부터 다시 만든다.
-        canvas = null;
-        EnsureBuilt();
-        Refresh();
-        SetOpen(wasOpen);
     }
 
     // 전투에서 돌아오면 편성에 죽은 캐릭터가 남아 있을 수 있다.
@@ -348,25 +332,6 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         BuildDragLayer();
     }
 
-    private void BuildCanvas()
-    {
-        var canvasGo = new GameObject("DeckBuildCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-        canvasGo.transform.SetParent(transform, false);
-        canvasGo.layer = LayerMask.NameToLayer("UI");
-
-        canvas = canvasGo.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 91;
-
-        var scaler = canvasGo.GetComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = ReferenceResolution;
-        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-        scaler.matchWidthOrHeight = 0.5f;
-
-        canvasRect = (RectTransform)canvasGo.transform;
-    }
-
     // 화면을 꽉 채우는 창이라 실제 캔버스 크기를 알아야 배치를 계산할 수 있다.
     // 방금 만든 캔버스는 아직 크기가 0이므로 한 번 갱신시켜 읽는다.
     private Vector2 CanvasSize()
@@ -381,7 +346,7 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
     private void BuildDragLayer()
     {
         dragLayer = HudFactory.CreateGroup(canvasRect, "DragLayer");
-        Stretch(dragLayer);
+        HudFactory.Stretch(dragLayer);
         dragLayer.pivot = new Vector2(0.5f, 0.5f);
         dragLayer.SetAsLastSibling();
 
@@ -411,7 +376,7 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
             Image border = HudFactory.CreateImage(canvasRect, "OpenPartyButton", BattleHudPalette.Mvp);
             border.raycastTarget = true;
             Image body = HudFactory.CreateImage(border.rectTransform, "Body", new Color(0.04f, 0.04f, 0.06f, 0.97f));
-            Stretch(body.rectTransform);
+            HudFactory.Stretch(body.rectTransform);
             body.rectTransform.offsetMin = new Vector2(3f, 3f);
             body.rectTransform.offsetMax = new Vector2(-3f, -3f);
             button = border.rectTransform;
@@ -426,7 +391,7 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         openButton = button;
 
         openButtonLabel = HudFactory.CreateText(button, "Label", resolvedFont, 26f, BattleHudPalette.PanelText);
-        Stretch(openButtonLabel.rectTransform);
+        HudFactory.Stretch(openButtonLabel.rectTransform);
         openButtonLabel.rectTransform.offsetMin = new Vector2(OpenButtonWidth * 0.14f, height * 0.28f);
         openButtonLabel.rectTransform.offsetMax = new Vector2(-OpenButtonWidth * 0.14f, -height * 0.28f);
         openButtonLabel.enableAutoSizing = true;
@@ -436,23 +401,13 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
 
     private void BuildPopup()
     {
-        RectTransform popup = HudFactory.CreateGroup(canvasRect, "Popup");
-        Stretch(popup);
-        popup.pivot = new Vector2(0.5f, 0.5f);
-        popupRoot = popup.gameObject;
-
-        // 배경막과 창은 형제로 둔다. 창을 자식으로 넣으면 창 안을 누른 클릭이
-        // 배경막까지 거슬러 올라가 창이 곧바로 닫힌다.
-        Image backdrop = HudFactory.CreateImage(popup, "Backdrop", BattleHudPalette.PanelBackdrop);
-        backdrop.raycastTarget = true;
-        Stretch(backdrop.rectTransform);
-        AttachButton(backdrop, Hide, Selectable.Transition.None);
+        RectTransform popup = BuildPopupRoot();
 
         Image panel = HudFactory.CreateImage(popup, "Panel", BattleHudPalette.PanelBody);
         // 창 안을 누른 클릭이 배경막으로 내려가지 않도록 여기서 받아 둔다.
         panel.raycastTarget = true;
         RectTransform panelRect = panel.rectTransform;
-        Stretch(panelRect);
+        HudFactory.Stretch(panelRect);
         panelRect.offsetMin = new Vector2(screenMargin, screenMargin);
         panelRect.offsetMax = new Vector2(-screenMargin, -screenMargin);
 
@@ -486,7 +441,7 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
 
         TMP_Text rosterLabel = HudFactory.CreateText(panel, "RosterLabel", resolvedFont, 24f, BattleHudPalette.PanelText);
         rosterLabel.alignment = TextAlignmentOptions.Left;
-        SetTopLeft(rosterLabel.rectTransform, new Vector2(availableWidth, SectionLabelHeight), new Vector2(PanelPadding, -y));
+        HudFactory.SetTopLeft(rosterLabel.rectTransform, new Vector2(availableWidth, SectionLabelHeight), new Vector2(PanelPadding, -y));
         rosterLabel.text = "보유 영웅";
         y += SectionLabelHeight + 6f;
 
@@ -504,7 +459,7 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
             Image tab = HudFactory.CreateImage(panel, "PartyTab_" + i, BattleHudPalette.PanelBackdrop);
             // HudFactory는 표시 전용 HUD가 기본이라 레이캐스트를 꺼 둔다. 버튼은 도로 켜야 한다.
             tab.raycastTarget = true;
-            SetTopLeft(tab.rectTransform, new Vector2(PartyTabWidth, HeaderHeight),
+            HudFactory.SetTopLeft(tab.rectTransform, new Vector2(PartyTabWidth, HeaderHeight),
                 new Vector2(PanelPadding + i * (PartyTabWidth + 6f), -y));
 
             // 클로저가 반복 변수를 붙잡지 않도록 지역 변수에 복사해 넘긴다.
@@ -512,7 +467,7 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
             AttachButton(tab, () => PartyDeck.SetActive(captured));
 
             TMP_Text label = HudFactory.CreateText(tab.rectTransform, "Label", resolvedFont, 22f, BattleHudPalette.PanelText);
-            Stretch(label.rectTransform);
+            HudFactory.Stretch(label.rectTransform);
             label.text = (i + 1) + "파티";
 
             partyTabs.Add(tab);
@@ -522,13 +477,13 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         float tabsWidth = PartyDeck.PartyCount * (PartyTabWidth + 6f);
         countLabel = HudFactory.CreateText(panel, "Count", resolvedFont, 26f, BattleHudPalette.Mvp);
         countLabel.alignment = TextAlignmentOptions.Left;
-        SetTopLeft(countLabel.rectTransform, new Vector2(width - tabsWidth - 70f, HeaderHeight),
+        HudFactory.SetTopLeft(countLabel.rectTransform, new Vector2(width - tabsWidth - 70f, HeaderHeight),
             new Vector2(PanelPadding + tabsWidth + 14f, -y));
 
         // 닫기는 글자 대신 X 하나. 정사각형으로 두어야 X가 가운데에 온다.
         Image closeBackground = HudFactory.CreateImage(panel, "Close", BattleHudPalette.PanelBackdrop);
         closeBackground.raycastTarget = true;
-        SetTopLeft(closeBackground.rectTransform, new Vector2(HeaderHeight, HeaderHeight),
+        HudFactory.SetTopLeft(closeBackground.rectTransform, new Vector2(HeaderHeight, HeaderHeight),
             new Vector2(PanelPadding + width - HeaderHeight, -y));
         AttachButton(closeBackground, Hide);
 
@@ -536,15 +491,15 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         // 편성 → 출전이 한 흐름으로 이어지지 않는다.
         Image departBackground = HudFactory.CreateImage(panel, "Depart", SelectedRosterFrame);
         departBackground.raycastTarget = true;
-        SetTopLeft(departBackground.rectTransform, new Vector2(DepartWidth, HeaderHeight),
+        HudFactory.SetTopLeft(departBackground.rectTransform, new Vector2(DepartWidth, HeaderHeight),
             new Vector2(PanelPadding + width - HeaderHeight - 10f - DepartWidth, -y));
         AttachButton(departBackground, Depart);
 
         TMP_Text departLabel = HudFactory.CreateText(departBackground.rectTransform, "Label", resolvedFont, 26f, BattleHudPalette.Mvp);
-        Stretch(departLabel.rectTransform);
+        HudFactory.Stretch(departLabel.rectTransform);
         departLabel.text = "출전하기";
         TMP_Text closeLabel = HudFactory.CreateText(closeBackground.rectTransform, "Label", resolvedFont, 24f, BattleHudPalette.PanelText);
-        Stretch(closeLabel.rectTransform);
+        HudFactory.Stretch(closeLabel.rectTransform);
         // 곱셈 기호(U+2715 등)는 NotoSansKR 아틀라스에 없어 네모로 그려진다. 알파벳 X를 쓴다.
         closeLabel.text = "X";
     }
@@ -560,12 +515,12 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
             Image frame = HudFactory.CreateImage(row, "PartySlot_" + i, BattleHudPalette.PortraitFrame);
             // 드롭을 받으려면 레이캐스트 대상이어야 한다.
             frame.raycastTarget = true;
-            SetTopLeft(frame.rectTransform, slotSize, new Vector2(i * (slotSize.x + cardSpacing), 0f));
+            HudFactory.SetTopLeft(frame.rectTransform, slotSize, new Vector2(i * (slotSize.x + cardSpacing), 0f));
 
             frame.gameObject.AddComponent<CardDropTarget>().Bind(this, i);
 
             TMP_Text empty = HudFactory.CreateText(frame.rectTransform, "Empty", resolvedFont, 20f, BattleHudPalette.Dying);
-            Stretch(empty.rectTransform);
+            HudFactory.Stretch(empty.rectTransform);
             empty.text = "여기로\n드래그";
 
             CardVisual card = BuildCard(frame.rectTransform, null);
@@ -590,13 +545,13 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         // 목록 바닥 전체가 "파티에서 빼는 자리"다. 카드 위에 떨어뜨려도 이벤트가 여기까지 올라온다.
         Image area = HudFactory.CreateImage(panel, "RosterArea", new Color(1f, 1f, 1f, 0.03f));
         area.raycastTarget = true;
-        SetTopLeft(area.rectTransform, new Vector2(width, height), new Vector2(PanelPadding, -y));
+        HudFactory.SetTopLeft(area.rectTransform, new Vector2(width, height), new Vector2(PanelPadding, -y));
         area.gameObject.AddComponent<CardDropTarget>().Bind(this, CardDragSource.RosterSlot);
 
         if (count == 0)
         {
             TMP_Text empty = HudFactory.CreateText(area.rectTransform, "Empty", resolvedFont, 24f, BattleHudPalette.Dying);
-            Stretch(empty.rectTransform);
+            HudFactory.Stretch(empty.rectTransform);
             empty.text = "보유한 캐릭터가 없습니다";
             return;
         }
@@ -634,7 +589,7 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
     {
         Image frame = HudFactory.CreateImage(parent, "Card_" + index, BattleHudPalette.PortraitFrame);
         frame.raycastTarget = true;
-        SetTopLeft(frame.rectTransform, slotSize, position);
+        HudFactory.SetTopLeft(frame.rectTransform, slotSize, position);
 
         var button = frame.gameObject.AddComponent<Button>();
         button.targetGraphic = frame;
@@ -652,15 +607,15 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
 
         // 출전 순서. 전투 씬의 스폰 자리가 이 번호를 따른다.
         Image badge = HudFactory.CreateImage(frame.rectTransform, "Order", BattleHudPalette.Mvp);
-        SetTopLeft(badge.rectTransform, new Vector2(30f, 30f), new Vector2(6f, -6f));
+        HudFactory.SetTopLeft(badge.rectTransform, new Vector2(30f, 30f), new Vector2(6f, -6f));
         TMP_Text badgeLabel = HudFactory.CreateText(badge.rectTransform, "Label", resolvedFont, 20f, Color.black);
-        Stretch(badgeLabel.rectTransform);
+        HudFactory.Stretch(badgeLabel.rectTransform);
         badge.gameObject.SetActive(false);
 
         Image deadOverlay = HudFactory.CreateImage(frame.rectTransform, "Dead", new Color(0f, 0f, 0f, 0.66f));
-        Stretch(deadOverlay.rectTransform);
+        HudFactory.Stretch(deadOverlay.rectTransform);
         TMP_Text deadLabel = HudFactory.CreateText(deadOverlay.rectTransform, "Label", resolvedFont, 26f, BattleHudPalette.Defeat);
-        Stretch(deadLabel.rectTransform);
+        HudFactory.Stretch(deadLabel.rectTransform);
         deadLabel.text = "사망";
         deadOverlay.gameObject.SetActive(false);
 
@@ -777,14 +732,14 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
 
         Image portrait = HudFactory.CreateImage(rect, "Portrait", BattleHudPalette.PortraitFrame);
         portrait.preserveAspect = true;
-        SetTopLeft(portrait.rectTransform, new Vector2(260f, 260f), new Vector2(20f, -20f));
+        HudFactory.SetTopLeft(portrait.rectTransform, new Vector2(260f, 260f), new Vector2(20f, -20f));
 
         TMP_Text nameLabel = HudFactory.CreateText(rect, "Name", resolvedFont, 34f, BattleHudPalette.PanelText);
-        SetTopLeft(nameLabel.rectTransform, new Vector2(260f, 48f), new Vector2(20f, -296f));
+        HudFactory.SetTopLeft(nameLabel.rectTransform, new Vector2(260f, 48f), new Vector2(20f, -296f));
 
         // 별 기호(U+2605)는 NotoSansKR 아틀라스에 없어 네모로 그려진다. 숫자로 적는다.
         TMP_Text rankLabel = HudFactory.CreateText(rect, "Rank", resolvedFont, 30f, BattleHudPalette.Mvp);
-        SetTopLeft(rankLabel.rectTransform, new Vector2(260f, 40f), new Vector2(20f, -352f));
+        HudFactory.SetTopLeft(rankLabel.rectTransform, new Vector2(260f, 40f), new Vector2(20f, -352f));
 
         var visual = new CardVisual
         {
@@ -823,15 +778,6 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         return button;
     }
 
-    private static void SetTopLeft(RectTransform rect, Vector2 size, Vector2 offset)
-    {
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(0f, 1f);
-        rect.pivot = new Vector2(0f, 1f);
-        rect.sizeDelta = size;
-        rect.anchoredPosition = offset;
-    }
-
     // 화면 폭이 달라져도 가운데를 유지해야 하는 것들(배너, 출전 슬롯 줄).
     private static void SetTopCenter(RectTransform rect, Vector2 size, float y)
     {
@@ -842,11 +788,4 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         rect.anchoredPosition = new Vector2(0f, -y);
     }
 
-    private static void Stretch(RectTransform rect)
-    {
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = Vector2.zero;
-        rect.offsetMax = Vector2.zero;
-    }
 }

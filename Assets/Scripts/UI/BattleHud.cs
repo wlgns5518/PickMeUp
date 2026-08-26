@@ -146,28 +146,13 @@ public class BattleHud : MonoBehaviour
 
     private void BuildCanvas()
     {
-        var canvasGo = new GameObject("BattleHudCanvas", typeof(Canvas), typeof(CanvasScaler));
-        canvasGo.transform.SetParent(transform, false);
-        canvasGo.layer = LayerMask.NameToLayer("UI");
-
-        canvas = canvasGo.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         // 기존 씬 UI(미니게임 캔버스 등) 위에 그려지도록 한 단계 위에 둔다.
-        canvas.sortingOrder = 100;
-
-        var scaler = canvasGo.GetComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-        scaler.matchWidthOrHeight = 0.5f;
-
-        // 파티 슬롯을 눌러 카메라를 옮기려면 레이캐스터가 필요하다.
+        //
+        // 파티 슬롯을 눌러 카메라를 옮기려면 레이캐스터가 필요하다(팩토리가 붙여 준다).
         // 예전에는 결과창이 아래쪽 UI 입력을 가로챌까 봐 붙이지 않았는데, HudFactory가 만드는
         // 이미지/텍스트는 전부 raycastTarget=false라 실제로 클릭을 받는 건 파티 슬롯의
         // 판정용 이미지 하나뿐이다. 결과창은 여전히 입력을 가로채지 않는다.
-        canvasGo.AddComponent<GraphicRaycaster>();
-
-        canvasRect = (RectTransform)canvasGo.transform;
+        canvas = HudFactory.CreateScreenCanvas(transform, "BattleHudCanvas", 100, out canvasRect);
     }
 
     // UI 클릭은 EventSystem이 있어야 전달된다. 씬마다 배치를 챙기면 한 곳만 빠져도

@@ -89,6 +89,8 @@ public class SummonUI : FacilityWindow
     private bool summoning;
 
     protected override string CanvasName => "SummonCanvas";
+    // 층 선택 창(95)보다 위.
+    protected override int SortingOrder => 96;
 
     private void Awake()
     {
@@ -225,48 +227,9 @@ public class SummonUI : FacilityWindow
         RefreshInteractable();
     }
 
-    private void BuildCanvas()
-    {
-        var canvasGo = new GameObject("SummonCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-        canvasGo.transform.SetParent(transform, false);
-        canvasGo.layer = LayerMask.NameToLayer("UI");
-
-        canvas = canvasGo.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        // 층 선택 창(95)보다 위. 두 창이 함께 열릴 일은 없지만 순서를 정해 두면 겹칠 때 헷갈리지 않는다.
-        canvas.sortingOrder = 96;
-
-        var scaler = canvasGo.GetComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-        scaler.matchWidthOrHeight = 0.5f;
-
-        canvasRect = (RectTransform)canvasGo.transform;
-    }
-
     private void BuildPopup()
     {
-        RectTransform popup = HudFactory.CreateGroup(canvasRect, "Popup");
-        Stretch(popup);
-        popupRoot = popup.gameObject;
-
-        // 배경막과 창은 형제로 둔다. 창을 자식으로 넣으면 창 안을 누른 클릭이
-        // 배경막까지 거슬러 올라가 창이 곧바로 닫힌다.
-        BuildBackdrop(popup);
-        BuildPanel(popup);
-    }
-
-    private void BuildBackdrop(RectTransform popup)
-    {
-        Image backdrop = HudFactory.CreateImage(popup, "Backdrop", BattleHudPalette.PanelBackdrop);
-        // 창 밖을 누르면 닫는다. 열려 있는 동안 뒤쪽 세계로 새는 클릭도 여기서 막힌다.
-        backdrop.raycastTarget = true;
-        Stretch(backdrop.rectTransform);
-
-        var button = backdrop.gameObject.AddComponent<Button>();
-        button.transition = Selectable.Transition.None;
-        button.onClick.AddListener(Hide);
+        BuildPanel(BuildPopupRoot());
     }
 
     private void BuildPanel(RectTransform popup)
@@ -287,7 +250,7 @@ public class SummonUI : FacilityWindow
 
         TMP_Text title = HudFactory.CreateText(panelRect, "Title", resolvedFont, 42f, BattleHudPalette.PanelText);
         title.alignment = TextAlignmentOptions.Left;
-        SetTopLeft(title.rectTransform, new Vector2(contentWidth, TitleHeight), new Vector2(panelPadding.x, -y));
+        HudFactory.SetTopLeft(title.rectTransform, new Vector2(contentWidth, TitleHeight), new Vector2(panelPadding.x, -y));
         title.text = "소환소";
 
         BuildCloseButton(y);
@@ -308,7 +271,7 @@ public class SummonUI : FacilityWindow
     {
         Image background = HudFactory.CreateImage(panelRect, "Close", BattleHudPalette.PanelBackdrop);
         background.raycastTarget = true;
-        SetTopLeft(background.rectTransform, new Vector2(CloseSize, CloseSize),
+        HudFactory.SetTopLeft(background.rectTransform, new Vector2(CloseSize, CloseSize),
             new Vector2(panelPadding.x + contentWidth - CloseSize, -y));
 
         var button = background.gameObject.AddComponent<Button>();
@@ -316,7 +279,7 @@ public class SummonUI : FacilityWindow
         button.onClick.AddListener(Hide);
 
         TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 28f, BattleHudPalette.PanelText);
-        Stretch(label.rectTransform);
+        HudFactory.Stretch(label.rectTransform);
         // 곱셈 기호(U+2715 등)는 NotoSansKR 아틀라스에 없어 네모로 그려진다. 알파벳 X를 쓴다.
         label.text = "X";
     }
@@ -332,7 +295,7 @@ public class SummonUI : FacilityWindow
 
             Image background = HudFactory.CreateImage(panelRect, "Tab_" + kind, BattleHudPalette.PortraitFrame);
             background.raycastTarget = true;
-            SetTopLeft(background.rectTransform, new Vector2(tabWidth, TabHeight),
+            HudFactory.SetTopLeft(background.rectTransform, new Vector2(tabWidth, TabHeight),
                 new Vector2(panelPadding.x + i * (tabWidth + Gap), -y));
 
             var button = background.gameObject.AddComponent<Button>();
@@ -340,7 +303,7 @@ public class SummonUI : FacilityWindow
             button.onClick.AddListener(() => SelectKind(kind));
 
             TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 32f, BattleHudPalette.PanelText);
-            Stretch(label.rectTransform);
+            HudFactory.Stretch(label.rectTransform);
             label.text = SummonTable.Korean(kind);
 
             tabBackgrounds.Add(background);
@@ -351,7 +314,7 @@ public class SummonUI : FacilityWindow
     {
         TMP_Text header = HudFactory.CreateText(panelRect, "RateHeader", resolvedFont, 26f, HintText);
         header.alignment = TextAlignmentOptions.Left;
-        SetTopLeft(header.rectTransform, new Vector2(contentWidth, RateHeaderHeight), new Vector2(panelPadding.x, -y));
+        HudFactory.SetTopLeft(header.rectTransform, new Vector2(contentWidth, RateHeaderHeight), new Vector2(panelPadding.x, -y));
         header.text = "등급별 확률";
 
         for (int i = 0; i < RateRowCount; i++)
@@ -359,15 +322,15 @@ public class SummonUI : FacilityWindow
             float rowY = y + RateHeaderHeight + i * RateRowHeight;
 
             RectTransform row = HudFactory.CreateGroup(panelRect, "Rate_" + (i + 1));
-            SetTopLeft(row, new Vector2(contentWidth, RateRowHeight), new Vector2(panelPadding.x, -rowY));
+            HudFactory.SetTopLeft(row, new Vector2(contentWidth, RateRowHeight), new Vector2(panelPadding.x, -rowY));
 
             TMP_Text grade = HudFactory.CreateText(row, "Grade", resolvedFont, 29f, BattleHudPalette.PanelText);
             grade.alignment = TextAlignmentOptions.Left;
-            Stretch(grade.rectTransform);
+            HudFactory.Stretch(grade.rectTransform);
 
             TMP_Text percent = HudFactory.CreateText(row, "Percent", resolvedFont, 29f, BattleHudPalette.PanelText);
             percent.alignment = TextAlignmentOptions.Right;
-            Stretch(percent.rectTransform);
+            HudFactory.Stretch(percent.rectTransform);
 
             rateRows.Add(row);
             rateGradeLabels.Add(grade);
@@ -381,7 +344,7 @@ public class SummonUI : FacilityWindow
         BuildDrawButtons(lower);
 
         TMP_Text hint = HudFactory.CreateText(lower, "Hint", resolvedFont, 24f, HintText);
-        SetTopLeft(hint.rectTransform, new Vector2(contentWidth, HintHeight), new Vector2(0f, -(DrawHeight + Gap)));
+        HudFactory.SetTopLeft(hint.rectTransform, new Vector2(contentWidth, HintHeight), new Vector2(0f, -(DrawHeight + Gap)));
         hint.text = "누르면 창이 닫히고 뽑은 영웅 카드가 화면에 나타납니다.";
     }
 
@@ -397,7 +360,7 @@ public class SummonUI : FacilityWindow
 
             Image background = HudFactory.CreateImage(lower, "Draw_" + count, BattleHudPalette.PortraitFrame);
             background.raycastTarget = true;
-            SetTopLeft(background.rectTransform, new Vector2(buttonWidth, DrawHeight),
+            HudFactory.SetTopLeft(background.rectTransform, new Vector2(buttonWidth, DrawHeight),
                 new Vector2(i * (buttonWidth + Gap), 0f));
 
             var button = background.gameObject.AddComponent<Button>();
@@ -405,7 +368,7 @@ public class SummonUI : FacilityWindow
             button.onClick.AddListener(() => Draw(count));
 
             TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 36f, BattleHudPalette.Mvp);
-            Stretch(label.rectTransform);
+            HudFactory.Stretch(label.rectTransform);
             label.text = count + "회 소환";
 
             drawButtons.Add(button);
@@ -452,7 +415,7 @@ public class SummonUI : FacilityWindow
         button.onClick.AddListener(onClick);
 
         TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 28f, BattleHudPalette.PanelText);
-        Stretch(label.rectTransform);
+        HudFactory.Stretch(label.rectTransform);
         label.text = text;
         return button;
     }
@@ -513,7 +476,7 @@ public class SummonUI : FacilityWindow
 
         float lowerY = tableTop + RateHeaderHeight + shownRows * RateRowHeight + Gap;
 
-        SetTopLeft(lowerSection, new Vector2(contentWidth, LowerHeight), new Vector2(panelPadding.x, -lowerY));
+        HudFactory.SetTopLeft(lowerSection, new Vector2(contentWidth, LowerHeight), new Vector2(panelPadding.x, -lowerY));
         panelRect.sizeDelta = new Vector2(PanelWidth, lowerY + LowerHeight + panelPadding.y);
     }
 
@@ -534,15 +497,6 @@ public class SummonUI : FacilityWindow
 
     // ---- 자리 잡기 ------------------------------------------------------
 
-    private static void SetTopLeft(RectTransform rect, Vector2 size, Vector2 offset)
-    {
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(0f, 1f);
-        rect.pivot = new Vector2(0f, 1f);
-        rect.sizeDelta = size;
-        rect.anchoredPosition = offset;
-    }
-
     // 왼쪽 끝에서 x만큼 떨어진 자리에 세로로는 가운데. 한 줄로 늘어놓는 결과 띠에 쓴다.
     private static void SetLeftMiddle(RectTransform rect, Vector2 size, float x)
     {
@@ -553,11 +507,4 @@ public class SummonUI : FacilityWindow
         rect.anchoredPosition = new Vector2(x, 0f);
     }
 
-    private static void Stretch(RectTransform rect)
-    {
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = Vector2.zero;
-        rect.offsetMax = Vector2.zero;
-    }
 }

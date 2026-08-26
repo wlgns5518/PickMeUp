@@ -57,6 +57,8 @@ public class FloorSelectUI : FacilityWindow
     private readonly List<TMP_Text> floorLabels = new List<TMP_Text>();
 
     protected override string CanvasName => "FloorSelectCanvas";
+    // 편성 카드(91)보다 위. 층을 고르는 동안에는 이 창이 가장 앞에 있어야 한다.
+    protected override int SortingOrder => 95;
 
     private void Awake()
     {
@@ -105,48 +107,9 @@ public class FloorSelectUI : FacilityWindow
         warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, bannerSprite, null, bannerWidth);
     }
 
-    private void BuildCanvas()
-    {
-        var canvasGo = new GameObject("FloorSelectCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-        canvasGo.transform.SetParent(transform, false);
-        canvasGo.layer = LayerMask.NameToLayer("UI");
-
-        canvas = canvasGo.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        // 편성 카드(91)보다 위. 층을 고르는 동안에는 이 창이 가장 앞에 있어야 한다.
-        canvas.sortingOrder = 95;
-
-        var scaler = canvasGo.GetComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-        scaler.matchWidthOrHeight = 0.5f;
-
-        canvasRect = (RectTransform)canvasGo.transform;
-    }
-
     private void BuildPopup()
     {
-        RectTransform popup = HudFactory.CreateGroup(canvasRect, "Popup");
-        Stretch(popup);
-        popupRoot = popup.gameObject;
-
-        // 배경막과 창은 형제로 둔다. 창을 자식으로 넣으면 창 안을 누른 클릭이
-        // 배경막까지 거슬러 올라가 창이 곧바로 닫힌다.
-        BuildBackdrop(popup);
-        BuildPanel(popup);
-    }
-
-    private void BuildBackdrop(RectTransform popup)
-    {
-        Image backdrop = HudFactory.CreateImage(popup, "Backdrop", BattleHudPalette.PanelBackdrop);
-        // 창 밖을 누르면 닫는다. 열려 있는 동안 뒤쪽 세계로 새는 클릭도 여기서 막힌다.
-        backdrop.raycastTarget = true;
-        Stretch(backdrop.rectTransform);
-
-        var button = backdrop.gameObject.AddComponent<Button>();
-        button.transition = Selectable.Transition.None;
-        button.onClick.AddListener(Hide);
+        BuildPanel(BuildPopupRoot());
     }
 
     private void BuildPanel(RectTransform popup)
@@ -173,7 +136,7 @@ public class FloorSelectUI : FacilityWindow
 
         TMP_Text title = HudFactory.CreateText(panelRect, "Title", resolvedFont, 42f, BattleHudPalette.PanelText);
         title.alignment = TextAlignmentOptions.Left;
-        SetTopLeft(title.rectTransform, new Vector2(listWidth, TitleHeight), new Vector2(panelPadding.x, -panelPadding.y));
+        HudFactory.SetTopLeft(title.rectTransform, new Vector2(listWidth, TitleHeight), new Vector2(panelPadding.x, -panelPadding.y));
         title.text = "층 선택";
 
         for (int i = 0; i < count; i++)
@@ -186,7 +149,7 @@ public class FloorSelectUI : FacilityWindow
 
             Image background = HudFactory.CreateImage(panelRect, "Floor_" + floor, BattleHudPalette.PortraitFrame);
             background.raycastTarget = true;
-            SetTopLeft(background.rectTransform, new Vector2(ButtonWidth, ButtonHeight), new Vector2(x, y));
+            HudFactory.SetTopLeft(background.rectTransform, new Vector2(ButtonWidth, ButtonHeight), new Vector2(x, y));
 
             var button = background.gameObject.AddComponent<Button>();
             button.targetGraphic = background;
@@ -197,7 +160,7 @@ public class FloorSelectUI : FacilityWindow
             button.colors = colors;
 
             TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 34f, BattleHudPalette.PanelText);
-            Stretch(label.rectTransform);
+            HudFactory.Stretch(label.rectTransform);
 
             // 클로저가 반복 변수를 붙잡지 않도록 지역 변수에 복사해 넘긴다.
             int captured = floor;
@@ -210,7 +173,7 @@ public class FloorSelectUI : FacilityWindow
         // 닫기는 글자 대신 X 하나. 목록 아래가 아니라 제목줄 오른쪽 끝에 정사각형으로 둔다.
         Image closeBackground = HudFactory.CreateImage(panelRect, "Close", BattleHudPalette.PanelBackdrop);
         closeBackground.raycastTarget = true;
-        SetTopLeft(closeBackground.rectTransform, new Vector2(CloseHeight, CloseHeight),
+        HudFactory.SetTopLeft(closeBackground.rectTransform, new Vector2(CloseHeight, CloseHeight),
             new Vector2(panelPadding.x + listWidth - CloseHeight, -panelPadding.y));
 
         var closeButton = closeBackground.gameObject.AddComponent<Button>();
@@ -218,7 +181,7 @@ public class FloorSelectUI : FacilityWindow
         closeButton.onClick.AddListener(Hide);
 
         TMP_Text closeLabel = HudFactory.CreateText(closeBackground.rectTransform, "Label", resolvedFont, 30f, BattleHudPalette.PanelText);
-        Stretch(closeLabel.rectTransform);
+        HudFactory.Stretch(closeLabel.rectTransform);
         // 곱셈 기호(U+2715 등)는 NotoSansKR 아틀라스에 없어 네모로 그려진다. 알파벳 X를 쓴다.
         closeLabel.text = "X";
     }
@@ -282,20 +245,4 @@ public class FloorSelectUI : FacilityWindow
         SceneManager.LoadScene(sceneName);
     }
 
-    private static void SetTopLeft(RectTransform rect, Vector2 size, Vector2 offset)
-    {
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(0f, 1f);
-        rect.pivot = new Vector2(0f, 1f);
-        rect.sizeDelta = size;
-        rect.anchoredPosition = offset;
-    }
-
-    private static void Stretch(RectTransform rect)
-    {
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = Vector2.zero;
-        rect.offsetMax = Vector2.zero;
-    }
 }

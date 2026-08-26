@@ -43,6 +43,8 @@ public class MeshyCharacterGenerator : MonoBehaviour
     [Header("Asset Save")]
     [Tooltip("에디터에서 생성된 캐릭터를 .asset으로 저장")]
     [SerializeField] private bool saveAsAsset = true;
+    [Tooltip("새로 만든 캐릭터를 얹을 보유 명단. 비워 두면 프로젝트에 하나뿐인 로스터 에셋을 찾아 쓴다.")]
+    [SerializeField] private CharacterRosterSO roster;
     [SerializeField] private string imageDir = "Assets/Character/CharacterImage";
     [SerializeField] private string assetDir = "Assets/Character/Characters";
 
@@ -431,10 +433,37 @@ public class MeshyCharacterGenerator : MonoBehaviour
             string path = AssetDatabase.GenerateUniqueAssetPath(
                 $"{assetDir}/{SanitizeFileName(so.characterName)}.asset".Replace('\\', '/'));
             AssetDatabase.CreateAsset(so, path);
+            RegisterInRoster(so);
             AssetDatabase.SaveAssets();
             Debug.Log($"[Meshy] CharacterSO 저장: {path}");
         }
         catch (Exception e) { Debug.LogError($"[Meshy] CharacterSO 저장 실패: {e.Message}"); }
+    }
+
+    // 저장만 하고 명단에 얹지 않으면, 이번 판에는 손에 들어온 것처럼 보이지만
+    // 다음에 켤 때 보유 명단은 로스터 에셋에서 다시 만들어지므로 그 캐릭터만 사라진다.
+    // (실제로 .asset은 일곱인데 편성 창에는 다섯만 나오는 상태였다.)
+    private void RegisterInRoster(CharacterSO so)
+    {
+        CharacterRosterSO target = roster != null ? roster : FindSingleRoster();
+        if (target == null)
+        {
+            Debug.LogWarning($"[Meshy] 보유 명단(CharacterRosterSO)을 찾지 못해 {so.characterName}이(가) 명단에 오르지 않았습니다. " +
+                             "생성기의 Roster 칸에 로스터 에셋을 지정하세요.");
+            return;
+        }
+
+        if (target.EditorRegister(so)) Debug.Log($"[Meshy] 보유 명단 등록: {so.characterName} → {target.name}");
+    }
+
+    // 로스터가 하나뿐일 때만 자동으로 고른다. 여럿이면 어느 쪽에 얹어야 할지 알 수 없으므로
+    // 조용히 아무 데나 넣지 않고 인스펙터 지정을 요구한다.
+    private static CharacterRosterSO FindSingleRoster()
+    {
+        string[] guids = AssetDatabase.FindAssets("t:CharacterRosterSO");
+        if (guids.Length != 1) return null;
+
+        return AssetDatabase.LoadAssetAtPath<CharacterRosterSO>(AssetDatabase.GUIDToAssetPath(guids[0]));
     }
 #endif
 

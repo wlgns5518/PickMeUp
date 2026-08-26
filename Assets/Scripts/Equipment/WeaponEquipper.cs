@@ -364,7 +364,7 @@ public class WeaponEquipper : MonoBehaviour
         BowGrip = bowHand.Grip;
         StringHand = HandSocket.Opposite(bowHand.Side);
 
-        Transform arrow = FindDeep(bowHand.Instance.transform, NockedArrowName);
+        Transform arrow = WeaponGrip.FindDeep(bowHand.Instance.transform, NockedArrowName);
         if (arrow == null) return;
 
         // 화살이 시위(StringRest)에 대해 어떤 자세로 놓여 있었는지 그대로 기억한다.
@@ -397,7 +397,7 @@ public class WeaponEquipper : MonoBehaviour
         // 무기 프리팹은 그립을 맞추느라 모델을 한 겹 감싸고 있다.
         // 표시는 그 안쪽 모델에 붙어 있으므로 자손까지 내려가며 찾는다.
         // 전용 표시가 있으면 그쪽, 없으면 시위에 물려 둔 화살(활), 그것도 없으면 모델 원점.
-        Transform muzzle = FindDeep(shooter.Instance.transform, ProjectileOriginName);
+        Transform muzzle = WeaponGrip.FindDeep(shooter.Instance.transform, ProjectileOriginName);
         if (muzzle == null && nockedArrow != null) muzzle = nockedArrow.transform;
         ProjectileOrigin = muzzle != null ? muzzle : shooter.Instance.transform;
     }
@@ -410,18 +410,6 @@ public class WeaponEquipper : MonoBehaviour
         return null;
     }
 
-    private static Transform FindDeep(Transform root, string childName)
-    {
-        for (int i = 0; i < root.childCount; i++)
-        {
-            Transform child = root.GetChild(i);
-            if (child.name == childName) return child;
-
-            Transform found = FindDeep(child, childName);
-            if (found != null) return found;
-        }
-        return null;
-    }
 
     // ------------------------------------------------------------------
     // 애니메이터

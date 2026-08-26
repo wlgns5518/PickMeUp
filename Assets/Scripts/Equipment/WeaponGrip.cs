@@ -91,6 +91,23 @@ public class WeaponGrip : MonoBehaviour
         return true;
     }
 
+    // 자손까지 내려가며 이름으로 자식을 찾는다.
+    //
+    // Transform.Find는 바로 아래 자식만 본다. 무기 프리팹은 그립을 맞추느라 모델을 한 겹 감싸고 있어
+    // 표식(NockedArrow 등)이 늘 손자 이상에 있으므로, 붙이는 쪽도 굽는 쪽도 이 탐색이 필요하다.
+    public static Transform FindDeep(Transform root, string childName)
+    {
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform child = root.GetChild(i);
+            if (child.name == childName) return child;
+
+            Transform found = FindDeep(child, childName);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
     public void Bind(Transform newGripPoint, Transform newModel)
     {
         gripPoint = newGripPoint;

@@ -29,10 +29,10 @@ public class BattleResultPanel
     private BattleResultPanel(RectTransform parent, TMP_FontAsset font, Sprite frameSprite, TMP_SpriteAsset starSprites)
     {
         root = HudFactory.CreateGroup(parent, "BattleResultPanel");
-        Stretch(root);
+        HudFactory.Stretch(root);
 
         var backdrop = HudFactory.CreateImage(root, "Backdrop", BattleHudPalette.PanelBackdrop);
-        Stretch(backdrop.rectTransform);
+        HudFactory.Stretch(backdrop.rectTransform);
 
         Image frame;
         if (frameSprite != null)
@@ -50,7 +50,7 @@ public class BattleResultPanel
             // 배너 아트를 아직 넣지 않았을 때의 대비책 — 금색 테두리에 검은 판.
             frame = HudFactory.CreateImage(root, "Frame", BattleHudPalette.Mvp);
             Image body = HudFactory.CreateImage(frame.rectTransform, "Body", new Color(0.03f, 0.03f, 0.04f, 0.97f));
-            Stretch(body.rectTransform);
+            HudFactory.Stretch(body.rectTransform);
             body.rectTransform.offsetMin = new Vector2(3f, 3f);
             body.rectTransform.offsetMax = new Vector2(-3f, -3f);
         }
@@ -63,7 +63,7 @@ public class BattleResultPanel
         frameRect.sizeDelta = VictorySize;
 
         bodyText = HudFactory.CreateText(frameRect, "Body", font, 30f, BattleHudPalette.PanelText);
-        Stretch(bodyText.rectTransform);
+        HudFactory.Stretch(bodyText.rectTransform);
         bodyText.alignment = TextAlignmentOptions.Center;
         bodyText.textWrappingMode = TextWrappingModes.Normal;
         // 파티가 커지면 레벨업 줄이 늘어 판을 넘친다. 넘치는 대신 줄어들게 한다.
@@ -190,11 +190,4 @@ public class BattleResultPanel
         bodyText.rectTransform.offsetMax = new Vector2(-size.x * PaddingRatioX, -size.y * PaddingRatioY);
     }
 
-    private static void Stretch(RectTransform rect)
-    {
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = Vector2.zero;
-        rect.offsetMax = Vector2.zero;
-    }
 }
