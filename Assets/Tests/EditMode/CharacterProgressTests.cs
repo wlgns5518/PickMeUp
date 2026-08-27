@@ -64,11 +64,23 @@ public class CharacterProgressTests
     [Test]
     public void 레벨업하면_필요_경험치가_늘어난다()
     {
-        // 1레벨 → 2레벨에 10, 2 → 3에 15가 든다.
+        // 1레벨 → 2레벨에 10, 2 → 3에 25가 든다(10 * 2^1.35).
         character.GainExp(10);
         Assert.AreEqual(2, character.Level);
         Assert.AreEqual(0, character.Exp);
-        Assert.AreEqual(15, character.ExpToNext);
+        Assert.AreEqual(25, character.ExpToNext);
+    }
+
+    [Test]
+    public void 필요_경험치는_직선이_아니라_점점_가팔라진다()
+    {
+        // 곡선의 핵심은 "레벨이 오를수록 한 레벨의 무게가 무거워진다"는 것이다.
+        // 예전의 직선 공식(10 + (level-1)*15)에서는 아래 두 간격이 똑같이 15였다.
+        int early = CharacterProgress.ExpForLevel(11) - CharacterProgress.ExpForLevel(10);
+        int late = CharacterProgress.ExpForLevel(51) - CharacterProgress.ExpForLevel(50);
+
+        Assert.Greater(late, early * 2, "후반 한 레벨이 초반 한 레벨보다 훨씬 무거워야 한다");
+        Assert.AreEqual(10, CharacterProgress.ExpForLevel(1), "1레벨 기준은 에셋 시작값과 같아야 한다");
     }
 
     [Test]

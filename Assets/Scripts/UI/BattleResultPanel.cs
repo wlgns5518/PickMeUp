@@ -109,6 +109,7 @@ public class BattleResultPanel
         Builder.Append("<size=46>스테이지 클리어!</size>\n\n");
 
         AppendLevelUps(result);
+        AppendSkillUnlocks(result);
 
         Builder.Append("보상이 지급됩니다.\n");
         Builder.Append("우편함을 확인해주세요.\n");
@@ -164,6 +165,30 @@ public class BattleResultPanel
 
         if (extra > 0) Builder.Append("외 ").Append(extra).Append("명 레벨업!\n");
         if (shown > 0 || extra > 0) Builder.Append('\n');
+    }
+
+    // 조건을 채워 열린 스킬. 합성과 달리 플레이어가 누른 적 없이 붙는 것이라,
+    // 여기서 알리지 않으면 카드 상세를 열어보기 전까지 생긴 줄도 모른다.
+    private void AppendSkillUnlocks(BattleResult result)
+    {
+        int shown = 0;
+
+        for (int i = 0; i < result.Rewards.Count; i++)
+        {
+            BattleReward reward = result.Rewards[i];
+            if (reward == null || reward.Character == null || reward.UnlockedSkills.Count == 0) continue;
+
+            for (int s = 0; s < reward.UnlockedSkills.Count; s++)
+            {
+                Builder.Append(HeroLabel.NameWithStars(reward.Character, hasStarSprites));
+                Builder.Append(" — ");
+                Builder.Append(SkillCatalog.NameOf(reward.UnlockedSkills[s]));
+                Builder.Append(" 각성!\n");
+                shown++;
+            }
+        }
+
+        if (shown > 0) Builder.Append('\n');
     }
 
     // 영구 사망은 승패와 무관하게 항상 알린다. 이 게임에서 되돌릴 수 없는 유일한 손실이다.

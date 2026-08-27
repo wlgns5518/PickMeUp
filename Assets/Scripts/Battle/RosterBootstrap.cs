@@ -29,5 +29,10 @@ public class RosterBootstrap : MonoBehaviour
 
         // 에셋의 명단은 시작값이다. 소환으로 늘고 합성으로 주는 실제 보유 명단은 런타임 쪽이 든다.
         OwnedRoster.Seed(roster.Members);
+
+        // 조건 해금은 보통 전투 정산에서 걸린다. 여기서 한 번 더 훑는 것은 그 그물에
+        // 걸리지 않는 경우를 위해서다 — 스킬 표에 조건이 새로 추가되면, 이미 조건을 채워 둔
+        // 캐릭터들은 다음 전투를 뛰기 전부터 그 스킬을 갖고 있어야 한다.
+        SkillUnlocks.EvaluateAll(roster.Members);
     }
 }

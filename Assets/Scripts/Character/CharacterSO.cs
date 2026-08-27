@@ -107,7 +107,7 @@ public class CharacterSO : ScriptableObject
     public WeaponDefinition offHandWeapon;
 
     // Skills ------------------------------------------------------------
-    // 합성으로만 늘어난다. 이름과 설명이 아니라 id만 들고 있는 이유는 SkillCatalog 주석 참조.
+    // 합성과 조건 해금, 두 갈래로 늘어난다. 이름과 설명이 아니라 id만 들고 있는 이유는 SkillCatalog 주석 참조.
     [Header("Skills")]
     [Tooltip("배운 스킬의 id. 실제 이름과 설명은 SkillCatalog가 들고 있다.")]
     public List<string> skillIds = new List<string>();

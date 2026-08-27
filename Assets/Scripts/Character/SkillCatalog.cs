@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 // 스킬 하나의 정의. 이름과 설명은 여기 한 곳에만 적힌다.
@@ -16,14 +17,26 @@ public readonly struct SkillDefinition
     // 배울 수 있는 직업. 비어 있으면 누구나 배운다.
     public readonly JobType[] Jobs;
 
-    public SkillDefinition(string id, string name, string description, int tier, JobType[] jobs = null)
+    // 조건이 맞으면 저절로 열리는 스킬의 조건. null이면 합성으로만 얻는다.
+    //
+    // 조건이 붙은 스킬은 합성 후보에서 아예 빠진다(WeightOf 참조).
+    // 조건을 걸어 둔 스킬이 합성으로도 굴러 나오면 조건이 있으나 마나가 되기 때문이다.
+    // 조건을 적는 법은 SkillUnlock 참조.
+    public readonly SkillUnlockCondition Unlock;
+
+    public SkillDefinition(string id, string name, string description, int tier,
+        JobType[] jobs = null, SkillUnlockCondition unlock = null)
     {
         Id = id;
         Name = name;
         Description = description;
         Tier = tier;
         Jobs = jobs;
+        Unlock = unlock;
     }
+
+    // 합성이 아니라 조건으로 열리는 스킬인가.
+    public bool IsConditional => Unlock != null;
 
     public bool CanLearn(JobType job)
     {
@@ -36,7 +49,12 @@ public readonly struct SkillDefinition
     }
 }
 
-// 합성으로 얻는 스킬 표.
+// 스킬 표.
+//
+// 스킬이 손에 들어오는 길은 두 갈래다. 하나는 합성 — 재료 카드를 태워 Roll이 하나 뽑아준다.
+// 다른 하나는 조건 해금 — 마지막 인자로 조건을 달아 두면 합성과 무관하게, 그 조건을 채운
+// 캐릭터에게 저절로 열린다(SkillUnlocks). 아래 표에는 아직 조건이 붙은 스킬이 없다.
+// 조건은 스킬을 새로 추가할 때 그 줄에 함께 적는다.
 //
 // JobProfile과 같은 이유로 ScriptableObject가 아니라 코드 표다 — 목록이 코드에서만 참조되고,
 // 에셋으로 흩어 두면 어느 스킬이 어느 등급에서 나오는지 한눈에 볼 수 없다.
@@ -108,6 +126,10 @@ public static class SkillCatalog
     // 표에 있는 가장 높은 등급. 재료 등급을 여기까지만 쳐준다(7성 재료도 6등급이 상한).
     public static readonly int MaxTier = FindMaxTier();
 
+    // 표 전체. SkillUnlocks가 정산 때마다 조건부 스킬을 훑을 때 쓴다.
+    // 배열을 그대로 넘기면 밖에서 원소를 갈아끼울 수 있으므로 읽기 전용으로만 내준다.
+    public static IReadOnlyList<SkillDefinition> AllSkills => All;
+
     public static SkillDefinition? Find(string id)
     {
         if (string.IsNullOrEmpty(id)) return null;
@@ -167,6 +189,8 @@ public static class SkillCatalog
 
     private static int WeightOf(SkillDefinition skill, CharacterSO main, int maxTier)
     {
+        // 조건 해금 스킬은 합성으로 나오지 않는다. 조건을 채워서 여는 것이 그 스킬의 값어치다.
+        if (skill.IsConditional) return 0;
         if (skill.Tier > maxTier) return 0;
         if (!skill.CanLearn(main.job)) return 0;
         if (main.HasSkill(skill.Id)) return 0;

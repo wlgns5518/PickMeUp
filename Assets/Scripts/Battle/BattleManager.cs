@@ -49,8 +49,15 @@ public class BattleManager : MonoBehaviour
 
     private readonly BattleResult result = new BattleResult();
 
-    // 전투 시작 시점의 아군 명단. 유닛은 죽으면 UnitRegistry에서 빠지기 때문에
-    // 정산과 MVP 선정에 쓸 목록은 시작할 때 따로 붙잡아 둬야 한다.
+    // 전투 시작 시점의 아군 명단. UnitRegistry.Allies는 죽은 유닛이 빠지는 "지금 살아 있는" 목록이라,
+    // 개수와 순서가 전투 내내 고정돼야 하는 쪽에서는 쓸 수 없다. 그래서 시작할 때 한 번 붙잡아 둔다.
+    //
+    // 이 명단을 쓰는 곳과 각자의 이유:
+    //   BattleHud     — 파티 슬롯. 동료가 쓰러져도 슬롯이 밀리지 않고 그 자리에 전투 불능으로 남는다.
+    //   PartyFollowCamera — 시작 시점에 볼 대상. 슬롯과 같은 순서라야 "맨 위 슬롯 = 시작 카메라"가 된다.
+    //   CaptureStress — 쓰러진 동료의 스트레스도 전투 밖으로 들고 나가야 한다.
+    //   SaveRoster    — 로스터 에셋이 없을 때의 저장 범위(참전자 전원).
+    //   BuildRewards  — 쓰러진 동료의 기여도도 결과창은 보여준다.
     private readonly List<UnitController> allyRoster = new List<UnitController>();
     private bool started;
     private bool ended;
@@ -191,7 +198,7 @@ public class BattleManager : MonoBehaviour
 
         BuildRewards();
         SelectMvp(outcome);
-        GrantExp(outcome);
+        Settle(outcome);
 
         if (debugLogs)
         {
@@ -253,7 +260,8 @@ public class BattleManager : MonoBehaviour
         else SaveSystem.Save(rosterBuffer);
     }
 
-    // 참전한 아군 전원의 기여도를 결과로 옮겨 담는다.
+    // 참전한 아군 전원의 기여도를 결과로 옮겨 담는다. 쓰러진 동료도 포함된다 —
+    // 정산에서는 빠지지만 기여도 자체는 결과창이 보여줄 수 있어야 한다.
     // 유닛 인스턴스는 곧 정리될 수 있으므로 결과창이 읽을 값은 여기서 복사해 둔다.
     private void BuildRewards()
     {
@@ -261,6 +269,10 @@ public class BattleManager : MonoBehaviour
         {
             UnitController unit = allyRoster[i];
             if (unit == null) continue;
+
+            // 정산에서 빠지는 참가자도 레벨 칸은 채워 둔다. 0으로 남겨두면 결과창이
+            // "레벨 0에서 0으로"라는 없는 값을 읽게 된다.
+            int level = unit.SourceCharacter != null ? unit.SourceCharacter.Level : 0;
 
             result.Rewards.Add(new BattleReward
             {
@@ -272,11 +284,15 @@ public class BattleManager : MonoBehaviour
                 DamageDealt = unit.DamageDealt,
                 DamageTaken = unit.DamageTaken,
                 Survived = !unit.IsDead,
+                LevelBefore = level,
+                LevelAfter = level,
             });
         }
     }
 
-    // MVP는 승리했을 때만 뽑는다. 전멸한 판에서 최우수를 가리는 건 의미가 없다.
+    // MVP는 승리했을 때, 살아남은 참가자 중에서만 뽑는다.
+    // 전멸한 판에서 최우수를 가리는 것도, 실려 나간 동료를 그 판의 최우수로 세우는 것도
+    // 이 게임에서는 말이 되지 않는다 — 끝까지 서 있는 것이 이 판의 목표다.
     private void SelectMvp(BattleOutcome outcome)
     {
         if (outcome != BattleOutcome.Victory || result.Rewards.Count == 0) return;
@@ -287,6 +303,8 @@ public class BattleManager : MonoBehaviour
         for (int i = 0; i < result.Rewards.Count; i++)
         {
             BattleReward reward = result.Rewards[i];
+            if (!reward.Survived) continue;
+
             float score = MvpScore(reward);
             if (score <= bestScore) continue;
 
@@ -301,20 +319,21 @@ public class BattleManager : MonoBehaviour
         result.Mvp = best;
     }
 
+    // 생존자끼리만 비교하므로 생존 가산점은 없다 — 모두가 받으면 순위가 바뀌지 않는다.
     private float MvpScore(BattleReward reward)
     {
         return reward.DamageDealt
                + reward.Kills * rewardSettings.mvpKillWeight
-               + reward.DamageTaken * rewardSettings.mvpTankWeight
-               + (reward.Survived ? rewardSettings.mvpSurvivalBonus : 0f);
+               + reward.DamageTaken * rewardSettings.mvpTankWeight;
     }
 
-    // 쓰러진 참가자도 경험치를 받는다(비율은 expRatioWhenDown).
+    // 정산. 살아서 판을 끝낸 참가자만 대상이다 — 쓰러진 채 끝난 동료는 이번 판에서
+    // 경험치도, 스킬 해금도 받지 못한다. 원작의 죽음이 그렇듯 "쓰러졌다"가 곧 손실이어야 한다.
     //
-    // 예전에는 생존자에게만 주고 쓰러진 쪽은 통째로 건너뛰었다. 영구 사망이 켜져 있을 때는
-    // 다시 출전하지 않으니 문제가 없었지만, 영구 사망이 꺼진 지금은 쓰러진 캐릭터도 다음 전투에
-    // 그대로 나온다. 그래서 한 번 쓰러진 캐릭터만 레벨이 영영 멈춘 채 계속 출전하게 됐다.
-    private void GrantExp(BattleOutcome outcome)
+    // 경험치는 "판을 끝까지 버텼는가"와 "몇을 쓰러뜨렸는가"로만 매긴다. 가한 피해는 세지 않는다 —
+    // 피해량은 결국 직업과 무기가 정하는 값이라, 같은 판을 같이 뛰어도 화력이 센 직업만
+    // 계속 앞서 나가고 탱커·지원가는 영영 뒤처진다. 그건 활약이 아니라 배역의 차이다.
+    private void Settle(BattleOutcome outcome)
     {
         int baseExp = outcome == BattleOutcome.Victory
             ? rewardSettings.expOnVictory
@@ -323,23 +342,19 @@ public class BattleManager : MonoBehaviour
         for (int i = 0; i < result.Rewards.Count; i++)
         {
             BattleReward reward = result.Rewards[i];
-            if (reward.Character == null) continue;
+            if (reward.Character == null || !reward.Survived) continue;
 
-            int exp = baseExp
-                      + reward.Kills * rewardSettings.expPerKill
-                      + reward.DamageDealt / Mathf.Max(1, rewardSettings.damagePerExp);
+            int exp = baseExp + reward.Kills * rewardSettings.expPerKill;
             if (reward.IsMvp) exp += rewardSettings.mvpExpBonus;
-
-            // 끝까지 버틴 쪽이 더 받는다는 규칙은 남긴다.
-            if (!reward.Survived)
-            {
-                exp = Mathf.RoundToInt(exp * Mathf.Clamp01(rewardSettings.expRatioWhenDown));
-            }
 
             reward.ExpGained = exp;
             reward.LevelBefore = reward.Character.Level;
             reward.Character.GainExp(exp);
             reward.LevelAfter = reward.Character.Level;
+
+            // 레벨과 스탯이 오른 바로 뒤에 조건을 본다. 이 순서라야 "레벨 20 도달" 같은 조건이
+            // 그 레벨을 넘긴 판에서 곧바로 열린다 — 한 판 늦게 열리면 왜 열렸는지 알 수 없다.
+            SkillUnlocks.Evaluate(reward.Character, reward.UnlockedSkills);
         }
     }
 }
