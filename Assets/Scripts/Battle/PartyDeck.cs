@@ -176,15 +176,15 @@ public static class PartyDeck
     }
 
     // 카드 클릭 한 번으로 넣고 뺀다. 반환값은 클릭 뒤에 활성 파티에 들어 있는지 여부다.
-    public static bool Toggle(CharacterSO character)
-    {
-        if (Contains(character))
-        {
-            Remove(character);
-            return false;
-        }
-        return Add(character);
-    }
+    // public static bool Toggle(CharacterSO character)
+    // {
+    //     if (Contains(character))
+    //     {
+    //         Remove(character);
+    //         return false;
+    //     }
+    //     return Add(character);
+    // }
 
     // 활성 파티만 비운다.
     public static void Clear()

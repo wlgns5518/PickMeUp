@@ -303,12 +303,12 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
     }
 
     // 카드를 눌러 넣고 뺄 때도 같은 규칙을 지켜야 한다.
-    private void ToggleFromRoster(CharacterSO character)
-    {
-        if (WarnIfOccupied(character)) return;
+    // private void ToggleFromRoster(CharacterSO character)
+    // {
+    //     if (WarnIfOccupied(character)) return;
 
-        PartyDeck.Toggle(character);
-    }
+    //     PartyDeck.Toggle(character);
+    // }
 
     // ---- 화면 짓기 --------------------------------------------------------
 
@@ -595,7 +595,7 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         button.targetGraphic = frame;
         // 클로저가 반복 변수를 붙잡지 않도록 지역 변수에 복사해 넘긴다.
         CharacterSO captured = character;
-        button.onClick.AddListener(() => ToggleFromRoster(captured));
+        //button.onClick.AddListener(() => ToggleFromRoster(captured));
 
         frame.gameObject.AddComponent<CardDragSource>().Bind(this, character, CardDragSource.RosterSlot);
 

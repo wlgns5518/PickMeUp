@@ -114,6 +114,16 @@ public class UnitStats
     [Header("Cooldowns")]
     public float skillCooldown = 5.0f;
 
+    // 남은 스킬 사용 횟수. 쿨다운과는 성격이 다르다 — 쿨다운은 "얼마나 자주"를,
+    // 이쪽은 "이번 전투에 몇 번이나"를 정한다.
+    //
+    // 유닛은 전투가 시작될 때 새로 스폰되고 스탯도 그때 프리팹에서 복제되므로(CharacterBattleSpawner),
+    // 여기 적어 둔 값이 곧 "스테이지 한 판당 몇 번"이 된다. 전투 중에는 보충되지 않는다 —
+    // 회복약(potionCount)과 같은 방식이다.
+    [Tooltip("전투 한 판(= 스테이지 하나) 동안 스킬을 쓸 수 있는 횟수. " +
+             "음수면 제한 없이 쿨다운만으로 조절한다(기본값).")]
+    public int skillUseCount = -1;
+
     [Header("Defense")]
     public float evadeRange = 2.5f;
     public float blockDuration = 0.8f;
@@ -155,6 +165,17 @@ public class UnitStats
     public float poiseDamageKick = 45f;
     [Tooltip("강인도가 깨진 뒤 다시 깨지지 않는 면역 시간(초). 무한 경직을 막는다.")]
     public float poiseBreakImmunity = 2.5f;
+    [Tooltip("이 유닛의 스킬에 맞은 상대가 자세를 잃는 시간(초). 0이면 스킬은 여느 공격처럼 " +
+             "강인도만 깎는다.\n\n" +
+             "붙잡아 무너뜨리는 한 수에만 준다 — 고블린이 물어뜯는 동안 물린 쪽은 뿌리치지 " +
+             "못하고 끌려다녀야 한다. 강인도를 깎아 깨지기를 기다리는 것과는 다르다. " +
+             "다만 무한 경직을 막는 규칙(위 면역 시간)은 그대로 지킨다.")]
+    public float skillStaggerDuration;
+    [Tooltip("한 스테이지(= 한 번의 전투) 동안 스킬을 쓸 수 있는 횟수. 0이면 제한 없이 쿨다운만 따른다.\n\n" +
+             "쿨다운과는 다른 자원이다. 쿨다운은 '얼마나 자주'를 정하지만 이건 '전부 몇 번'을 정한다 — " +
+             "물어뜯기처럼 한 방이 무거운 수는 전투당 몇 번인지가 곧 그 전투의 긴장이 된다. " +
+             "유닛은 전투마다 새로 스폰되므로(CharacterBattleSpawner) 남은 횟수도 그때 함께 채워진다.")]
+    [Min(0)] public int skillUsesPerBattle;
     [Tooltip("강인도가 안 깨졌을 때 즉시 밀려나는 거리(미터). 경직 없이 타격감만 준다.")]
     public float poiseHitPushback = 0.15f;
 
@@ -193,6 +214,18 @@ public class UnitStats
     public float lungeSpeed = 2.4f;
     [Tooltip("스윙 한 번에 파고들 수 있는 최대 거리(미터).")]
     public float lungeMaxDistance = 0.8f;
+
+    [Header("Leap Attack")]
+    // 파고들기(위)와는 다른 동작이다. 파고들기는 이미 사거리 근처에서 스윙과 함께 반 발
+    // 들어가는 것이고, 이쪽은 아직 닿지 않는 거리에서 아예 몸을 던져 붙는 것이다.
+    //
+    // 짐승처럼 싸우는 적에게만 준다. 사람 직군은 사거리까지 걸어 들어가 자세를 잡고 겨루는
+    // 쪽이라(ChaseState의 방위 잡기 참조) 덤벼드는 그림이 맞지 않는다 — 기본값 0으로 꺼 둔다.
+    [Tooltip("이 거리 안에 들어오면 도약해 덤벼든다(미터). 사거리보다 커야 의미가 있다. " +
+             "0이면 도약하지 않는다.")]
+    public float leapAttackRange;
+    [Tooltip("도약 공격의 재사용 대기(초). 매번 덤비면 접근이라는 것이 없어진다.")]
+    public float leapAttackCooldown = 7f;
 
     [Header("Footwork")]
     // 사거리에 들어가면 그 자리에 못 박혀 마주 보고 때리기만 했다. 다음 스윙을 기다리는
@@ -276,6 +309,16 @@ public class UnitStats
 
     public bool IsDead => currentHp <= 0;
     public bool HasPotion => potionCount > 0;
+    // 음수 = 제한 없음, 0 = 이번 전투에는 다 썼다.
+    public bool HasSkillUse => skillUseCount != 0;
+
+    // 한 번 썼다고 표시한다. 제한이 없는 유닛(음수)은 줄어들 것이 없으므로 그대로 둔다.
+    public bool ConsumeSkillUse()
+    {
+        if (skillUseCount == 0) return false;
+        if (skillUseCount > 0) skillUseCount--;
+        return true;
+    }
 
     // 최대치를 넘지 않게 회복하고 실제로 회복된 양을 돌려준다.
     public int Heal(int amount)

@@ -43,6 +43,28 @@ public partial class UnitController
              "공격이 끝날 때마다 멈칫하는 것처럼 보인다.")]
     [SerializeField] private string combatIdleStateName = "CombatIdle";
 
+    [Header("Neck Cling (스킬을 쓰는 동안 상대에게 매달린다)")]
+    [Tooltip("스킬 모션 내내 상대의 목에 달라붙을 것인가. 켜면 그 동안 NavMeshAgent를 끄고 " +
+             "위치를 직접 잡는다 — 목은 NavMesh 위의 어떤 좌표로도 닿을 수 없기 때문이다.")]
+    [SerializeField] private bool clingToNeckDuringSkill;
+    [Tooltip("목을 문 채 상대의 몸 중심에서 떨어져 있는 거리(미터).")]
+    [SerializeField] private float clingDistance = 0.42f;
+    [Tooltip("이 유닛의 루트에서 입까지의 높이(미터). 이만큼 내려 잡아야 루트가 아니라 입이 목에 닿는다.")]
+    [SerializeField] private float clingMouthHeight = 1.2f;
+    [Tooltip("목까지 당겨 붙는 데 쓰는 시간(스킬 모션 길이에 대한 비율). 0이면 그 자리에서 순간이동한다.")]
+    [SerializeField, Range(0f, 1f)] private float clingSnapTime = 0.25f;
+
+    [Header("Leap Attack Animator State (없으면 도약하지 않는다)")]
+    [Tooltip("도약해 덤벼드는 모션. 이 상태가 없으면 stats.leapAttackRange를 올려도 도약하지 않는다.")]
+    [SerializeField] private string leapAttackStateName = "";
+    [Tooltip("도약의 정점 높이(미터). 모델만 뜨고 판정과 경로는 땅에 남는다.")]
+    [SerializeField] private float leapAttackHeight = 0.5f;
+    [Tooltip("클립의 몇 지점에서 발이 땅을 떠나는가(0~1). 그 앞은 웅크리는 동작이다.")]
+    [SerializeField, Range(0f, 1f)] private float leapLaunchRatio = 0.15f;
+    [Tooltip("클립의 몇 지점에서 착지하는가(0~1). 타격 이벤트가 이 근처에 있어야 " +
+             "칼이 닿는 순간과 도착하는 순간이 맞는다.")]
+    [SerializeField, Range(0f, 1f)] private float leapLandRatio = 0.45f;
+
     [Header("Spacing")]
     // NavMesh 회피는 두 에이전트를 반지름 합(둘 다 0.5면 1.0m)보다 가깝게 두지 않는다.
     // 그보다 짧은 거리를 목표로 잡으면 파고드는 족족 회피가 도로 밀어낸다 — 실제로
@@ -75,6 +97,11 @@ public partial class UnitController
     [SerializeField, Range(0, 99)] private int engagedAvoidancePriority = 35;
     [Tooltip("이동 중인 유닛의 회피 우선순위. 높을수록 교전 중인 유닛에게 길을 비켜 준다.")]
     [SerializeField, Range(0, 99)] private int movingAvoidancePriority = 60;
+    [Tooltip("회피 우선순위를 유닛마다 흩어 놓는 폭. 0이면 같은 처지의 유닛이 전부 같은 값을 " +
+             "쓰는데, 우선순위가 같은 둘은 서로를 대칭으로 피하려 들어 같은 방향으로 함께 " +
+             "비켰다가 되돌아오기를 반복한다 — 무리 지어 몰려갈 때 제자리에서 떠는 그 움직임이다. " +
+             "값을 조금만 흩어 놓으면 둘 중 하나가 먼저 양보해서 교착이 풀린다.")]
+    [SerializeField, Range(0, 20)] private int avoidancePrioritySpread = 8;
 
     private Vector3 footworkVelocity;
 
@@ -89,6 +116,24 @@ public partial class UnitController
     private int strafeRightAnimationHash;
     private int strafeBackAnimationHash;
     private int combatIdleAnimationHash;
+    private int leapAttackAnimationHash;
+    private float leapAttackAnimationDuration;
+    private float lastLeapAttackTime = -999f;
+
+    // --- 도약 ---
+    private Vector3 leapDirection;
+    private float leapDistance;
+    private float leapTravelled;
+    // 지금 위치를 에이전트 대신 이쪽이 쓰고 있는가(UpdateLeap 주석 참조).
+    private bool leapHoldingPosition;
+
+    private int avoidancePriorityOffset;
+    private bool avoidancePriorityResolved;
+
+    // --- 목 물기 ---
+    private bool clinging;
+    private UnitController clingVictim;
+    private Vector3 clingReturnPoint;
 
     // 이번 틈에 발놀림을 할지. 틈이 시작될 때(TriggerAttack) 한 번만 정한다 —
     // 매 프레임 "남은 시간"으로 판단하면 스윙 직전 minFootworkWindow 동안은 항상 멈춰 서게 되어,
@@ -160,6 +205,10 @@ public partial class UnitController
         strafeRightAnimationHash = ResolveStateHash(strafeRightStateName);
         strafeBackAnimationHash = ResolveStateHash(strafeBackStateName);
         combatIdleAnimationHash = ResolveStateHash(combatIdleStateName);
+        leapAttackAnimationHash = ResolveStateHash(leapAttackStateName);
+        leapAttackAnimationDuration = leapAttackAnimationHash != 0
+            ? GetAnimationClipDuration(leapAttackStateName, 0.8f)
+            : 0f;
 
         blockHitAnimationDuration = blockHitAnimationHash != 0
             ? GetAnimationClipDuration(blockHitStateName, 0.3f)
@@ -295,6 +344,218 @@ public partial class UnitController
 
         lungeRemaining -= step;
         agent.Move(toTarget / distance * step);
+    }
+
+    // ---------------------------------------------------------------- 도약 공격
+
+    // 아직 칼이 닿지 않는 거리에서 몸을 던져 붙는 한 수. 파고들기(위)와는 다르다 —
+    // 저쪽은 이미 사거리 근처에서 스윙과 함께 반 발 들어가는 것이고, 이쪽은 접근 자체를
+    // 건너뛴다. 짐승처럼 싸우는 적에게만 열어 둔다(stats.leapAttackRange가 0이면 꺼짐).
+    //
+    // 도약을 NavMeshAgent의 목적지로 옮기지 않는 이유는 회피 도약과 같다(MoveDodge 주석 참조):
+    // 에이전트는 가속을 거치므로 목적지를 주면 클립은 뛰는데 몸은 기어간다.
+    //
+    // 높이는 에이전트에게 맡길 수 없다. NavMeshAgent는 매 프레임 transform을 자기 위치
+    // (NavMesh 표면)로 되돌려 놓기 때문에, 그냥 올려 봐야 다음 프레임에 도로 붙는다.
+    // 그래서 뜨는 동안만 updatePosition을 꺼서 위치의 주도권을 가져오고, 수평은 그대로
+    // 에이전트에게 물어(nextPosition) 경로와 회피가 계속 살아 있게 둔다.
+    //
+    // 판정은 높이를 보지 않는다(스윙 판정은 전부 XZ 평면이다). 공중에 있는 동안만
+    // 맞지 않는다든가 하는 규칙은 만들지 않았다 — 그런 무적 구간은 이 전투의 규칙이 아니다.
+    public bool CanLeapAttack()
+    {
+        if (leapAttackAnimationHash == 0) return false;
+        if (stats.leapAttackRange <= 0f) return false;
+        if (Time.time < lastLeapAttackTime + stats.leapAttackCooldown) return false;
+        if (!IsTargetValid()) return false;
+        // 이미 칼이 닿는 거리면 그냥 휘두르면 된다. 붙어 있는데 뛰어오르면 제자리에서 뛴다.
+        if (IsTargetInAttackRange()) return false;
+
+        float distance = Vector3.Distance(
+            new Vector3(transform.position.x, 0f, transform.position.z),
+            new Vector3(CurrentTarget.transform.position.x, 0f, CurrentTarget.transform.position.z));
+        return distance <= stats.leapAttackRange;
+    }
+
+    public float LeapAttackAnimationDuration => leapAttackAnimationDuration;
+
+    // 클립 전체에서 몸이 실제로 떠 있는 구간. 앞뒤로 남는 시간이 웅크림과 착지가 된다.
+    public float LeapLaunchRatio => leapLaunchRatio;
+    public float LeapLandRatio => leapLandRatio;
+
+    public void TriggerLeapAttack()
+    {
+        lastLeapAttackTime = Time.time;
+
+        // 도약도 스윙이다. 준비/회수 구분과 전역 전이(회복약·치료)의 "휘두르는 중에는
+        // 끊지 않는다"가 전부 이 잠금에 걸려 있으므로 평타와 똑같이 걸어 둔다.
+        attackLockedUntil = Time.time + leapAttackAnimationDuration;
+        hasStruckThisSwing = false;
+        hasSwungAtLeastOnce = true;
+        pendingIsKick = false;
+        // 덤벼드는 한 수는 콤보 마무리와 같은 무게로 친다 — 강인도를 크게 깎아
+        // 붙자마자 이어지는 콤보가 통째로 들어갈 자리를 만든다.
+        pendingIsComboFinisher = true;
+        // 도약 중에는 파고들지 않는다. 도약 자체가 파고드는 동작이다.
+        lungeRemaining = 0f;
+        MarkAttackedSinceEvade();
+
+        leapTravelled = 0f;
+        leapDirection = Vector3.zero;
+        leapDistance = 0f;
+
+        if (IsTargetValid())
+        {
+            Vector3 toTarget = CurrentTarget.transform.position - transform.position;
+            toTarget.y = 0f;
+            float distance = toTarget.magnitude;
+            if (distance > 0.0001f)
+            {
+                leapDirection = toTarget / distance;
+                // 착지 지점은 파고들기와 같은 기준을 쓴다. 더 깊이 들어가면 회피가 도로 밀어낸다.
+                float contactDistance = Mathf.Max(SeparationFromTarget(), stats.attackRange * 0.7f);
+                leapDistance = Mathf.Max(0f, distance - contactDistance);
+            }
+        }
+
+        PlayAnimation(leapAttackAnimationHash, true);
+    }
+
+    // LeapAttackState가 매 프레임 부른다. 받는 값은 클립의 진행도(0~1).
+    public void UpdateLeap(float normalizedTime)
+    {
+        float airborne = Mathf.Clamp01(Mathf.InverseLerp(leapLaunchRatio, leapLandRatio, normalizedTime));
+
+        // 수평 이동. 남은 거리를 진행도에 맞춰 따라가게 두면, 히트스톱으로 클립이 눌리는
+        // 동안 몸도 같이 멈춰서 모션과 위치가 어긋나지 않는다.
+        if (leapDistance > 0f && agent != null && agent.enabled && agent.isOnNavMesh)
+        {
+            float target = leapDistance * airborne;
+            float step = target - leapTravelled;
+            if (step > 0f)
+            {
+                leapTravelled = target;
+                agent.Move(leapDirection * step);
+            }
+        }
+
+        // 포물선. 이 한 줄이 "달려든다"와 "뛰어서 덤벼든다"를 가른다.
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
+
+        if (!leapHoldingPosition)
+        {
+            agent.updatePosition = false;
+            leapHoldingPosition = true;
+        }
+
+        transform.position = agent.nextPosition + Vector3.up * (Mathf.Sin(airborne * Mathf.PI) * leapAttackHeight);
+    }
+
+    // 도약이 끝났거나 도중에 끊겼다. 위치의 주도권을 반드시 에이전트에게 돌려줘야 한다 —
+    // 공중에서 피격당해 HitState로 빠지면 그대로 떠 있는 채로 싸우게 된다.
+    public void EndLeap()
+    {
+        leapDistance = 0f;
+        leapTravelled = 0f;
+
+        if (!leapHoldingPosition) return;
+        leapHoldingPosition = false;
+
+        if (agent == null) return;
+        // 먼저 땅에 내려놓고 나서 주도권을 넘긴다. 순서가 반대면 뜬 좌표가 한 프레임 남는다.
+        if (agent.enabled && agent.isOnNavMesh) transform.position = agent.nextPosition;
+        agent.updatePosition = true;
+    }
+
+    // ---------------------------------------------------------------- 목 물기
+
+    // 스킬을 쓰는 동안 상대의 목에 매달린다.
+    //
+    // 이 동안만 NavMeshAgent를 통째로 끈다. 목은 땅에서 1.4m 위에 있어서 NavMesh 위의
+    // 어떤 좌표로도 닿을 수 없고, 회피는 두 몸을 계속 떼어 놓으려 하기 때문이다 —
+    // 붙어 있어야 하는 동작에 "붙지 못하게 하는 것"이 둘이나 걸려 있는 셈이다.
+    //
+    // 대신 매 프레임 상대의 목뼈를 따라간다. 물린 쪽이 끌려다니거나 몸을 돌려도 그대로
+    // 붙어 있는 것은 이것 덕분이다(경직이 풀린 뒤에도 남은 시간 동안 매달려 있는다).
+    //
+    // 끝나면 반드시 NavMesh 위로 되돌려 놓아야 한다 — 공중에 뜬 좌표에서 에이전트를 다시
+    // 켜면 그 자리에서 굳거나 엉뚱한 곳으로 튄다. EndCling이 그 일을 한다.
+    public bool ClingsWhileUsingSkill => clingToNeckDuringSkill;
+
+    public void BeginCling()
+    {
+        if (!clingToNeckDuringSkill) return;
+        if (!IsTargetValid()) return;
+        if (clinging) return;
+
+        clingVictim = CurrentTarget;
+        clinging = true;
+        // 달라붙는 동안은 이쪽이 위치를 정한다. 되돌릴 좌표는 지금 서 있는 자리다 —
+        // 여기는 방금까지 걸어온 곳이라 반드시 NavMesh 위다.
+        clingReturnPoint = transform.position;
+
+        if (agent != null && agent.enabled)
+        {
+            agent.isStopped = true;
+            agent.ResetPath();
+            agent.enabled = false;
+        }
+    }
+
+    // SkillState가 매 프레임 부른다. progress는 스킬 모션의 진행도(0~1).
+    public void UpdateCling(float progress)
+    {
+        if (!clinging) return;
+
+        // 물고 있던 상대가 죽거나 사라졌다. 허공을 물고 매달려 있을 이유가 없다.
+        if (clingVictim == null || clingVictim.IsDead)
+        {
+            EndCling();
+            return;
+        }
+
+        Vector3 neck = clingVictim.NeckPoint;
+
+        // 상대의 어느 쪽에 매달릴지는 물기 시작할 때 서 있던 방향 그대로다.
+        Vector3 side = transform.position - clingVictim.transform.position;
+        side.y = 0f;
+        if (side.sqrMagnitude <= 0.0001f) side = -clingVictim.transform.forward;
+        side.Normalize();
+
+        // 루트가 아니라 입이 목에 닿아야 한다. 이 유닛의 루트에서 입까지의 높이만큼 내려 잡는다.
+        Vector3 anchor = neck + side * clingDistance - Vector3.up * clingMouthHeight;
+
+        // 덤벼든 자리에서 목까지는 순간이동이 아니라 짧게 당겨 붙는다. 그 사이가
+        // "물었다"로 읽히는 구간이라, 0으로 두면 이가 닿기도 전에 이미 붙어 있다.
+        float snap = clingSnapTime > 0f ? Mathf.Clamp01(progress / clingSnapTime) : 1f;
+        transform.position = Vector3.Lerp(transform.position, anchor, snap);
+
+        // 무는 내내 상대를 마주 본다.
+        Vector3 facing = -side;
+        transform.rotation = Quaternion.LookRotation(facing, Vector3.up);
+    }
+
+    public void EndCling()
+    {
+        if (!clinging) return;
+
+        clinging = false;
+        clingVictim = null;
+
+        if (agent == null || agent.enabled) return;
+
+        // 뜬 좌표에서 그대로 켜면 에이전트가 NavMesh를 못 찾는다. 먼저 발 디딜 자리를
+        // 찾아 내려놓고 켠다 — 물고 매달린 사이에 상대가 옮겨 갔을 수 있으므로 지금
+        // 위치 주변을 먼저 보고, 그것도 없으면 물기 시작한 자리로 돌아간다.
+        Vector3 landing = clingReturnPoint;
+        if (NavMesh.SamplePosition(transform.position, out NavMeshHit hit, 3f, NavMesh.AllAreas))
+        {
+            landing = hit.position;
+        }
+
+        transform.position = landing;
+        agent.enabled = true;
+        if (agent.isOnNavMesh) agent.isStopped = false;
     }
 
     // ---------------------------------------------------------------- 발놀림
@@ -686,6 +947,27 @@ public partial class UnitController
         ChangeState(StaggerState);
     }
 
+    // 붙잡아 무너뜨리는 공격이 부른다(고블린의 무는 공격). 강인도를 깎아 놓고 깨지기를
+    // 기다리는 것이 아니라, 맞은 그 자리에서 자세를 무너뜨린다.
+    //
+    // 그래도 무한 경직 규칙은 그대로 지킨다. 강인도가 깨졌을 때와 똑같이 면역 시간을 켜므로,
+    // 다섯 마리가 번갈아 물어도 한 번 물린 뒤 몇 초는 제 발로 서 있게 된다 — 이 검사가
+    // 없으면 고블린 수가 곧 경직 시간이 되어, 무리에 둘러싸인 순간 아무것도 못 하고 죽는다.
+    //
+    // 돌려주는 값은 "실제로 무너뜨렸는가". 면역 중이었으면 아무 일도 없다.
+    public bool TryForceStagger(float duration)
+    {
+        if (IsDead || duration <= 0f) return false;
+        if (Time.time < poiseImmuneUntil) return false;
+
+        // 강인도가 깨진 것과 같은 처리를 한다. 무너진 채로 강인도만 가득 남아 있으면
+        // 일어나자마자 또 한 번 버틸 수 있게 되어, 무너뜨린 쪽이 손해를 본다.
+        stats.ResetPoise();
+        poiseImmuneUntil = Time.time + stats.poiseBreakImmunity;
+        Stagger(duration);
+        return true;
+    }
+
     public bool StaggerFromGuardBreak => staggerFromGuardBreak;
     private bool staggerFromGuardBreak;
 
@@ -878,13 +1160,25 @@ public partial class UnitController
         if (stateMachine == null) return false;
 
         IState<UnitController> current = stateMachine.CurrentState;
-        return current == AttackState ||
-               current == BlockState ||
-               current == StaggerState ||
-               current == HitState ||
-               current == SkillState ||
-               current == PotionState ||
-               current == HealState;
+        if (current == AttackState ||
+            current == BlockState ||
+            current == StaggerState ||
+            current == HitState ||
+            current == SkillState ||
+            current == PotionState ||
+            current == HealState)
+        {
+            return true;
+        }
+
+        // 쫓아가다 앞이 막혀 멈춰 선 것도 제자리다(ChaseState의 "자리 나기를 기다림").
+        // 이때까지 회피를 켜 두면, 정작 더 갈 수도 없는 유닛이 앞줄에 계속 떠밀리며 떤다.
+        if (current == ChaseState)
+        {
+            return agent != null && agent.enabled && agent.isOnNavMesh && agent.isStopped;
+        }
+
+        return false;
     }
 
     // 지역 회피(RVO)와 회피 우선순위를 상황에 맞게 켜고 끈다.
@@ -911,8 +1205,30 @@ public partial class UnitController
         if (agent.obstacleAvoidanceType != desiredType) agent.obstacleAvoidanceType = desiredType;
 
         // 이동 중인 유닛끼리도 우선순위는 남는다(숫자가 작을수록 덜 밀린다).
-        int desiredPriority = holdingGround ? engagedAvoidancePriority : movingAvoidancePriority;
+        // 여기에 유닛마다 다른 오프셋을 얹어 같은 값이 겹치지 않게 한다(avoidancePrioritySpread 주석 참조).
+        int desiredPriority = Mathf.Clamp(
+            (holdingGround ? engagedAvoidancePriority : movingAvoidancePriority) + AvoidancePriorityOffset,
+            0, 99);
         if (agent.avoidancePriority != desiredPriority) agent.avoidancePriority = desiredPriority;
+    }
+
+    // 이 유닛만의 회피 우선순위 오프셋.
+    //
+    // 한 번만 뽑고 그대로 들고 간다는 점이 중요하다. 매 프레임 다시 굴리면 누가 양보할지가
+    // 계속 뒤바뀌어 교착이 그대로 남는다 — 배회 시각이나 옆걸음 방향을 유닛마다 한 번씩
+    // 흩어 놓는 것과 같은 이유다.
+    private int AvoidancePriorityOffset
+    {
+        get
+        {
+            if (avoidancePrioritySpread <= 0) return 0;
+            if (!avoidancePriorityResolved)
+            {
+                avoidancePriorityOffset = Random.Range(0, avoidancePrioritySpread + 1);
+                avoidancePriorityResolved = true;
+            }
+            return avoidancePriorityOffset;
+        }
     }
 
     // 매 프레임 돌려야 하는 전투 잔무. UnitController.Update가 상태머신보다 먼저 부른다.
@@ -942,6 +1258,13 @@ public partial class UnitController
         noticedThreat = null;
         footworkThisGap = false;
         footworkVelocity = Vector3.zero;
+        // 재사용되는 유닛이 도약 도중에 회수됐다면 모델이 떠 있는 채로 남는다.
+        lastLeapAttackTime = -999f;
+        EndLeap();
+        // 목을 문 채로 회수됐다면 NavMesh가 꺼진 채로 남는다.
+        EndCling();
+        // 스테이지가 바뀌면(= 새로 스폰되면) 스킬 횟수도 다시 찬다.
+        skillUsesLeft = Mathf.Max(0, stats.skillUsesPerBattle);
         slowUntil = 0f;
         slowMultiplier = 1f;
         slowWasActive = false;

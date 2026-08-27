@@ -104,7 +104,7 @@ public static class CharacterProgress
         if (entry.Level >= maxLevel) entry.Exp = 0;
     }
 
-    private static int ExpForLevel(int level) => 10 + (level - 1) * 5;
+    private static int ExpForLevel(int level) => 10 + (level - 1) * 15;
 
     private static void ApplyLevelUpStats(CharacterSO character, Entry entry)
     {

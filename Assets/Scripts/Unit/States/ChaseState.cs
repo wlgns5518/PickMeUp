@@ -2,7 +2,17 @@ using UnityEngine;
 
 public class ChaseState : UnitBattleState
 {
+    // 앞이 막혔다고 볼 속도(m/s). 회피에 밀려 떠는 유닛은 이 아래에서 오래 머문다.
+    private const float StalledSpeed = 0.35f;
+    // 이만큼 계속 못 나아가야 "막혔다"고 본다. 출발 가속(8m/s^2)이 이 안에 끝나므로
+    // 방금 달리기 시작한 유닛이 잘못 걸리지 않는다.
+    private const float StalledGrace = 0.5f;
+    // 막혔을 때 한 번 물러나 기다리는 시간. 이 동안은 목적지를 다시 잡지 않는다.
+    private const float WaitForRoomDuration = 0.6f;
+
     private float destinationTimer;
+    private float stalledTimer;
+    private float waitTimer;
 
     public ChaseState(UnitController context) : base(context)
     {
@@ -14,6 +24,8 @@ public class ChaseState : UnitBattleState
         // 예측 위치로 달리면서 상대를 본다 — 그 둘이 어긋나므로 회전은 코드가 잡는다.
         context.SetCodeDrivenFacing(true);
         destinationTimer = context.DestinationUpdateInterval;
+        stalledTimer = 0f;
+        waitTimer = 0f;
 
         if (!TryRefreshTarget())
         {
@@ -23,6 +35,7 @@ public class ChaseState : UnitBattleState
 
         if (TrySwitchToActionState()) return;
         UpdateDestination();
+        context.SetMoveAnimationFromGroundSpeed(true);
         context.FaceTarget();
     }
 
@@ -36,6 +49,16 @@ public class ChaseState : UnitBattleState
 
         if (TrySwitchToActionState()) return;
 
+        context.FaceTarget();
+
+        // 자리가 나기를 기다리는 중. 이 동안은 목적지를 잡지 않는다 —
+        // 여기서 다시 SetDestination을 걸면 곧바로 앞줄을 다시 밀기 시작한다.
+        if (waitTimer > 0f)
+        {
+            waitTimer -= Time.deltaTime;
+            return;
+        }
+
         destinationTimer -= Time.deltaTime;
         if (destinationTimer <= 0f)
         {
@@ -43,7 +66,45 @@ public class ChaseState : UnitBattleState
             UpdateDestination();
         }
 
-        context.FaceTarget();
+        // 이번 프레임에 멈춰 섰으면 방금 잡은 전투 대기 자세를 달리기로 덮지 않는다.
+        if (TickStall()) return;
+
+        context.SetMoveAnimationFromGroundSpeed(true);
+    }
+
+    // 앞이 막혀 더 갈 수 없는데도 계속 밀어붙이면, 지역 회피가 매 프레임 되밀어 그 자리에서 떤다.
+    //
+    // 무리로 몰려가는 쪽에서 늘 생긴다. 목적지는 상대의 발밑인데 그 둘레는 이미 앞줄이
+    // 차지하고 있으므로, 뒷줄은 영영 닿지 못하는 지점을 향해 계속 가속한다. NavMesh는
+    // "도착할 수 없다"고 말해 주지 않는다 — 경로는 멀쩡히 있고, 다른 에이전트가 막고 있을 뿐이다.
+    //
+    // 그래서 못 나아가는 것이 확인되면 스스로 멈춰 선다. 멈춘 유닛은 IsHoldingGround가
+    // 참이 되어 회피까지 꺼지므로(TickAvoidance) 떠밀리지도 않는다. 잠시 뒤 다시 밀어 보고,
+    // 그 사이에 앞줄이 쓰러지거나 비켜서 자리가 나면 그대로 들어간다.
+    //
+    // 돌려주는 값은 "이번 프레임에 멈춰 섰는가".
+    private bool TickStall()
+    {
+        if (context.CurrentMoveSpeed >= StalledSpeed)
+        {
+            stalledTimer = 0f;
+            return false;
+        }
+
+        stalledTimer += Time.deltaTime;
+        if (stalledTimer < StalledGrace) return false;
+
+        stalledTimer = 0f;
+        waitTimer = WaitForRoomDuration;
+        // 기다림이 끝나면 곧바로 다시 길을 잡게 해 둔다. 남은 간격을 그대로 두면
+        // 그만큼 아무 목적지도 없이 서 있는 시간이 생긴다.
+        destinationTimer = 0f;
+
+        context.StopMovement();
+        // StopMovement는 평소 Idle(칼을 내리고 긴장을 푼 자세)로 떨어진다.
+        // 눈앞이 교전인데 그 자세로 서 있으면 싸울 마음이 없어 보인다.
+        context.PlayCombatIdle();
+        return true;
     }
 
     private bool TrySwitchToActionState()
@@ -58,6 +119,15 @@ public class ChaseState : UnitBattleState
         if (context.CanUseSkill())
         {
             context.ChangeState(context.SkillState);
+            return true;
+        }
+
+        // 아직 사거리 밖이지만 한 번에 붙을 수 있는 거리다 — 걸어 들어가는 대신 덤벼든다.
+        // 사거리 검사보다 먼저 봐야 한다. 뒤에 두면 사거리에 닿는 순간 AttackState가
+        // 먼저 걸려서, 도약은 영영 조건만 맞고 발동하지 않는다.
+        if (context.CanLeapAttack())
+        {
+            context.ChangeState(context.LeapAttackState);
             return true;
         }
 
@@ -98,6 +168,5 @@ public class ChaseState : UnitBattleState
         float stoppingDistance = flanking ? context.Stats.moveStopDistance : standoff;
 
         context.MoveTo(destination, context.Stats.runSpeed, stoppingDistance);
-        context.SetMoveAnimation(context.Stats.runSpeed, true, false);
     }
 }

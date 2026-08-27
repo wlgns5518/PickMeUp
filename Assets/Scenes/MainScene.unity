@@ -2030,8 +2030,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 043884c0c731e1b428a071a99334c2de, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FloorSelectUI
-  battleSceneName: Floor1~9
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
+  battleSceneName: Floor1~9
   visibleFloorCount: 9
   panelPadding: {x: 30, y: 26}
   floorColumns: 3
@@ -8717,10 +8717,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: df3851e8f400c604789b24262251ba2a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SynthesisUI
+  koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   roster: {fileID: 11400000, guid: 0d619bff89015f24f9a394e847a2bc66, type: 2}
   cardPrefab: {fileID: -5443837647192553864, guid: e426b271cba2d234b97760ca6340515e,
     type: 3}
-  koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   openOnStart: 0
   bannerSprite: {fileID: 21300000, guid: 3b60df34a4731f345a301361d210e989, type: 3}
   bannerWidth: 900
@@ -14695,8 +14695,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c328e2ee7af7eec4d9b40f2e0fe7f875, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SummonUI
-  cardSpawner: {fileID: 156220772}
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
+  cardSpawner: {fileID: 156220772}
   panelPadding: {x: 36, y: 30}
   openOnStart: 0
   bannerSprite: {fileID: 21300000, guid: 3b60df34a4731f345a301361d210e989, type: 3}
@@ -15377,8 +15377,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b55dc55a41dae1c48ae924984f33661e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: PickMeUp::EquipmentWorkshopUI
-  forge: {fileID: 2068288107}
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
+  forge: {fileID: 2068288107}
   openOnStart: 0
   bannerSprite: {fileID: 21300000, guid: 3b60df34a4731f345a301361d210e989, type: 3}
   bannerWidth: 900
@@ -21646,6 +21646,7 @@ MonoBehaviour:
   whiteThreshold: 200
   softEdge: 1
   saveAsAsset: 1
+  roster: {fileID: 0}
   imageDir: Assets/Character/CharacterImage
   assetDir: Assets/Character/Characters
 --- !u!1 &1280484787
@@ -39051,46 +39052,6 @@ Transform:
   - {fileID: 1427890183}
   m_Father: {fileID: 1159383353}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1840553282
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1840553284}
-  - component: {fileID: 1840553283}
-  m_Layer: 0
-  m_Name: Arrow
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!33 &1840553283
-MeshFilter:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1840553282}
-  m_Mesh: {fileID: 0}
---- !u!4 &1840553284
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1840553282}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1859692776
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -46189,6 +46150,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1d65df9a40c7b964586751991bcc2e77, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DeckBuildUI
+  koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   roster: {fileID: 11400000, guid: 0d619bff89015f24f9a394e847a2bc66, type: 2}
   deckCapacity: 5
   cardPrefab: {fileID: -5443837647192553864, guid: e426b271cba2d234b97760ca6340515e,
@@ -46199,7 +46161,6 @@ MonoBehaviour:
   floorSelect: {fileID: 247532114}
   screenMargin: 30
   cardSpacing: 14
-  koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
 --- !u!4 &1912286316
 Transform:
   m_ObjectHideFlags: 0
@@ -59344,4 +59305,3 @@ SceneRoots:
   - {fileID: 1159383353}
   - {fileID: 960920120}
   - {fileID: 953605073}
-  - {fileID: 1840553284}

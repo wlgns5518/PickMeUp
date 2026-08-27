@@ -137,6 +137,7 @@ public partial class UnitController : MonoBehaviour
     public MoveState MoveState { get; private set; }
     public AttackState AttackState { get; private set; }
     public SkillState SkillState { get; private set; }
+    public LeapAttackState LeapAttackState { get; private set; }
     public EvadeState EvadeState { get; private set; }
     public BlockState BlockState { get; private set; }
     public HitState HitState { get; private set; }
@@ -205,6 +206,24 @@ public partial class UnitController : MonoBehaviour
     // 원거리 공격이 겨누는 지점. 발밑이 아니라 몸통 한가운데다 —
     // transform.position으로 쏘면 화살이 발등에 꽂힌다.
     public Vector3 AimPoint => bodyCollider != null ? bodyCollider.bounds.center : transform.position + Vector3.up;
+
+    // 목덜미. 물고 늘어지는 쪽이 붙잡는 자리다.
+    //
+    // 휴머노이드 리그면 목뼈를 그대로 쓴다 — 키가 제각각인 유닛들(고블린 1.65m, 아군 1.8m)에
+    // 같은 높이를 쓰면 누구에게는 얼굴을, 누구에게는 가슴을 물게 된다. 리그에 목이 없으면
+    // 몸통 위쪽으로 어림한다.
+    public Vector3 NeckPoint
+    {
+        get
+        {
+            if (neckBone != null) return neckBone.position;
+            return bodyCollider != null
+                ? new Vector3(transform.position.x, bodyCollider.bounds.max.y - 0.15f, transform.position.z)
+                : transform.position + Vector3.up * 1.4f;
+        }
+    }
+
+    private Transform neckBone;
 
     // 전투 매니저가 유닛 하나하나를 구독하지 않아도 되도록 정적 이벤트로 알린다.
     public static event Action<UnitController> OnAnyUnitDied;
@@ -359,6 +378,13 @@ public partial class UnitController : MonoBehaviour
         bodyColliders = GetComponentsInChildren<Collider>(true);
         UnitRegistry.RegisterColliders(this);
 
+        // 물어뜯는 쪽이 붙잡을 자리(NeckPoint). 리그를 매 프레임 뒤지지 않도록 한 번만 찾는다.
+        if (animator != null && animator.isHuman)
+        {
+            neckBone = animator.GetBoneTransform(HumanBodyBones.Neck)
+                    ?? animator.GetBoneTransform(HumanBodyBones.Head);
+        }
+
         if (emotion == null) emotion = GetComponent<UnitEmotion>();
         if (equipment == null) equipment = GetComponent<WeaponEquipper>();
         if (equipment != null) equipment.WeaponAnimatorChanged += RefreshAttackAnimations;
@@ -368,6 +394,9 @@ public partial class UnitController : MonoBehaviour
         // 배회 시각도 유닛마다 흩어 놓는다. 기본값 0이면 스폰 직후 전원이
         // 같은 프레임에 NavMesh.SamplePosition을 호출한다.
         nextRoamTime = Time.time + Random.Range(0f, roamInterval);
+        // 전투마다 새로 스폰되는 유닛은 Configure가 채워 주지만, 씬에 직접 놓인 유닛은
+        // 그 경로를 타지 않는다. 여기서 한 번 채워 두지 않으면 그런 유닛은 스킬을 영영 못 쓴다.
+        skillUsesLeft = Mathf.Max(0, stats.skillUsesPerBattle);
         if (emotion != null) emotion.Initialize(this);
         ApplyAgentSpeed(stats.runSpeed);
         CacheAnimationHashes();
@@ -723,6 +752,9 @@ public partial class UnitController : MonoBehaviour
             stateMachine.CurrentState == StaggerState ||
             stateMachine.CurrentState == AttackState ||
             stateMachine.CurrentState == SkillState ||
+            // 이미 몸이 떠 있다. 여기서 상태를 갈아 끼우면 도약이 공중에서 잘리고
+            // 모델이 뜬 채로 남는다(LeapAttackState.Exit이 내려놓기 전에 빠져나간다).
+            stateMachine.CurrentState == LeapAttackState ||
             stateMachine.CurrentState == BlockState)
         {
             return;
@@ -844,9 +876,18 @@ public partial class UnitController : MonoBehaviour
 
     public bool IsAttackAnimationLocked => Time.time < attackLockedUntil;
 
+    // 이번 전투에 남은 스킬 횟수. stats.skillUsesPerBattle이 0이면 제한이 없다는 뜻이라 세지 않는다.
+    public int SkillUsesLeft => stats.skillUsesPerBattle > 0 ? skillUsesLeft : int.MaxValue;
+    private int skillUsesLeft;
+
     public bool CanUseSkill()
     {
         return skillAnimationHash != 0 &&
+               // 전투당 횟수가 정해진 스킬은 그것부터 본다. 다 썼으면 쿨다운이 돌아와도 못 쓴다.
+               (stats.skillUsesPerBattle <= 0 || skillUsesLeft > 0) &&
+               // 이번 전투에 쓸 몫이 남았는가. 쿨다운과는 다른 질문이다 — 쿨다운은 "얼마나 자주",
+               // 이쪽은 "이번 판에 몇 번이나"다(UnitStats.skillUseCount 주석 참조).
+               stats.HasSkillUse &&
                // 스킬은 여는 수가 아니다. 한 번도 휘두르지 않았는데 먼저 나가면 교전의 첫 동작이
                // 늘 스킬로 똑같아진다. 원거리 유닛에서 특히 두드러졌다 — 스폰되자마자 사거리에
                // 들어서므로 "입장하자마자 스킬"이 매 전투 고정 연출이 됐다.
@@ -1460,9 +1501,20 @@ public partial class UnitController : MonoBehaviour
         UnitController victim = ResolveSwingVictim();
         int damage = ScaleDamage(stats.skillDamage);
 
+        // 붙잡아 무너뜨리는 스킬(고블린의 무는 공격)인가.
+        //
+        // 그렇다면 강인도 피해는 넘기지 않는다. 둘 다 넣으면 이 한 방으로 강인도가 깨지면서
+        // 면역 시간이 켜지고, 바로 뒤에 오는 TryForceStagger가 그 면역에 막힌다 — 물어뜯었는데
+        // 정작 무너뜨리지 못하고 평범한 피격 반응으로 끝난다. 무너뜨리는 것 자체가 이 스킬의
+        // 강인도 효과이므로 둘 중 하나만 쓴다.
+        bool locksVictim = stats.skillStaggerDuration > 0f;
+        float poiseDamage = locksVictim ? 0f : stats.poiseDamageSkill;
+
         // 스킬도 평타와 같은 규칙을 따른다 — 원거리 무기면 그 한 방을 투사체에 실어 보낸다.
         // 그러지 않으면 화살은 평타에만 날아가고, 스킬은 허공을 향해 피해만 들어간다.
-        bool fired = TryFireProjectile(victim, damage, stats.poiseDamageSkill, true);
+        // (붙잡아 무너뜨리는 스킬은 지금 전부 근접이라 이 갈래로 오지 않는다. 원거리에
+        //  같은 성질을 주려면 무너뜨리는 시점이 투사체가 닿는 순간이어야 한다.)
+        bool fired = TryFireProjectile(victim, damage, poiseDamage, true);
 
         if (victim == null)
         {
@@ -1470,7 +1522,17 @@ public partial class UnitController : MonoBehaviour
             return;
         }
 
-        if (!fired) victim.TakeDamage(damage, this, true, true, stats.poiseDamageSkill);
+        if (fired) return;
+
+        victim.TakeDamage(damage, this, true, true, poiseDamage);
+        if (!locksVictim) return;
+
+        // 흘려내기(퍼펙트 가드)에 걸렸으면 무너지는 쪽은 이쪽이다. TakeDamage 안에서
+        // TryPerfectGuard가 나를 경직시켰으므로 그것으로 안다 — 그 위에 상대까지 무너뜨리면
+        // 읽어내고 쳐낸 보람이 사라진다.
+        if (IsStaggered) return;
+
+        victim.TryForceStagger(stats.skillStaggerDuration);
     }
 
     // 공포에 빠진 유닛은 원작 설정대로 능력치가 깎인다. 0이 되어 무해해지지는 않도록 최소 1.
@@ -1626,6 +1688,7 @@ public partial class UnitController : MonoBehaviour
     public void TriggerSkill()
     {
         lastSkillTime = Time.time;
+        if (stats.skillUsesPerBattle > 0 && skillUsesLeft > 0) skillUsesLeft--;
         stats.SpendMana(stats.skillManaCost);
         PlayAnimation(skillAnimationHash, true);
     }
@@ -1756,6 +1819,23 @@ public partial class UnitController : MonoBehaviour
             hasMoveSpeedParameter = true;
             return;
         }
+    }
+
+    // 재생 배속을 "내려던 속도"가 아니라 "지금 실제로 나아가는 속도"에 맞춘다.
+    //
+    // 쫓아가는 유닛이 무리에 막히면 NavMeshAgent는 거의 제자리인데, 요청 속도로 배속을 잡으면
+    // 다리만 전속력으로 돌아 땅 위를 미끄러진다 — 몰려간 고블린들이 앞에서 떠는 것처럼 보이던
+    // 그림의 절반이 이것이다. EvadeState가 후퇴 모션에 같은 보정을 이미 쓰고 있다.
+    //
+    // SetMoveAnimation은 요청 속도를 받아 스스로 MoveMultiplier(공포/둔화)를 곱하므로,
+    // 이미 그것이 반영된 실측 속도를 넘길 때는 도로 나눠 두 번 곱해지지 않게 한다.
+    public void SetMoveAnimationFromGroundSpeed(bool isRunning)
+    {
+        // 0으로 떨어지면 SetMoveAnimation이 대기 자세로 보내 버려, 막혔다 풀렸다 하는
+        // 유닛의 모션이 달리기와 대기 사이에서 깜빡인다. 아주 작은 값으로 바닥을 깐다
+        // (배속 하한은 moveSpeedMultiplierRange가 어차피 잡는다).
+        float compensated = CurrentMoveSpeed / Mathf.Max(0.01f, MoveMultiplier);
+        SetMoveAnimation(Mathf.Max(compensated, 0.05f), isRunning, false);
     }
 
     public void FaceTarget() => FaceDirection(CurrentTarget, rotationSpeed);
@@ -1894,6 +1974,7 @@ public partial class UnitController : MonoBehaviour
         MoveState = new MoveState(this);
         AttackState = new AttackState(this);
         SkillState = new SkillState(this);
+        LeapAttackState = new LeapAttackState(this);
         EvadeState = new EvadeState(this);
         BlockState = new BlockState(this);
         HitState = new HitState(this);
@@ -2020,6 +2101,8 @@ public partial class UnitController : MonoBehaviour
 
         return stateMachine.CurrentState == AttackState ||
                stateMachine.CurrentState == SkillState ||
+               // 뛰어오른 방향은 이미 정해졌다. 공중에서 타깃을 바꿔 봐야 엉뚱한 쪽으로 착지한다.
+               stateMachine.CurrentState == LeapAttackState ||
                stateMachine.CurrentState == EvadeState;
     }
 
