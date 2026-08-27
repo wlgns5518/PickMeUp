@@ -57,6 +57,13 @@ public partial class UnitController : MonoBehaviour
              "걸리지 않는다 — 그때는 전선을 등지고 멀리 달아나는 것이 맞다.")]
     [SerializeField, Min(0f)] private float regroupDistance = 8f;
 
+    [Tooltip("목숨이 걸린 후퇴(ShouldRetreatForSurvival)에서 한 번에 달아나는 거리(미터). " +
+             "간격 벌리기(evadeRange, 2.5m)와 같은 값을 쓰면 도망 자체가 성립하지 않는다. " +
+             "2.5m마다 목적지에 닿아 감속하고 다시 0에서 가속하기를 반복하므로 최고 속도에 한 번도 닿지 못한다 — " +
+             "실측에서 최고 4.37m/s짜리 탱커의 평균 속도가 2.81m/s로 떨어져, 4.0m/s로 꾸준히 달려오는 " +
+             "고블린에게 거리가 도로 좁혀졌다. 한 번에 멀리 잡아야 달리는 도중에 멈추지 않는다.")]
+    [SerializeField, Min(1f)] private float survivalFleeDistance = 12f;
+
     [Header("Targeting")]
     [SerializeField] private float targetChangeInterval = 0.5f;
     [SerializeField, Range(0f, 1f)] private float targetSwitchDistanceRatio = 0.75f;
@@ -113,6 +120,11 @@ public partial class UnitController : MonoBehaviour
     [SerializeField, Min(0.1f)] private float dodgeClipSpeed = 4.08f;
     [Tooltip("배속 허용 범위. 너무 벌어지면 발이 미끄러지는 대신 다리가 헛돈다.")]
     [SerializeField] private Vector2 moveSpeedMultiplierRange = new Vector2(0.6f, 2.2f);
+    [Tooltip("배속이 목표값까지 따라가는 데 걸리는 시간(초). 0이면 즉시 반영한다. " +
+             "실제 이동 속도는 가속과 감속, 회피로 매 프레임 출렁이는데 배속을 거기에 그대로 물리면 " +
+             "한 번 달리는 동안에도 재생 속도가 계속 바뀐다. 대신 이만큼 늦게 따라가므로 " +
+             "가감속 구간에서는 발이 조금 미끄러진다 — 그 둘을 맞바꾸는 값이다.")]
+    [SerializeField, Min(0f)] private float moveSpeedDampTime = 0.15f;
 
     [Tooltip("화면 밖 유닛의 애니메이션 계산량을 줄인다. AlwaysAnimate는 보이지 않아도 전부 계산한다.")]
     [SerializeField] private AnimatorCullingMode animatorCullingMode = AnimatorCullingMode.CullUpdateTransforms;
@@ -254,6 +266,8 @@ public partial class UnitController : MonoBehaviour
     private bool hasWalkAnimationState;
     private int moveSpeedParameterHash;
     private bool hasMoveSpeedParameter;
+    // 마지막으로 배속 기준으로 삼은 클립 속도. 기준이 바뀌는 순간을 잡아내 damping을 건너뛴다.
+    private float lastMoveClipSpeed = -1f;
 
     private float attackAnimationDuration;
     private float skillAnimationDuration;
@@ -272,6 +286,8 @@ public partial class UnitController : MonoBehaviour
     public float DodgeAnimationDuration => dodgeAnimationHash != 0 ? dodgeAnimationDuration : 0f;
 
     public float BackpedalSpeed => backpedalSpeed;
+
+    public float SurvivalFleeDistance => survivalFleeDistance;
 
     // 도약이 실제로 나아갈 속도. 클립이 원래 나아가는 속도를 밑으로 두고, 회피 거리를
     // 클립 길이 안에 소화할 만큼 올린다. 위로는 1.8배까지만 — 그 이상은 뛰는 중에도 눈에 띄게 밀린다.
@@ -399,6 +415,11 @@ public partial class UnitController : MonoBehaviour
         skillUsesLeft = Mathf.Max(0, stats.skillUsesPerBattle);
         if (emotion != null) emotion.Initialize(this);
         ApplyAgentSpeed(stats.runSpeed);
+        // 에이전트가 회전을 맡는 구간(도주, 이동, 배회)도 코드가 돌릴 때와 같은 속도로 돌게 한다.
+        // NavMeshAgent 기본값은 120도/초다. 등을 보이고 달아날 때는 적의 정반대를 봐야 해서 매번
+        // 180도를 돌아야 하는데, 그 회전에만 1.5초가 걸렸다 — 그동안 유닛은 이동 방향으로 천천히
+        // 돌면서 옆걸음으로 미끄러져 나간다. 회전 주도권을 둘로 나눈 이유는 SetCodeDrivenFacing 참조.
+        if (agent != null) agent.angularSpeed = rotationSpeed;
         CacheAnimationHashes();
         ApplyAnimatorCulling();
     }
@@ -1801,7 +1822,21 @@ public partial class UnitController : MonoBehaviour
         float actualSpeed = speed * MoveMultiplier;
         float multiplier = Mathf.Clamp(actualSpeed / Mathf.Max(0.1f, clipSpeed),
             moveSpeedMultiplierRange.x, moveSpeedMultiplierRange.y);
-        animator.SetFloat(moveSpeedParameterHash, multiplier);
+
+        // 기준 클립이 바뀌면(달리기↔걷기↔뒷걸음) 같은 배속 숫자가 다른 뜻을 갖는다.
+        // 그 경계를 damping으로 이어붙이면 새 클립이 한동안 엉뚱한 배속으로 돈다 — 그때만 즉시 맞춘다.
+        bool clipChanged = !Mathf.Approximately(clipSpeed, lastMoveClipSpeed);
+        lastMoveClipSpeed = clipSpeed;
+
+        if (clipChanged || moveSpeedDampTime <= 0f)
+        {
+            animator.SetFloat(moveSpeedParameterHash, multiplier);
+            return;
+        }
+
+        // 목표 배속을 향해 천천히 따라가게 한다. 실제 속도가 매 프레임 출렁여도
+        // 재생 속도는 그 출렁임을 그대로 받지 않는다(moveSpeedDampTime 주석 참조).
+        animator.SetFloat(moveSpeedParameterHash, multiplier, moveSpeedDampTime, Time.deltaTime);
     }
 
     private void CacheMoveSpeedParameter()

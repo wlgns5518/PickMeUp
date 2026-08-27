@@ -91,9 +91,18 @@ public class EvadeState : UnitBattleState
 
         // 도약 모션이 없는 리그, 그리고 위기 도주는 걸어서/달려서 물러난다.
         float speed = keepingDistance ? context.BackpedalSpeed : context.Stats.runSpeed;
-        destination = context.transform.position + away * context.Stats.evadeRange;
+
+        // 얼마나 멀리 잡을지가 도망의 성패를 가른다.
+        //
+        // 간격 벌리기는 2.5m면 충분하다 — 사거리를 되찾는 것이 목적이라 짧게 끊는 편이 낫다.
+        // 반면 목숨이 걸린 도주에 같은 값을 쓰면 도망이 아예 성립하지 않는다. 2.5m마다 목적지에
+        // 닿아 감속하고 다시 0에서 가속하기를 반복하므로 최고 속도에 한 번도 닿지 못하기 때문이다.
+        // (실측: 최고 4.37m/s인 탱커의 평균 속도가 2.81m/s로 떨어져, 4.0m/s로 꾸준히 달려오는
+        //  고블린에게 벌어 놓은 거리를 도로 내줬다.)
+        float retreatDistance = keepingDistance ? context.Stats.evadeRange : context.SurvivalFleeDistance;
+        destination = context.transform.position + away * retreatDistance;
         NavMeshHit hit;
-        if (NavMesh.SamplePosition(destination, out hit, context.Stats.evadeRange, NavMesh.AllAreas))
+        if (NavMesh.SamplePosition(destination, out hit, retreatDistance, NavMesh.AllAreas))
         {
             destination = hit.position;
         }

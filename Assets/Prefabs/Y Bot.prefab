@@ -1819,7 +1819,7 @@ MonoBehaviour:
     potionManaTriggerHpRatio: 0.8
     potionCooldown: 6
     walkSpeed: 2
-    runSpeed: 4
+    runSpeed: 4.5
     jumpPower: 5
     moveStopDistance: 0.25
     attackRange: 1.6

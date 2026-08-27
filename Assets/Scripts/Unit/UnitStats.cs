@@ -40,7 +40,10 @@ public class UnitStats
 
     [Header("Movement")]
     public float walkSpeed = 2f;
-    public float runSpeed = 4f;
+    // 달리기 클립(PlayerRun)이 실제로 표현하는 속도가 4.345m/s다(클립 4.197 x humanScale 1.0352).
+    // 이 값이 그보다 낮으면 재생 배속이 1배 아래로 내려가 질주 모션이 슬로모션으로 돈다 —
+    // 직업 배율이 가장 낮은 탱커(0.85)까지 1배 근처에 닿도록 잡은 값이다.
+    public float runSpeed = 4.5f;
     public float jumpPower = 5f;
     public float moveStopDistance = 0.25f;
 
