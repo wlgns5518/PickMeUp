@@ -2,10 +2,13 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+// WeaponType과 같은 이유로 값이 CharacterSO 에셋에 정수로 직렬화된다.
+// 순서를 바꾸거나 중간에 끼우면 이미 저장된 캐릭터의 직업이 통째로 밀리므로 반드시 끝에만 덧붙인다.
+// (Lancer가 전투 계열인데도 생산 계열 뒤에 붙어 있는 이유가 이것이다.)
 public enum JobType
 {
     // 전투 계열
-    Melee,
+    Melee,      // 검사 — 전열의 두 번째 방어선. 패링과 약점 타격으로 변수를 만드는 근접 테크니션.
     Mage,
     Archer,
     Assassin,
@@ -16,6 +19,8 @@ public enum JobType
     Cook,
     Blacksmith,
     Tanner,
+    // 전투 계열(추가분)
+    Lancer,     // 창수 — 리치 우위로 탱커 뒷선에서 안정적으로 딜하고 적의 부위를 억제한다.
 }
 
 // 값은 CharacterSO 에셋에 정수로 직렬화된다. 순서를 바꾸면 기존 캐릭터가 들고 있던 무기가
@@ -125,8 +130,9 @@ public static class CharacterRules
     // 한국어 표시 이름
     private static readonly Dictionary<JobType, string> JobKr = new Dictionary<JobType, string>
     {
-        { JobType.Melee, "근접" }, { JobType.Mage, "마법사" }, { JobType.Archer, "궁수" },
-        { JobType.Assassin, "암살자" }, { JobType.Tank, "탱커" }, { JobType.Support, "서포터" },
+        { JobType.Melee, "검사" }, { JobType.Mage, "마법사" }, { JobType.Archer, "궁수" },
+        { JobType.Assassin, "암살자" }, { JobType.Tank, "탱커" }, { JobType.Support, "사제" },
+        { JobType.Lancer, "창수" },
         { JobType.Carpenter, "목수" }, { JobType.Cook, "요리사" },
         { JobType.Blacksmith, "대장장이" }, { JobType.Tanner, "무두장이" },
     };
@@ -137,6 +143,8 @@ public static class CharacterRules
         { WeaponType.Bow, "활" }, { WeaponType.Spear, "창" }, { WeaponType.Dagger, "단검" },
         { WeaponType.Axe, "도끼" }, { WeaponType.Blunt, "둔기" },
         { WeaponType.Polearm, "장병기" }, { WeaponType.Shield, "방패" },
+        // 손에 드는 것이 없는 맨손 시전. 빠져 있으면 화면에 영문 "Magic"이 그대로 찍힌다.
+        { WeaponType.Magic, "맨손 시전" },
     };
 
     public static string Korean(JobType t) => JobKr.TryGetValue(t, out var v) ? v : t.ToString();

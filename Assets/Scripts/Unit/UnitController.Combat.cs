@@ -172,6 +172,11 @@ public partial class UnitController
         // 난전이 통째로 한쪽으로 흘러가 버린다.
         strafeSign = Random.value < 0.5f ? -1f : 1f;
         nextStrafeFlipTime = Time.time + Random.Range(0.5f, 1.5f) * Mathf.Max(0.1f, stats.strafeFlipInterval);
+
+        // 적의 어느 쪽으로 파고들지도 같은 이유로 유닛마다 갈라 놓는다. 검사 둘이 같은 측면을
+        // 물면 반대쪽이 통째로 비고, 암살자 둘이 같은 방향으로 돌면 서로를 밀어낸다.
+        // 이쪽은 교전 내내 뒤집지 않는다 — 파고드는 방향이 도중에 바뀌면 영원히 자리를 못 잡는다.
+        flankSign = Random.value < 0.5f ? -1f : 1f;
     }
 
     // ---------------------------------------------------------------- 타격 판정
@@ -211,10 +216,11 @@ public partial class UnitController
         if (IsTargetValid() && IsInsideSwingArc(CurrentTarget, reach)) return CurrentTarget;
         if (!stats.cleaveOffTarget) return null;
 
-        // 원거리 유닛은 해당 없다. 활은 겨눈 하나를 쏘는 것이지 앞을 쓸어 베는 것이 아니라,
+        // 원거리 직군은 해당 없다. 활은 겨눈 하나를 쏘는 것이지 앞을 쓸어 베는 것이 아니라,
         // 노리던 상대가 빠졌으면 그냥 빗나가야 한다. 여기서 막지 않으면 사거리 9m짜리가
         // 정면 130도 안의 아무나 자동으로 맞히는, 사실상 공짜 재조준이 된다.
-        if (stats.attackRange >= minKeepDistanceRange) return null;
+        // 창수는 거리를 두고 싸우지만 근접이라 여기 걸리지 않는다 — 휘두른 창은 앞을 쓴다.
+        if (IsRangedFighter) return null;
 
         return UnitRegistry.FindEnemyInArc(this, reach, stats.attackArcAngle);
     }
@@ -307,13 +313,17 @@ public partial class UnitController
         // 판단은 틈이 시작될 때 이미 끝나 있다(TriggerAttack). 예전에는 여기서 매 프레임
         // "남은 시간 < minFootworkWindow"를 다시 봤는데, 그러면 어떤 틈이든 스윙 직전
         // 0.35초는 반드시 제자리에 멈춰 서게 된다 — 공격 후 멈칫하던 것의 정체가 이거였다.
-        if (!footworkThisGap)
+        //
+        // 마법사는 이 판단에서 빠진다. 평타가 없어서 TriggerAttack을 한 번도 부르지 않으므로
+        // footworkThisGap이 영영 거짓이고, 그대로 두면 마법 쿨다운을 기다리는 내내 굳어 선다.
+        // 마법사에게 "스윙 사이의 틈"이란 것이 없으니 영창하지 않는 동안은 늘 자리를 잡는 것이 맞다.
+        if (!footworkThisGap && !IsCaster)
         {
             StopFootwork();
             return;
         }
 
-        float speed = stats.walkSpeed * stats.footworkSpeedRatio * EmotionMultiplier;
+        float speed = stats.walkSpeed * stats.footworkSpeedRatio * MoveMultiplier;
         if (speed <= 0.01f)
         {
             StopFootwork();
@@ -339,19 +349,44 @@ public partial class UnitController
         // 방향이 뒤집혀 그 주위를 진동했다. 가까울수록 약하게 밀어야 그 자리에서 멎는다.
         if (Mathf.Abs(gap) > 0.12f) direction += forward * Mathf.Clamp(gap / 0.7f, -1f, 1f);
 
-        // 옆으로 돌기. 방향은 주기적으로 뒤집어 한쪽으로만 도는 것을 막는다.
+        // 옆으로 돌기.
         //
         // 옆걸음 클립이 없는 리그(고블린)는 돌지 않고 간격만 맞춘다. 앞으로 달리는 다리로
         // 게걸음을 치면 발이 대놓고 미끄러지는데, 그건 안 도는 것보다 나쁘다.
         if (stats.strafeFlipInterval > 0f && HasStrafeAnimation)
         {
-            if (Time.time >= nextStrafeFlipTime)
+            // 서고 싶은 방위가 있는 직군은 그쪽으로 돈다. 목표에 닿으면 멈춘다 —
+            // 검사는 측면에, 암살자는 등 뒤에 자리를 잡고 거기서 싸운다.
+            //
+            // 접근(ChaseState)에서 잡은 자리를 교전 중에도 유지하는 담당이 이쪽이다.
+            // 상대가 몸을 돌리면 방위가 어긋나므로, 여기서 계속 따라 돌지 않으면
+            // 파고들어 봐야 첫 스윙 한 번에 정면으로 되돌아온다.
+            float angleError = EngageAngleError(CurrentTarget);
+            if (Mathf.Abs(angleError) > 0.01f)
             {
-                strafeSign = -strafeSign;
-                nextStrafeFlipTime = Time.time + Random.Range(0.6f, 1.4f) * stats.strafeFlipInterval;
+                // 목표 방위 근처에서는 진동하지 않도록 죽은 구간을 둔다.
+                const float AngleDeadzone = 12f;
+                if (Mathf.Abs(angleError) > AngleDeadzone)
+                {
+                    // +right 쪽으로 도는 것이 방위각을 키우는 방향이다(반시계).
+                    float sign = Mathf.Sign(angleError);
+                    // 많이 어긋났을수록 세게 돈다. 다 왔는데도 전속력이면 목표를 지나친다.
+                    float urgency = Mathf.Clamp01(Mathf.Abs(angleError) / 60f);
+                    direction += Vector3.Cross(Vector3.up, forward) * (sign * 0.85f * urgency);
+                }
             }
+            else
+            {
+                // 방위 성향이 없는 직군(탱커, 생산직, 고블린)은 예전처럼 주기적으로 방향을 뒤집으며
+                // 좌우로 흔든다. 한쪽으로만 돌면 난전이 통째로 한 방향으로 흘러가 버린다.
+                if (Time.time >= nextStrafeFlipTime)
+                {
+                    strafeSign = -strafeSign;
+                    nextStrafeFlipTime = Time.time + Random.Range(0.6f, 1.4f) * stats.strafeFlipInterval;
+                }
 
-            direction += Vector3.Cross(Vector3.up, forward) * (strafeSign * 0.85f);
+                direction += Vector3.Cross(Vector3.up, forward) * (strafeSign * 0.85f);
+            }
         }
 
         // 목표 속도로 곧바로 튀지 않고 붙였다 뺀다. 정지 → 최고 속도가 한 프레임에 일어나면
@@ -530,8 +565,13 @@ public partial class UnitController
     private bool CanEverBlock()
     {
         if (IsDead) return false;
-        // 방어는 플레이어(아군)만 한다. 적은 방패/무기로 막지 않고 그대로 맞는다.
-        if (team != UnitTeam.Ally) return false;
+        // 받아내는 방식을 가진 직군만 막는다.
+        //
+        // 예전에는 "아군이면 전부"였다. 그 결과 궁수도 마법사도 사제도 코앞의 적에게 방패를
+        // 들었는데, 그 셋은 원작에서 막는 직군이 아니다 — 맞기 전에 빠지는 쪽이다. 암살자도
+        // 마찬가지고(방어할 몸이 아니라 뒤를 잡는다), 지금은 탱커(방패)와 검사(패링)만 받아낸다.
+        // 적이 방어하지 않는 성질도 그대로 남는다: 고블린 프리팹의 guardStyle은 None이다.
+        if (stats.guardStyle == GuardStyle.None) return false;
         if (blockAnimationHash == 0) return false;
         // 자세가 무너져 있는 동안은 방패를 들 수 없다. 예전에는 방어 지구력이 이 역할까지
         // 겸했지만(0이면 자세를 안 잡음), 지금은 강인도가 깨지면 곧바로 Stagger로 들어가므로
@@ -573,7 +613,23 @@ public partial class UnitController
             attacker.Stagger(stats.perfectGuardStaggerDuration);
         }
 
-        if (debugLogs) Debug.Log($"[UnitController] {name} 퍼펙트 가드 — {(attacker != null ? attacker.name : "?")}의 공격을 흘려냄");
+        // 패링은 여기서 끝나지 않는다. 쳐낸 그 자리에서 되받아치는 것이 패링의 값어치다 —
+        // 방패는 막고 버티지만 검신은 궤적을 비틀어 상대의 빈틈을 만들고 그 틈으로 들어간다.
+        //
+        // 실제로 하는 일은 "다음 스윙까지의 호흡을 통째로 지운다"이다. 무너진 상대는
+        // perfectGuardStaggerDuration(0.9초)만큼 서 있고, 그 시간을 온전히 쓰려면 방어를
+        // 푸는 즉시 칼이 나가야 한다. 이게 없으면 흘려내 놓고 평소 박자대로 기다리다
+        // 상대가 일어난 뒤에 휘두르게 된다.
+        if (stats.counterAfterPerfectGuard)
+        {
+            nextSwingReadyTime = 0f;
+            attackLockedUntil = 0f;
+            // 방어 쿨다운도 함께 지운다. 반격 뒤 곧바로 다음 궤적을 읽을 수 있어야
+            // "공수 리듬을 타는 테크니션"이 된다.
+            lastBlockTime = -999f;
+        }
+
+        if (debugLogs) Debug.Log($"[UnitController] {name} {(stats.counterAfterPerfectGuard ? "패링" : "퍼펙트 가드")} — {(attacker != null ? attacker.name : "?")}의 공격을 흘려냄");
         return true;
     }
 
@@ -637,6 +693,144 @@ public partial class UnitController
     {
         int hash = fromGuardBreak && blockBreakAnimationHash != 0 ? blockBreakAnimationHash : staggerAnimationHash;
         PlayAnimation(hash != 0 ? hash : hitAnimationHash, true);
+    }
+
+    // ---------------------------------------------------------------- 직군이 남기는 흔적
+
+    // 둔화. 창수의 부위 억제가 여기로 들어온다 — 다리를 찔린 쪽은 한동안 제 속도를 못 낸다.
+    private float slowUntil;
+    private float slowMultiplier = 1f;
+
+    // 지금 걸려 있는 둔화 배율. 이동 속도와 걸음 재생 배속 양쪽에 곱해진다.
+    // 애니메이션에도 함께 곱해야 느려진 다리가 땅을 헛돌지 않는다.
+    public float SlowMultiplier => Time.time < slowUntil ? slowMultiplier : 1f;
+
+    public void ApplySlow(float duration, float multiplier)
+    {
+        if (IsDead || duration <= 0f || multiplier >= 1f) return;
+
+        // 이미 더 강한(더 느린) 둔화가 걸려 있으면 덮어쓰지 않는다. 겹쳐 걸어 0에 수렴하면
+        // 창수 둘에게 찔린 적이 그 자리에 못 박히는데, 그건 억제가 아니라 속박이다.
+        float current = SlowMultiplier;
+        slowMultiplier = Mathf.Clamp(Mathf.Min(current, multiplier), 0.1f, 1f);
+        slowUntil = Mathf.Max(slowUntil, Time.time + duration);
+
+        // 에이전트 속도는 값이 바뀔 때만 다시 계산한다(HandleEmotionChanged와 같은 이유).
+        RefreshAgentSpeed();
+    }
+
+    // 둔화가 풀리는 순간을 잡아 속도를 되돌린다. 만료를 감시하지 않으면 SlowMultiplier는
+    // 1로 돌아가는데 NavMeshAgent.speed는 느린 값을 그대로 들고 있게 된다.
+    private bool slowWasActive;
+
+    private void TickSlow()
+    {
+        bool active = Time.time < slowUntil;
+        if (active == slowWasActive) return;
+
+        slowWasActive = active;
+        if (!active) slowMultiplier = 1f;
+        RefreshAgentSpeed();
+    }
+
+    // 때린 쪽의 직군이 상대에게 남기는 것. 막아낸 타격은 이 경로로 오지 않는다.
+    //
+    // 이 한 함수가 "같은 평타인데 직군마다 다른 일이 일어난다"를 만든다. 암살자는 급소를 그어
+    // 피를 내고(등을 잡으면 두 배), 창수는 다리를 찔러 발을 묶는다. 나머지 직군은 값이 0이라
+    // 아무 일도 일어나지 않으므로, 이 호출이 늘 있어도 예전 동작 그대로다.
+    private void ApplyOnHitDebuffs(UnitController attacker, bool inFrontArc)
+    {
+        if (attacker == null || attacker == this || IsDead) return;
+
+        UnitStats source = attacker.Stats;
+
+        // 급소 타격 — 정면에서 그은 것보다 뒤를 잡고 그은 쪽이 확실히 깊다.
+        if (source.bleedChanceOnHit > 0f && emotion != null)
+        {
+            float chance = inFrontArc ? source.bleedChanceOnHit : source.bleedChanceOnHit * 2f;
+            if (Random.value < chance) emotion.ApplyBleeding();
+        }
+
+        // 부위 억제 — 발이 묶이면 리치 안으로 파고들지 못한다. 창수가 거리를 유지하는 수단이다.
+        if (source.slowOnHitDuration > 0f)
+        {
+            ApplySlow(source.slowOnHitDuration, source.slowOnHitMultiplier);
+        }
+    }
+
+    // ---------------------------------------------------------------- 영창
+
+    // 마력을 모으는 중인가. 치유와 스킬 시전이 여기 들어온다.
+    //
+    // 이 플래그 하나가 원작의 "영창 중 무방비"를 성립시킨다 — TakeDamage가 이걸 보고
+    // castVulnerabilityMultiplier를 곱하고, 피격은 어차피 InterruptCurrentAction으로
+    // 시전을 끊는다. 즉 후방 시전자는 탱커가 벌어 준 시간 안에서만 영창을 끝낼 수 있다.
+    public bool IsCasting { get; private set; }
+
+    public void BeginCast() => IsCasting = true;
+    public void EndCast() => IsCasting = false;
+
+    // ---------------------------------------------------------------- 교전 방위
+
+    // 이 유닛이 적의 좌우 중 어느 쪽으로 도는가. 유닛마다 스폰 시 한 번 정해진다 —
+    // 전원이 같은 쪽으로 돌면 난전이 통째로 한 방향으로 흘러간다.
+    private float flankSign = 1f;
+
+    // 적의 정면을 0도로 보고, 지금 내가 서 있는 방위(도). 부호는 좌우.
+    private float CurrentEngageAngle(UnitController other)
+    {
+        Vector3 toMe = transform.position - other.transform.position;
+        toMe.y = 0f;
+        if (toMe.sqrMagnitude <= 0.0001f) return 0f;
+
+        Vector3 theirForward = other.transform.forward;
+        theirForward.y = 0f;
+        if (theirForward.sqrMagnitude <= 0.0001f) return 0f;
+
+        return Vector3.SignedAngle(theirForward, toMe, Vector3.up);
+    }
+
+    // 지금 방위에서 목표 방위까지 남은 각도. 양수면 왼쪽(반시계)으로 더 돌아야 한다.
+    // 목표 방위가 0(정면)인 역할은 항상 0을 돌려주므로 아무것도 하지 않는다.
+    public float EngageAngleError(UnitController other)
+    {
+        // HasEngagePreference와 같은 조건을 쓴다 — 나를 노려보는 적에게는 사각지대가 없다.
+        if (other == null || !HasEngagePreference) return 0f;
+
+        return Mathf.DeltaAngle(CurrentEngageAngle(other), stats.engageAngle * flankSign);
+    }
+
+    // 파고들 방위를 가진 직군인가. 접근 방식이 갈리는 분기점이라 부르는 쪽이 먼저 묻는다.
+    //
+    // 상대가 나를 노리고 있으면 파고들 사각지대라는 것이 없다. 방위는 상대의 정면을 기준으로
+    // 재는데 그 정면이 나를 향해 따라오므로, 계속 밀어붙이면 둘이 영원히 맞물려 도는 그림이 된다.
+    //
+    // 이걸 끊는 것이 전술적으로도 맞다. 암살자는 "전면전이 벌어지는 동안 시야에서 벗어나
+    // 사각지대로" 들어가는 직군이지, 자기를 노려보는 적의 등을 억지로 잡는 직군이 아니다.
+    // 검사도 같다 — 적이 나를 보면 정면에서 받아치고(패링), 적이 탱커에게 시선을 돌리는
+    // 순간 측면으로 미끄러진다. 그 공수 전환이 이 한 줄에서 나온다.
+    public bool HasEngagePreference =>
+        stats.engageAngle > 0.01f &&
+        (CurrentTarget == null || CurrentTarget.CurrentTarget != this);
+
+    // 접근 중에 실제로 향할 지점. 타깃 위치가 아니라 "타깃 주위에서 내가 서고 싶은 자리"다.
+    //
+    // 이게 진형을 만든다. 탱커는 정면(0도)으로 곧장 들어가 어그로를 붙들고, 검사는 측면(55도)을
+    // 물고, 암살자는 등 뒤(180도)로 돌아간다. 아군 탱커의 위치를 참조하지 않는데도 "탱커 옆에
+    // 검사가 선다"가 되는 이유는, 적의 정면을 이미 어그로가 붙은 탱커가 차지하고 있기 때문이다.
+    // 탱커가 쓰러져도 기준이 사라지지 않는다는 점에서 위치 참조보다 튼튼하다.
+    public Vector3 GetEngageDestination(float standoffDistance)
+    {
+        Vector3 predicted = GetPredictedTargetPosition();
+        if (CurrentTarget == null || !HasEngagePreference) return predicted;
+
+        Vector3 theirForward = CurrentTarget.transform.forward;
+        theirForward.y = 0f;
+        if (theirForward.sqrMagnitude <= 0.0001f) return predicted;
+
+        Quaternion rotation = Quaternion.AngleAxis(stats.engageAngle * flankSign, Vector3.up);
+        Vector3 offset = rotation * theirForward.normalized * standoffDistance;
+        return predicted + offset;
     }
 
     // ---------------------------------------------------------------- 히트스톱
@@ -728,6 +922,7 @@ public partial class UnitController
         TickBlockPose();
         TickAvoidance();
         TickThreatAwareness();
+        TickSlow();
     }
 
     // 죽은 유닛을 되살려 재사용하는 경로(Configure)를 위한 초기화.
@@ -747,6 +942,12 @@ public partial class UnitController
         noticedThreat = null;
         footworkThisGap = false;
         footworkVelocity = Vector3.zero;
+        slowUntil = 0f;
+        slowMultiplier = 1f;
+        slowWasActive = false;
+        IsCasting = false;
+        castHealTarget = null;
+        ResetMagicRuntime();
         ClearHitStop();
     }
 }

@@ -142,11 +142,17 @@ public class CharacterBattleSpawner : MonoBehaviour
         IReadOnlyList<UnitController> allies = UnitRegistry.Allies;
         if (allies.Count == 0) return slots;
 
+        // 탱커가 받는 슬롯 수는 전투 중 편향이 쓰는 상한과 같은 정의를 쓴다
+        // (UnitRegistry.EffectiveAttackerCap — 위협 가중치의 제곱근만큼 늘어난다).
+        // 예전에는 여기만 maxAttackersPerAlly 고정이라, 스폰 직후 탱커가 2마리만 받고
+        // 나머지가 곧바로 후방으로 흩어졌다 — 전투 중 상한(탱커 4)과 어긋나 있었다.
         for (int i = 0; i < allies.Count; i++)
         {
             UnitController ally = allies[i];
             if (ally == null || !ally.Stats.isTank) continue;
-            for (int slot = 0; slot < maxAttackersPerAlly; slot++) slots.Add(ally);
+
+            int cap = UnitRegistry.EffectiveAttackerCap(ally, maxAttackersPerAlly);
+            for (int slot = 0; slot < cap; slot++) slots.Add(ally);
         }
 
         for (int round = 0; round < maxAttackersPerAlly; round++)
@@ -342,8 +348,112 @@ public class CharacterBattleSpawner : MonoBehaviour
         // 나머지가 뒤에서 때리는 진형은 여기서 시작된다.
         stats.isTank = so.job == JobType.Tank || hasShield;
 
+        ApplyRole(stats, job, hasShield);
+
+        // 마법사가 평생 다루는 속성 하나. 이 값이 그가 쓸 수 있는 마법 전부를 정한다(SpellCatalog).
+        // 마법사가 아닌 직업은 None이라 영창 경로 자체를 타지 않는다.
+        stats.affinity = so.job == JobType.Mage ? so.Affinity : MagicAffinity.None;
+
         stats.ResetHp();
         stats.ResetMana();
         return stats;
+    }
+
+    // 후방 직군이 지키려는 최소 간격(미터). 고블린의 타격 도달(1.85m) 바깥으로 잡았다.
+    private const float BacklineSafeDistance = 2.6f;
+
+    // 직업이 정한 전술 성향을 전투 스탯으로 옮겨 담는다.
+    //
+    // 여기서 옮기지 않으면 JobProfile의 역할 값이 아무 데도 닿지 않는다 — AI(UnitController,
+    // 상태, UnitRegistry)는 CharacterSO도 JobType도 모르고 UnitStats만 본다. 그 경계를
+    // 유지하는 이유는 적(고블린)처럼 로스터를 거치지 않는 유닛이 있기 때문이다.
+    // 그런 유닛은 이 함수를 타지 않으므로 전부 기본값(JobRole.None)이라 예전과 똑같이 싸운다.
+    private void ApplyRole(UnitStats stats, JobCombatProfile job, bool hasShield)
+    {
+        stats.role = job.Role;
+        stats.threatWeight = job.ThreatWeight;
+        stats.backlinePreference = job.BacklinePreference;
+        stats.peelBonus = job.PeelBonus;
+        stats.engageAngle = job.EngageAngle;
+        stats.viewAngle = job.ViewAngle;
+        stats.bleedChanceOnHit = job.BleedChanceOnHit;
+        stats.slowOnHitDuration = job.SlowOnHitDuration;
+        stats.slowOnHitMultiplier = job.SlowOnHitMultiplier;
+        stats.castVulnerabilityMultiplier = job.CastVulnerability;
+
+        // 유지 거리는 비율이 아니라 미터로 확정해서 넘긴다. 사거리는 이미 무기 보정까지
+        // 끝난 값이라(위 Clamp), 여기서 굳혀 두면 AI가 매 프레임 다시 곱하지 않아도 된다.
+        stats.keepDistanceRange = job.KeepDistanceRatio > 0f
+            ? stats.attackRange * job.KeepDistanceRatio
+            : 0f;
+
+        // 후방 직군은 무기가 짧아도 근접 난투에는 들어가지 않는다.
+        //
+        // 유지 거리를 제 사거리에만 매어 두면 무기 하나로 역할이 무너진다 — 사제에게 둔기를
+        // 들리면 사거리가 1.71m로 깎이면서 유지 거리가 0.6m가 되어, 힐러가 고블린 코앞
+        // 0.95m에서 싸우고 있는 것을 실측으로 확인했다. 몸으로 버티는 직군이 아닌데도 그렇다.
+        //
+        // 그래서 "적의 타격이 닿지 않는 거리"를 바닥으로 깐다. 다만 제 사거리의 0.9배를 넘기지는
+        // 않는다 — 넘기면 물러나야 할 거리가 때릴 수 있는 거리보다 멀어져 영원히 도망만 다니게 된다.
+        if (JobProfile.IsRangedRole(job.Role) && stats.keepDistanceRange > 0f)
+        {
+            stats.keepDistanceRange = Mathf.Max(
+                stats.keepDistanceRange,
+                Mathf.Min(BacklineSafeDistance, stats.attackRange * 0.9f));
+        }
+
+        // 창수가 물러나는 폭은 원거리 직군보다 훨씬 짧다.
+        //
+        // 위쪽 공통 계산(evadeRange = Max(2.5, 사거리 x 0.45))은 사거리 9m짜리 궁수가 한 번에
+        // 사거리를 되찾도록 잡은 값이다. 리치 2.9m인 창수에게 그대로 적용하면 한 번 물러설 때마다
+        // 제 사거리 밖(4.3m)까지 빠져 다시 걸어 들어와야 한다 — 밀어내며 찌르는 것이 아니라
+        // 도망쳤다 돌아오는 것이 된다. 창끝이 닿는 거리 안에서 한 발짝 무르는 정도로 줄인다.
+        if (job.Role == JobRole.Reach)
+        {
+            stats.evadeRange = stats.attackRange * 0.6f;
+        }
+
+        // 방패를 든 캐릭터는 직업이 무엇이든 방패로 막는다 — 손에 든 것이 방식을 정한다.
+        // 그래서 방패를 든 검사는 패링이 아니라 방패 가드가 된다(그게 실제로 하는 동작이다).
+        stats.guardStyle = hasShield && job.Guard != GuardStyle.Shield ? GuardStyle.Shield : job.Guard;
+        ApplyGuardStyle(stats);
+    }
+
+    // 막는 방식에 따라 방어 관련 수치를 통째로 갈아 끼운다.
+    //
+    // 탱커의 "막기"와 검사의 "흘려내기"는 같은 동작의 강약이 아니라 서로 다른 기술이다:
+    //  - 방패는 정면 반구를 넓게 오래 가린다. 대신 궤적을 읽어 튕겨내는 일은 잘 못한다.
+    //  - 패링은 좁고 짧다. 대신 읽어내면 그 자리에서 반격이 열린다 — 그게 검사가
+    //    탱커보다 얇은 몸으로 전열에 설 수 있는 이유다.
+    private static void ApplyGuardStyle(UnitStats stats)
+    {
+        switch (stats.guardStyle)
+        {
+            case GuardStyle.Shield:
+                stats.guardArcAngle = 180f;
+                stats.blockDuration = 1.0f;
+                stats.blockCooldown = 1.2f;
+                stats.perfectGuardChance = 0.22f;
+                stats.counterAfterPerfectGuard = false;
+                break;
+
+            case GuardStyle.Parry:
+                stats.guardArcAngle = 110f;
+                // 오래 들고 있지 못한다. 검신으로 버티는 자세가 아니라 쳐내는 한 동작이다.
+                stats.blockDuration = 0.5f;
+                stats.blockCooldown = 0.9f;
+                // 궤적을 읽는 것이 이 직군의 기술이다.
+                stats.perfectGuardChance = 0.55f;
+                stats.perfectGuardWindow = 0.24f;
+                // 쳐내도 완전히 흘리지는 못한다 — 방패와 달리 충격이 팔로 넘어온다.
+                stats.blockDamageReduction = 0.7f;
+                stats.blockReactionTime = 0.15f;
+                stats.counterAfterPerfectGuard = true;
+                break;
+
+            default:
+                // 막지 않는 직군은 방어 수치를 만질 이유가 없다. CanEverBlock이 guardStyle로 걸러낸다.
+                break;
+        }
     }
 }

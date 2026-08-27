@@ -32,6 +32,40 @@ public static class UnitRegistry
         unitColliders.Clear();
     }
 
+    // 가장 가까운 우리 편. "전선에서 떨어져 나왔는가"를 재는 기준이다.
+    //
+    // 팀의 무게중심으로 재 봤더니 쓸 수 없었다. 실측에서 정상적으로 대형을 이룬 탱커가 중심에서
+    // 6.4m, 마법사가 9.5m로 나와, 혼자 도망친 궁수(16.4m)와 구분되지 않았다 — 파티가 넓게
+    // 퍼져 싸우는 것이 정상이라 중심까지의 거리는 이탈을 뜻하지 않는다. 게다가 파티가 두 무리로
+    // 갈리면 중심이 그 사이 빈 공간에 놓여 전원이 이탈로 잡힌다.
+    //
+    // 최근접 아군까지의 거리는 그 둘을 깨끗하게 가른다: 같은 실측에서 대형 안의 유닛은 1.1~3.3m,
+    // 도망친 궁수만 14.7m였다. "옆에 아무도 없다"가 곧 떨어져 나왔다는 뜻이기 때문이다.
+    public static UnitController FindNearestAlly(UnitController self)
+    {
+        if (self == null) return null;
+
+        List<UnitController> list = GetList(self.Team);
+        Vector3 origin = self.transform.position;
+
+        UnitController best = null;
+        float bestSqr = float.MaxValue;
+
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            UnitController candidate = list[i];
+            if (candidate == null || candidate == self || candidate.IsDead || !candidate.isActiveAndEnabled) continue;
+
+            float sqr = (candidate.transform.position - origin).sqrMagnitude;
+            if (sqr >= bestSqr) continue;
+
+            bestSqr = sqr;
+            best = candidate;
+        }
+
+        return best;
+    }
+
     // 시야 판정에 필요한 값(시야각 cos, 제곱 거리, 정규화된 전방 벡터)을 스캔 1회당 한 번만
     // 계산해두는 구조체. 후보마다 Cos/normalize를 다시 돌던 비용을 없앤다.
     private readonly struct VisionQuery
@@ -131,18 +165,46 @@ public static class UnitRegistry
         unit.ReleaseTargetCount();
     }
 
+    // 대상 선정에 얹히는 편향들. 인자가 여덟 개까지 늘어나 호출부에서 어느 자리가 무엇인지
+    // 읽을 수 없게 됐다(실제로 tankThreatBonus와 currentTargetBonus의 순서를 헷갈리기 쉬웠다).
+    // 값 묶음으로 만들면 호출부가 필드 이름으로 채워 넣게 되어 그 실수가 사라진다.
+    public readonly struct TargetBias
+    {
+        // 이미 아군이 붙어 있는 적을 이만큼 더 가깝게 친다(뭉치기).
+        public readonly float GroupingPerAlly;
+        // 후보의 위협 가중치(UnitStats.threatWeight)에 곱해 더한다. 어그로.
+        public readonly float ThreatScale;
+        // 후보가 적 진영의 후방(궁수/마법사/사제)이면 더한다. 암살자의 침투.
+        public readonly float BacklineBonus;
+        // 후보가 나보다 약한 아군을 물고 있으면 더한다. 탱커의 도발.
+        public readonly float PeelBonus;
+        // 지금 싸우고 있는 타깃을 계속 유지하려는 성향.
+        public readonly float Stickiness;
+        // 이 수만큼 이미 물린 후보는 CrowdingPenalty만큼 멀게 쳐서 분산시킨다.
+        public readonly int MaxAttackers;
+        public readonly float CrowdingPenalty;
+
+        public TargetBias(float groupingPerAlly, float threatScale, float backlineBonus, float peelBonus,
+            float stickiness, int maxAttackers, float crowdingPenalty)
+        {
+            GroupingPerAlly = groupingPerAlly;
+            ThreatScale = threatScale;
+            BacklineBonus = backlineBonus;
+            PeelBonus = peelBonus;
+            Stickiness = stickiness;
+            MaxAttackers = maxAttackers;
+            CrowdingPenalty = crowdingPenalty;
+        }
+    }
+
     public static UnitController FindNearestVisibleEnemy(
         UnitController requester,
         float range,
         float viewAngle,
-        float closeVisibleRange = 0f,
-        float eyeHeight = 0f,
-        LayerMask obstacleMask = default,
-        float groupingBonusPerAlly = 0f,
-        float tankThreatBonus = 0f,
-        float currentTargetBonus = 0f,
-        int maxAttackersPerTarget = 0,
-        float crowdingPenalty = 0f)
+        float closeVisibleRange,
+        float eyeHeight,
+        LayerMask obstacleMask,
+        in TargetBias bias)
     {
         if (requester == null) return null;
 
@@ -151,8 +213,8 @@ public static class UnitRegistry
         UnitController best = null;
 
         GetHostileLists(requester.Team, out List<UnitController> first, out List<UnitController> second);
-        SearchNearestInList(requester, first, query, eyeHeight, obstacleMask, groupingBonusPerAlly, tankThreatBonus, currentTargetBonus, maxAttackersPerTarget, crowdingPenalty, ref bestSqrDistance, ref best);
-        SearchNearestInList(requester, second, query, eyeHeight, obstacleMask, groupingBonusPerAlly, tankThreatBonus, currentTargetBonus, maxAttackersPerTarget, crowdingPenalty, ref bestSqrDistance, ref best);
+        SearchNearestInList(requester, first, query, eyeHeight, obstacleMask, bias, ref bestSqrDistance, ref best);
+        SearchNearestInList(requester, second, query, eyeHeight, obstacleMask, bias, ref bestSqrDistance, ref best);
 
         return best;
     }
@@ -277,10 +339,16 @@ public static class UnitRegistry
         return true;
     }
 
-    // 같은 팀에서 가장 많이 다친 유닛을 찾는다(자기 자신 포함). 서포터의 회복 대상 선정용.
+    // 같은 팀에서 가장 손이 급한 유닛을 찾는다(자기 자신 포함). 사제의 치료 대상 선정용.
+    //
     // 절대 HP가 아니라 비율로 고르는 이유: HP 총량이 큰 탱커가 절반이 깎였는데도
     // 원래 체력이 적은 유닛보다 뒤로 밀리면 파티가 먼저 무너진다.
-    public static UnitController FindMostWoundedAlly(UnitController healer, float range, float hpRatioThreshold)
+    //
+    // dispelBonus는 상태이상에 걸린 아군의 비율에서 빼 주는 값이다. 원작에서 사제의 판단은
+    // "누가 가장 아픈가"가 아니라 "지금 무엇이 전열을 무너뜨리는가"이므로, 덜 다쳤어도
+    // 출혈이 흐르고 있으면 그쪽이 먼저다. 0이면 예전처럼 HP만 본다.
+    public static UnitController FindMostWoundedAlly(
+        UnitController healer, float range, float hpRatioThreshold, float dispelBonus = 0f)
     {
         if (healer == null) return null;
 
@@ -298,6 +366,11 @@ public static class UnitRegistry
             if (!candidate.CanRecoverHp) continue;
 
             float ratio = candidate.Stats.HpRatio;
+            if (dispelBonus > 0f && candidate.Emotion != null && candidate.Emotion.HasDispellableEffect)
+            {
+                ratio -= dispelBonus;
+            }
+
             if (ratio > bestRatio) continue;
             if ((candidate.transform.position - origin).sqrMagnitude > rangeSqr) continue;
 
@@ -312,6 +385,67 @@ public static class UnitRegistry
     // 알림 한 번이 팀 인원 수만큼의 호출이라 난전에서 유닛 수의 제곱으로 커졌고,
     // 그 비용이 발견한 프레임에 통째로 몰렸다. 지금은 게시판에 쓰고(O(1)),
     // 각 유닛이 자기 스캔 주기에 읽어 간다.
+
+    // 어느 지점을 중심으로 한 원 안의 적 전부. 광역 마법의 착탄 판정이 이걸 쓴다.
+    //
+    // FindEnemiesInRange와 나눠 둔 이유는 중심이 다르기 때문이다. 저쪽은 "내 주위"를 재고
+    // 이쪽은 "마법이 떨어지는 자리"를 잰다 — 마법사는 7.5m 밖에서 쏘므로 그 둘은 전혀 다른 원이다.
+    public static void FindEnemiesAround(UnitController requester, Vector3 center, float radius, List<UnitController> results)
+    {
+        if (results == null) return;
+        results.Clear();
+        if (requester == null) return;
+
+        GetHostileLists(requester.Team, out List<UnitController> first, out List<UnitController> second);
+        AddEnemiesAround(requester, first, center, radius, results);
+        AddEnemiesAround(requester, second, center, radius, results);
+    }
+
+    // 세지만 담지는 않는다. "이 자리에 광역기를 쓸 만한가"를 판단할 때 쓰는 값이라
+    // 목록까지 만들면 매 판단마다 리스트가 채워졌다 비워진다.
+    public static int CountEnemiesAround(UnitController requester, Vector3 center, float radius)
+    {
+        if (requester == null) return 0;
+
+        GetHostileLists(requester.Team, out List<UnitController> first, out List<UnitController> second);
+        return CountEnemiesAroundInList(requester, first, center, radius)
+             + CountEnemiesAroundInList(requester, second, center, radius);
+    }
+
+    private static void AddEnemiesAround(UnitController requester, List<UnitController> list,
+        Vector3 center, float radius, List<UnitController> results)
+    {
+        float radiusSqr = radius * radius;
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            UnitController candidate = list[i];
+            if (!IsValidTarget(requester, candidate)) continue;
+            if (!AreEnemies(requester, candidate)) continue;
+
+            Vector3 offset = candidate.transform.position - center;
+            offset.y = 0f;
+            if (offset.sqrMagnitude <= radiusSqr) results.Add(candidate);
+        }
+    }
+
+    private static int CountEnemiesAroundInList(UnitController requester, List<UnitController> list,
+        Vector3 center, float radius)
+    {
+        float radiusSqr = radius * radius;
+        int count = 0;
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            UnitController candidate = list[i];
+            if (!IsValidTarget(requester, candidate)) continue;
+            if (!AreEnemies(requester, candidate)) continue;
+
+            Vector3 offset = candidate.transform.position - center;
+            offset.y = 0f;
+            if (offset.sqrMagnitude <= radiusSqr) count++;
+        }
+
+        return count;
+    }
 
     public static void FindEnemiesInRange(UnitController requester, float range, List<UnitController> results)
     {
@@ -440,18 +574,16 @@ public static class UnitRegistry
         in VisionQuery query,
         float eyeHeight,
         LayerMask obstacleMask,
-        float groupingBonusPerAlly,
-        float tankThreatBonus,
-        float currentTargetBonus,
-        int maxAttackersPerTarget,
-        float crowdingPenalty,
+        in TargetBias settings,
         ref float bestSqrDistance,
         ref UnitController best)
     {
-        bool useGrouping = groupingBonusPerAlly > 0f;
-        bool useTankThreat = tankThreatBonus > 0f;
-        bool useStickiness = currentTargetBonus > 0f && requester.IsTargetValid();
-        bool useCrowdCap = maxAttackersPerTarget > 0 && crowdingPenalty > 0f;
+        bool useGrouping = settings.GroupingPerAlly > 0f;
+        bool useThreat = settings.ThreatScale > 0f;
+        bool useBackline = settings.BacklineBonus > 0f;
+        bool usePeel = settings.PeelBonus > 0f;
+        bool useStickiness = settings.Stickiness > 0f && requester.IsTargetValid();
+        bool useCrowdCap = settings.MaxAttackers > 0 && settings.CrowdingPenalty > 0f;
         bool needsAttackerCount = useGrouping || useCrowdCap;
 
         for (int i = list.Count - 1; i >= 0; i--)
@@ -465,27 +597,60 @@ public static class UnitRegistry
             // "이미 몇 마리가 이 아군을 물고 있는지"(혼잡도 판정)에 재사용한다.
             int attackerCount = needsAttackerCount ? CountAlliesTargeting(requester.Team, candidate) : 0;
 
-            // 이미 붙어 있는 적(아군 뭉침), (적 입장에서는) 탱커인 아군, 지금 싸우고 있는 기존
-            // 타깃은 그만큼 더 가깝게 쳐서 우선시킨다. 반대로 이미 상한만큼 붙잡힌 아군은 그만큼
+            // 이미 붙어 있는 적(아군 뭉침), 어그로가 높은 아군, 지금 싸우고 있는 기존 타깃은
+            // 그만큼 더 가깝게 쳐서 우선시킨다. 반대로 이미 상한만큼 붙잡힌 아군은 그만큼
             // 더 멀게 쳐서(빼는 게 아니라 더해서) 몬스터가 자연히 덜 붙잡힌 아군에게 가도록 한다 —
             // 아군 한 명당 1~2마리로 붙는 교전을 유도한다. 실제 사거리/시야 판정은 위 query.CanSee가
             // 이미 원래 거리로 끝냈으므로 여기서는 "누가 이기는지"만 바뀐다.
             float bias = 0f;
             if (useGrouping)
             {
-                bias += attackerCount * groupingBonusPerAlly;
+                bias += attackerCount * settings.GroupingPerAlly;
             }
-            if (useTankThreat && candidate.Stats.isTank)
+
+            // 어그로. 예전에는 "탱커인가"라는 참/거짓 하나였다 — 탱커가 아니면 전부 똑같이
+            // 노려져서, 사제가 최전선의 검사와 같은 확률로 물렸다. 지금은 직군마다 다른
+            // 가중치를 곱한다(탱커 3.2 / 검사 1.0 / 창수 0.85 / 암살자 0.55 / 궁수·마법사 0.4 / 사제 0.3).
+            // 그래서 방어선이 서면 후방이 실제로 안전해지고, 방어선이 무너지면 그 순간 후방이 노출된다.
+            if (useThreat)
             {
-                bias += tankThreatBonus;
+                bias += candidate.Stats.threatWeight * settings.ThreatScale;
             }
+
+            // 후방 침투. 암살자만 이 값을 갖는다 — 눈앞의 전열이 아니라 그 너머의 궁수·마법사·사제를
+            // 찾아 들어간다. 어그로가 만든 편향(탱커가 가장 당겨진다)을 정확히 거스르는 자리라,
+            // 파티에 암살자가 있고 없고가 적 후방의 안전을 가른다.
+            if (useBackline && JobProfile.IsBacklineRole(candidate.Stats.role))
+            {
+                bias += settings.BacklineBonus;
+            }
+
+            // 도발. 나보다 약한 아군을 물고 있는 적을 우선 노린다 — 탱커만 이 값을 갖는다.
+            //
+            // 어그로를 "적이 나를 고르게 하는 힘"으로만 두면 탱커는 수동적이다. 이미 사제를
+            // 물고 있는 적은 사제가 죽을 때까지 그대로 붙어 있다(실측: 탱커 1마리 / 검사 3마리).
+            // 여기서 탱커가 그쪽을 고르면, 걸어가 한 대 치는 순간 위협 비교가 적을 넘겨받는다.
+            if (usePeel && IsHoldingWeakerAlly(requester, candidate))
+            {
+                bias += settings.PeelBonus;
+            }
+
             if (useStickiness && candidate == requester.CurrentTarget)
             {
-                bias += currentTargetBonus;
+                bias += settings.Stickiness;
             }
-            if (useCrowdCap && attackerCount >= maxAttackersPerTarget)
+            // 혼잡도 상한. 이미 충분히 붙잡힌 아군은 멀게 쳐서 다음 몬스터가 다른 곳으로 가게 한다.
+            //
+            // 상한을 전원 똑같이 두면 어그로와 정면으로 싸운다. 실측에서 탱커(위협 3.2)에 둘이
+            // 붙는 순간 상한에 걸려 다음 몬스터들이 곧바로 궁수·마법사에게 갔다 — 방어선이
+            // 두 마리까지만 유효했다는 뜻이다. 원작의 탱커는 그러라고 있는 직군이 아니다.
+            //
+            // 그래서 "몇을 붙들 수 있는가"도 직군이 정한다. 다만 어그로(선형)보다 완만하게 늘린다 —
+            // 위협이 3배라고 셋을 동시에 막아낼 수 있는 것은 아니기 때문이다(제곱근).
+            // 기본 상한 2 기준으로 탱커 4 / 검사·창수 2 / 궁수·마법사·사제 1이 된다.
+            if (useCrowdCap && attackerCount >= EffectiveAttackerCap(candidate, settings.MaxAttackers))
             {
-                bias -= crowdingPenalty;
+                bias -= settings.CrowdingPenalty;
             }
 
             float effectiveSqrDistance = sqrDistance;
@@ -504,6 +669,28 @@ public static class UnitRegistry
             bestSqrDistance = effectiveSqrDistance;
             best = candidate;
         }
+    }
+
+    // 이 적이 지금 "나보다 약한 우리 편"을 물고 있는가. 탱커의 도발 대상 판정이다.
+    // 나를 물고 있는 적은 해당 없다 — 이미 내가 붙들고 있는 것이라 떼어낼 것이 없다.
+    private static bool IsHoldingWeakerAlly(UnitController requester, UnitController candidate)
+    {
+        UnitController victim = candidate.CurrentTarget;
+        if (victim == null || victim == requester) return false;
+        if (victim.Team != requester.Team || victim.IsDead) return false;
+
+        return victim.Stats.threatWeight < requester.Stats.threatWeight;
+    }
+
+    // 이 후보가 동시에 몇에게 붙잡혀도 "아직 여유 있다"고 볼 것인가.
+    // 위협 가중치의 제곱근으로 늘린다(위 주석 참조). 최소 1 — 아무도 못 붙는 아군은 없어야 한다.
+    // 스폰 시점의 초기 배정(CharacterBattleSpawner)도 같은 정의를 써야 어긋나지 않는다.
+    public static int EffectiveAttackerCap(UnitController candidate, int baseCap)
+    {
+        float weight = candidate.Stats.threatWeight;
+        if (weight <= 0f) return Mathf.Max(1, baseCap);
+
+        return Mathf.Max(1, Mathf.RoundToInt(baseCap * Mathf.Sqrt(weight)));
     }
 
     private static void AddEnemiesInRange(

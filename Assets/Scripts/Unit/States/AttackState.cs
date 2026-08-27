@@ -44,7 +44,13 @@ public class AttackState : UnitBattleState
             return;
         }
 
-        TryAttack();
+        // 휘두르지 못하는 동안은 자리를 잡는다.
+        //
+        // 마법사가 여기로 온다. 평타가 없으니 CanAttack이 늘 거짓이고, 예전 코드는 그때 아무것도
+        // 하지 않아서 마법 쿨다운을 기다리는 내내 못 박힌 듯 서 있었다. 마주 보고 간격을 재는
+        // 편이 낫다 — 마법사에게도 거리는 목숨이다.
+        // (아직 몸을 다 돌리지 못한 근접 유닛도 이 갈래로 오는데, 그쪽도 서 있는 것보다 낫다.)
+        if (!TryAttack()) context.UpdateCombatFootwork();
     }
 
     private bool TrySwitchToBetterState()
@@ -59,12 +65,17 @@ public class AttackState : UnitBattleState
         // 사망과 패닉도 전역 전이라 여기와 무관하게 걸린다. 즉 "끊어야 하는 것"은 그대로 끊긴다.
         // 아직 내지르지 않은 스윙은 거둘 수 있다.
         //
-        // 방패를 든 유닛만이다 — 그게 그들의 역할이고, 전원이 스윙을 물리면 아무도 공격을
-        // 끝내지 못한다. 이미 내지른 뒤(회수 동작)에는 되돌리지 못한다. 그게 선공의 대가다.
+        // 받아내는 방식을 가진 직군만이다 — 그게 그들의 역할이고, 전원이 스윙을 물리면
+        // 아무도 공격을 끝내지 못한다. 일곱 직군 중 탱커(방패)와 검사(패링) 둘뿐이다.
+        // 이미 내지른 뒤(회수 동작)에는 되돌리지 못한다. 그게 선공의 대가다.
         //
-        // 이게 없으면 방패병의 방어 기회가 스윙 사이의 0.2초짜리 틈으로 쪼그라든다.
+        // 이게 없으면 방어 기회가 스윙 사이의 0.2초짜리 틈으로 쪼그라든다.
         // 적의 준비 동작이 0.4초뿐이라 그 둘이 겹칠 일이 거의 없다.
-        if (context.IsTelegraphing && context.Stats.isTank && context.CanBlock())
+        //
+        // 검사에게 특히 중요하다. 패링은 "버티는 자세"가 아니라 날아오는 궤적에 맞춰 내미는
+        // 한 동작이라, 휘두르던 칼을 거두고 들어가지 못하면 성립 자체가 안 된다 —
+        // 원작의 공수 전환(파고들다가 반격이 오면 즉시 받아친다)이 이 한 줄에 걸려 있다.
+        if (context.IsTelegraphing && context.Stats.guardStyle != GuardStyle.None && context.CanBlock())
         {
             context.ChangeState(context.BlockState);
             return true;
@@ -116,6 +127,21 @@ public class AttackState : UnitBattleState
             return true;
         }
 
+        // 마법사의 영창. 콤보 레커버리 게이트보다 앞에 둔다.
+        //
+        // 그 게이트는 "콤보를 끝까지 이어붙이게 하라"는 것이고, 판단 근거가 hasSwungAtLeastOnce다.
+        // 그런데 마법사는 평생 한 번도 휘두르지 않으므로(CanAttack이 false) 그 값이 영영 거짓이고,
+        // 아래에 두면 마법사는 영창을 한 번도 시작하지 못한 채 제자리에 선다.
+        //
+        // CanCastSpell 안에서 이미 "쓸 만한 마법이 있는가"까지 연산이 끝나고(SelectSpell),
+        // 마법사가 아닌 유닛은 속성이 없어 항상 false다. 그래서 앞으로 옮겨도 다른 직군에는
+        // 아무 영향이 없다.
+        if (context.CanCastSpell())
+        {
+            context.ChangeState(context.CastState);
+            return true;
+        }
+
         // 여기서부터가 "재량" 전환이다(스킬). 콤보 스텝 하나가 끝날 때마다 검토하면
         // 스윙 하나 끝날 때마다 다른 상태로 튀어서 콤보가 거의 끝까지 이어지지 않는다("뚝배기 깨기").
         // 콤보가 한 바퀴 돌아 레커버리 시점에 온 경우에만 검토한다.
@@ -131,11 +157,12 @@ public class AttackState : UnitBattleState
         return false;
     }
 
-    private void TryAttack()
+    // 지금 실제로 휘둘렀는가. 휘두르지 못했으면 부르는 쪽이 그 시간에 자리를 잡는다.
+    private bool TryAttack()
     {
-        if (context.CanAttack())
-        {
-            context.TriggerAttack();
-        }
+        if (!context.CanAttack()) return false;
+
+        context.TriggerAttack();
+        return true;
     }
 }

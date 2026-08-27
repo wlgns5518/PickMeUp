@@ -61,13 +61,15 @@ public class MeshyCharacterGenerator : MonoBehaviour
     // 직업: enum, 영어 프롬프트, 가중치를 1:1 매칭으로 묶음
     private static readonly JobType[]  JobPool = {
         JobType.Melee, JobType.Mage, JobType.Archer, JobType.Assassin, JobType.Tank, JobType.Support,
+        JobType.Lancer,
         JobType.Carpenter, JobType.Cook, JobType.Blacksmith, JobType.Tanner,
     };
     private static readonly string[]   JobPromptsEn = {
-        "warrior", "mage", "archer", "assassin", "tank knight", "support healer",
+        "swordsman", "mage", "archer", "assassin", "tank knight", "priest healer",
+        "spearman",
         "carpenter", "cook", "blacksmith", "leatherworker",
     };
-    private static readonly int[]      JobWeights = { 13, 13, 13, 13, 13, 13,  6, 5, 6, 5 };
+    private static readonly int[]      JobWeights = { 12, 12, 12, 12, 12, 12, 12,  6, 5, 6, 5 };
 
     private static readonly string[]   Traits   = { "냉소적인", "낙천적인", "고독한", "충직한", "야망 있는", "수줍은", "비밀스러운" };
     private static readonly string[]   TraitsEn = { "cynical", "cheerful", "lonely", "loyal", "ambitious", "shy", "mysterious" };
@@ -95,13 +97,21 @@ public class MeshyCharacterGenerator : MonoBehaviour
         so.starCount = forcedStars > 0 ? Mathf.Clamp(forcedStars, 1, 7) : SummonTable.RollStars(SummonKind.Paid);
         so.level = 1; so.exp = 0; so.expToNext = 10;
         so.job = JobPool[jIdx];
+        // 마법사는 태어날 때 속성이 하나 정해지고 평생 바뀌지 않는다.
+        // 그래서 같은 마법사라도 어느 속성을 뽑았느냐가 그 캐릭터의 쓸모를 가른다 —
+        // 소환의 결과가 등급뿐 아니라 속성으로도 갈리는 셈이다.
+        so.affinity = so.job == JobType.Mage ? SpellCatalog.RollAffinity() : MagicAffinity.None;
 
         if (!string.IsNullOrEmpty(presetName))
             so.characterName = presetName;
         else
             yield return GenerateName(name => so.characterName = name);
 
-        so.description  = $"{Traits[tIdx]} 인간 {CharacterRules.Korean(so.job)}";
+        // 마법사는 속성이 곧 정체성이라 설명에도 적는다 — "빙결 마법사"와 "화염 마법사"는 다른 캐릭터다.
+        string jobLabel = so.job == JobType.Mage
+            ? $"{SpellCatalog.Korean(so.affinity)} {CharacterRules.Korean(so.job)}"
+            : CharacterRules.Korean(so.job);
+        so.description  = $"{Traits[tIdx]} 인간 {jobLabel}";
         so.constitution = RollConstitution(so.job);
         RollInitialStats(so);
         so.name = $"{so.characterName} ({so.starCount}★)";
@@ -191,6 +201,8 @@ public class MeshyCharacterGenerator : MonoBehaviour
             case JobType.Assassin:   c.name = "그림자"; c.agilityGrowth = 1.8f; c.strengthGrowth = 1.0f; c.intelligenceGrowth = 0.7f; c.vitalityGrowth = 0.5f; break;
             case JobType.Tank:       c.name = "강건한"; c.vitalityGrowth = 1.8f; c.strengthGrowth = 1.2f; c.intelligenceGrowth = 0.5f; c.agilityGrowth = 0.5f; break;
             case JobType.Support:    c.name = "조화";   c.intelligenceGrowth = 1.4f; c.vitalityGrowth = 1.0f; c.agilityGrowth = 0.8f; c.strengthGrowth = 0.8f; break;
+            // 창수는 검사보다 팔이 길고 자세가 낮다 — 힘보다 균형과 지구력에 가깝게 잡았다.
+            case JobType.Lancer:     c.name = "곧은";   c.strengthGrowth = 1.3f; c.agilityGrowth = 1.2f; c.vitalityGrowth = 1.0f; c.intelligenceGrowth = 0.5f; break;
             case JobType.Carpenter:  c.name = "근면";   c.strengthGrowth = 1.2f; c.vitalityGrowth = 1.1f; c.agilityGrowth = 0.9f; c.intelligenceGrowth = 0.8f; break;
             case JobType.Cook:       c.name = "온화";   c.vitalityGrowth = 1.2f; c.intelligenceGrowth = 1.1f; c.agilityGrowth = 0.9f; c.strengthGrowth = 0.8f; break;
             case JobType.Blacksmith: c.name = "강인";   c.strengthGrowth = 1.5f; c.vitalityGrowth = 1.3f; c.agilityGrowth = 0.6f; c.intelligenceGrowth = 0.6f; break;

@@ -49,8 +49,49 @@ public class UnitStats
     public float detectRange = 8f;
 
     [Header("Role")]
-    [Tooltip("탱커 직업이거나 방패를 든 유닛. 적의 대상 선정이 이 유닛을 우선 노리도록 만드는 데 쓴다(어그로).")]
+    // 직업이 정하는 전술 성향. CharacterBattleSpawner.MapStats가 JobProfile에서 옮겨 담는다.
+    // 프리팹에 직접 값을 넣는 유닛(고블린)은 전부 기본값이라 예전과 똑같이 행동한다.
+    [Tooltip("전장에서 이 유닛이 서는 자리와 하는 일. None이면 성향 없이 눈앞의 적을 친다.")]
+    public JobRole role = JobRole.None;
+    [Tooltip("날아오는 공격을 받아내는 방식. None이면 아예 막지 않는다 — " +
+             "원거리 직군과 암살자는 맞기 전에 빠지는 쪽이다.")]
+    public GuardStyle guardStyle = GuardStyle.None;
+
+    [Tooltip("탱커 직업이거나 방패를 든 유닛. 스폰 시점의 적 배분(CharacterBattleSpawner)과 " +
+             "공격을 물리고 방패를 드는 판단(AttackState)에 쓴다. 어그로 자체는 threatWeight가 맡는다.")]
     public bool isTank;
+
+    [Tooltip("적이 나를 얼마나 우선해서 노리는가(어그로). 1이 기준이고 탱커가 3.2, 사제가 0.3이다. " +
+             "0이면 아무 편향 없이 거리만으로 노려진다.")]
+    [Min(0f)] public float threatWeight = 1f;
+
+    [Tooltip("적 진영의 후방(궁수/마법사/사제)을 얼마나 우선해서 찾아 들어가는가(미터 단위 편향). " +
+             "암살자만 크다. 0이면 가장 가까운 적을 친다.")]
+    [Min(0f)] public float backlinePreference;
+
+    [Tooltip("나보다 위협 가중치가 낮은 아군을 물고 있는 적을 얼마나 우선해서 노리는가(도발, 미터 단위 편향). " +
+             "탱커만 크다. 이 값이 어그로를 수동적인 것에서 능동적인 것으로 바꾼다 — " +
+             "탱커가 그쪽으로 걸어가 한 대 치면 위협 비교가 적을 탱커에게 넘긴다.")]
+    [Min(0f)] public float peelBonus;
+
+    [Tooltip("교전 중 서고 싶은 방위(도). 적의 정면이 0, 측면이 90, 등 뒤가 180이다. " +
+             "좌우 중 어느 쪽인지는 유닛마다 스폰 시 따로 정해진다.")]
+    [Range(0f, 180f)] public float engageAngle;
+
+    [Tooltip("적이 이 거리(미터) 안으로 들어오면 물러선다. 0이면 붙어서 싸운다. " +
+             "원거리 직군만의 것이 아니다 — 창수는 근접이면서도 이 값을 갖는다(리치 우위 유지).")]
+    [Min(0f)] public float keepDistanceRange;
+
+    [Tooltip("시야각(도). 0이면 TargetScanner의 기본값을 쓴다. 정찰을 겸하는 궁수만 넓다.")]
+    [Range(0f, 360f)] public float viewAngle;
+
+    [Header("Magic")]
+    [Tooltip("마법사가 평생 귀속되는 속성. None이면 마법을 쓰지 않는다(마법사가 아닌 전 직군). " +
+             "이 값 하나가 그 유닛이 쓸 수 있는 마법 전부를 정한다 — 속성을 바꿔 쓰는 일은 없다.")]
+    public MagicAffinity affinity = MagicAffinity.None;
+    [Tooltip("영창 시간에 곱해지는 값. 1보다 작으면 더 빨리 영창한다(원작 이설의 '짧은 영창' 성장). " +
+             "무방비 시간이 그만큼 줄어들므로 마법사의 생존과 직결된다.")]
+    [Range(0.3f, 2f)] public float castSpeedMultiplier = 1f;
 
     [Header("Damage")]
     public int attackDamage = 8;
@@ -58,6 +99,17 @@ public class UnitStats
     [Tooltip("발차기 피해 배율. 무기로 베는 것보다 약하다 — 발차기의 값어치는 피해가 아니라 " +
              "가드를 여는 강인도 피해(poiseDamageKick)에 있다.")]
     [Range(0.1f, 2f)] public float kickDamageMultiplier = 0.6f;
+
+    [Header("Debuff On Hit")]
+    // 직군이 "때린다"는 같은 동작으로 서로 다른 일을 하게 만드는 자리.
+    // 암살자는 급소를 그어 피를 내고, 창수는 다리를 찔러 발을 묶는다.
+    [Tooltip("평타가 출혈을 남길 확률. 등 뒤를 잡으면 두 배가 된다(급소 타격). " +
+             "출혈 자체의 지속시간·피해량은 맞는 쪽의 EmotionProfile이 정한다.")]
+    [Range(0f, 1f)] public float bleedChanceOnHit;
+    [Tooltip("평타가 상대의 발을 묶는 시간(초). 0이면 둔화를 걸지 않는다(부위 억제).")]
+    [Min(0f)] public float slowOnHitDuration;
+    [Tooltip("둔화가 걸린 동안의 이동 속도 배율. 1이면 사실상 둔화가 없다.")]
+    [Range(0.1f, 1f)] public float slowOnHitMultiplier = 1f;
 
     [Header("Cooldowns")]
     public float skillCooldown = 5.0f;
@@ -74,6 +126,13 @@ public class UnitStats
     [Range(0f, 1f)] public float blockDamageReduction = 1f;
     [Tooltip("상시 피해 경감. 방어 자세와 별개로 항상 적용된다. 탱커와 방패가 올려준다.")]
     [Range(0f, 0.9f)] public float damageReduction;
+    [Tooltip("방어 자세로 받아낼 수 있는 좌우 각도(전체 폭). 이 밖에서 들어온 공격은 자세를 잡고 있어도 그대로 맞는다. " +
+             "방패는 정면 반구를 통째로(180) 가리지만, 검신으로 쳐내는 패링은 훨씬 좁다(110). " +
+             "그래서 검사는 여럿에게 둘러싸이면 방패병처럼 버티지 못한다.")]
+    [Range(30f, 360f)] public float guardArcAngle = 180f;
+    [Tooltip("흘려내기(퍼펙트 가드)에 성공한 직후 곧바로 반격에 들어갈 수 있는가. " +
+             "검사의 패링만 참이다 — 쳐낸 그 자리에서 되받아치는 것이 패링의 값어치다.")]
+    public bool counterAfterPerfectGuard;
 
     // 강인도는 "얼마나 버티는가"를 재는 유일한 자원이다. 예전에는 방어 지구력(Block Stamina)이
     // 따로 있어서 막는 쪽만 별도로 닳았는데, 두 자원이 같은 일(계속 버티지 못하게 하기)을
@@ -156,6 +215,10 @@ public class UnitStats
     [Tooltip("공격을 내지른 직후(회수 동작 중)에 맞으면 늘어나는 피해 배율. 선공을 " +
              "헛치거나 흘려보내면 그만큼 벌을 받는다.")]
     public float recoveryVulnerabilityMultiplier = 1.35f;
+    [Tooltip("영창(치유·스킬 시전) 중에 맞으면 늘어나는 피해 배율. 마법사 2.2, 사제 1.8. " +
+             "원작의 '시전 시간 동안 완전히 무방비'가 이 숫자 하나로 성립한다 — " +
+             "그래서 후방 시전자는 탱커가 만들어 준 시간 안에서만 영창을 끝낼 수 있다.")]
+    public float castVulnerabilityMultiplier = 1f;
 
     [Header("Reaction")]
     // 예전에는 적이 칼을 들어올린 그 프레임에 곧바로 방패가 올라갔다. 반응이라기보다 예지에
@@ -204,6 +267,12 @@ public class UnitStats
     public int healManaCost = 15;
     [Tooltip("HP가 이 비율 이하인 아군을 치료 대상으로 본다.")]
     [Range(0f, 1f)] public float healTargetHpRatio = 0.7f;
+    [Tooltip("치유가 끝날 때 대상의 출혈과 공포를 함께 걷어낸다(디스펠). " +
+             "원작에서 상태이상 해제는 치유만큼이나 사제의 일이다 — 제때 못 풀면 전열이 통째로 무력화된다.")]
+    public bool dispelOnHeal = true;
+    [Tooltip("상태이상에 걸린 아군을 치료 대상으로 고를 때 HP 비율에서 빼 주는 값. " +
+             "덜 다쳤어도 출혈 중이면 먼저 손이 가게 만든다. 0이면 순수하게 HP만 본다.")]
+    [Range(0f, 0.5f)] public float dispelPriorityBonus = 0.2f;
 
     public bool IsDead => currentHp <= 0;
     public bool HasPotion => potionCount > 0;

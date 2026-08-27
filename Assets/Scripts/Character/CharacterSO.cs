@@ -72,6 +72,18 @@ public class CharacterSO : ScriptableObject
     [Header("Job")]
     public JobType job;
 
+    [Tooltip("마법사가 평생 귀속되는 속성 하나. 원작에서 마법사는 단 하나의 속성만 다루며, " +
+             "복수 속성은 극히 예외적인 천재나 특수 아티팩트에 한정된다. " +
+             "이 값이 그 마법사가 쓸 수 있는 마법 전부를 결정한다(SpellCatalog). " +
+             "마법사가 아닌 직업에서는 쓰이지 않는다.")]
+    public MagicAffinity affinity = MagicAffinity.None;
+
+    // 마법사인데 속성이 정해지지 않은 캐릭터는 화염으로 떨어진다.
+    // 속성 없는 마법사는 마법을 하나도 쓸 수 없어 그냥 약한 원거리 유닛이 되기 때문이다 —
+    // 조용히 무력해지는 것보다 기본값이라도 갖는 편이 낫다.
+    public MagicAffinity Affinity =>
+        job == JobType.Mage && affinity == MagicAffinity.None ? MagicAffinity.Fire : affinity;
+
     // Constitution ------------------------------------------------------
     [Header("Constitution")]
     public Constitution constitution = new Constitution();

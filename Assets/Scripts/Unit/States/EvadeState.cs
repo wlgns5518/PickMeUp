@@ -53,10 +53,21 @@ public class EvadeState : UnitBattleState
         //    이유가 없고, 한 번 뛰는 것으로는 살아날 거리가 안 나온다.
         keepingDistance = context.ShouldKeepDistance();
 
-        Vector3 away = context.transform.position - context.CurrentTarget.transform.position;
-        away.y = 0f;
-        if (away.sqrMagnitude <= 0.0001f) away = -context.transform.forward;
-        away.Normalize();
+        // 간격을 벌리는 후퇴는 물러날 쪽을 컨텍스트가 정한다 — 평소에는 적의 반대쪽이지만,
+        // 전선에서 떨어져 나온 상태면 아군 쪽으로 물러난다(GetSpacingRetreatDirection 주석 참조).
+        // 목숨이 걸린 도주는 예전 그대로 적의 정반대다. 그때는 전열이 아니라 거리가 필요하다.
+        Vector3 away;
+        if (keepingDistance)
+        {
+            away = context.GetSpacingRetreatDirection();
+        }
+        else
+        {
+            away = context.transform.position - context.CurrentTarget.transform.position;
+            away.y = 0f;
+            if (away.sqrMagnitude <= 0.0001f) away = -context.transform.forward;
+            away.Normalize();
+        }
 
         // 뒤로 빠질 때만 회전을 코드가 가져간다. 도주는 가는 쪽을 보고 달려야 하므로
         // NavMeshAgent에게 돌려준다.

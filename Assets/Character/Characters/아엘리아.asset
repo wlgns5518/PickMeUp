@@ -14,20 +14,21 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CharacterSO
   id: 99cf7a3766f24115a438df5587bd1190
   characterName: "\uC544\uC5D8\uB9AC\uC544"
-  description: "\uB099\uCC9C\uC801\uC778 \uC778\uAC04 \uC694\uB9AC\uC0AC"
+  description: "\uB099\uCC9C\uC801\uC778 \uC778\uAC04 \uD0F1\uCEE4"
   portrait: {fileID: 21300000, guid: d49f5b9fbf779784ab2400d5a32ce035, type: 3}
   portraitAssetPath: "Assets/Character/CharacterImage/\uC544\uC5D8\uB9AC\uC544.png"
   starCount: 1
   level: 1
   exp: 0
   expToNext: 10
-  job: 7
+  job: 4
+  affinity: 0
   constitution:
-    name: "\uC628\uD654"
-    strengthGrowth: 0.77572185
-    intelligenceGrowth: 0.95713276
-    vitalityGrowth: 1.0367786
-    agilityGrowth: 0.8693048
+    name: "\uAC15\uAC74\uD55C"
+    strengthGrowth: 1.1364841
+    intelligenceGrowth: 0.53927433
+    vitalityGrowth: 1.5986959
+    agilityGrowth: 0.4977818
   stats:
     strength: 9
     intelligence: 10

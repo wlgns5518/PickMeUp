@@ -51,6 +51,9 @@ public static class UnitGlobalTransitions
             // 자세가 무너져 있는 동안은 스스로 아무것도 못 한다. 그 몇 초가 상대에게 열린
             // 빈틈인데, 그 사이에 회복약을 들이켜면 무너뜨린 의미가 사라진다.
             if (unit.IsStaggered) return null;
+            // 마력을 모으는 중에도 손이 비어 있지 않다. 여기서 끊으면 영창이 통째로 흩어지고
+            // 마력만 날아간다 — 스스로 그럴 이유가 없다.
+            if (unit.IsCasting) return null;
             if (!unit.CanUsePotion()) return null;
 
             return unit.PotionState;
@@ -69,6 +72,9 @@ public static class UnitGlobalTransitions
             // 자세가 무너져 있는 동안은 스스로 아무것도 못 한다. 그 몇 초가 상대에게 열린
             // 빈틈인데, 그 사이에 회복약을 들이켜면 무너뜨린 의미가 사라진다.
             if (unit.IsStaggered) return null;
+            // 마력을 모으는 중에도 손이 비어 있지 않다. 여기서 끊으면 영창이 통째로 흩어지고
+            // 마력만 날아간다 — 스스로 그럴 이유가 없다.
+            if (unit.IsCasting) return null;
             if (!unit.CanHealAlly()) return null;
 
             return unit.HealState;

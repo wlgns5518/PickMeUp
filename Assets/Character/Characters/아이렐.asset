@@ -14,20 +14,21 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   id: 92035354ccd34a94bd04204c19599d0b
   characterName: "\uC544\uC774\uB810"
-  description: "\uCDA9\uC9C1\uD55C \uC778\uAC04 \uADFC\uC811"
+  description: "\uCDA9\uC9C1\uD55C \uC778\uAC04 \uCC3D\uC218"
   portrait: {fileID: 21300000, guid: a6817060c582a25408aed567b775f5fe, type: 3}
   portraitAssetPath: "Assets/Character/CharacterImage/\uC544\uC774\uB810_20260513_191634_1171.png"
   starCount: 1
   level: 10
   exp: 0
   expToNext: 55
-  job: 0
+  job: 10
+  affinity: 0
   constitution:
-    name: "\uADFC\uC721\uC9C8"
-    strengthGrowth: 1.3720919
-    intelligenceGrowth: 0.45249018
-    vitalityGrowth: 1.2398984
-    agilityGrowth: 0.73467046
+    name: "\uACE7\uC740"
+    strengthGrowth: 1.4283869
+    intelligenceGrowth: 0.52643263
+    vitalityGrowth: 1.0517232
+    agilityGrowth: 1.3522115
   stats:
     strength: 17
     intelligence: 8

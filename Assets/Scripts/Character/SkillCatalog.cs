@@ -53,7 +53,7 @@ public static class SkillCatalog
         { JobType.Carpenter, JobType.Cook, JobType.Blacksmith, JobType.Tanner };
 
     private static readonly JobType[] MeleeJobs =
-        { JobType.Melee, JobType.Tank, JobType.Assassin };
+        { JobType.Melee, JobType.Tank, JobType.Assassin, JobType.Lancer };
 
     private static readonly SkillDefinition[] All =
     {
@@ -72,9 +72,12 @@ public static class SkillCatalog
         new SkillDefinition("whirlwind",     "회전 베기",   "몸을 돌려 주위를 한꺼번에 쓸어낸다.", 3, MeleeJobs),
 
         // 직업 전용 ----------------------------------------------------------
-        new SkillDefinition("fireball",      "화염구",      "불덩이를 던져 태운다.", 2, new[] { JobType.Mage }),
-        new SkillDefinition("frost_prison",  "서리 감옥",   "적의 발을 얼려 붙잡아 둔다.", 3, new[] { JobType.Mage }),
-        new SkillDefinition("meteor",        "유성 낙하",   "하늘에서 불덩이를 떨어뜨린다.", 5, new[] { JobType.Mage }),
+        // 마법사가 쓰는 마법 자체는 여기 없다. 그건 배우는 것이 아니라 속성이 주는 것이라
+        // SpellCatalog가 따로 들고 있다 — 화염 마법사는 화염구를 "배우지" 않고 처음부터 쓴다.
+        // 여기 남는 것은 그 마법을 어떻게 다루는가에 붙는 숙련이다.
+        new SkillDefinition("swift_chant",   "속성",        "영창이 짧아진다. 무방비로 서 있는 시간이 줄어든다.", 2, new[] { JobType.Mage }),
+        new SkillDefinition("mana_economy",  "마력 절약",   "같은 마력으로 마법을 한 번 더 짜낸다.", 3, new[] { JobType.Mage }),
+        new SkillDefinition("wide_matrix",   "확장 술식",   "펼치는 마법의 범위가 넓어진다.", 5, new[] { JobType.Mage }),
 
         new SkillDefinition("piercing_shot", "관통 사격",   "한 발로 여럿을 꿰뚫는다.", 2, new[] { JobType.Archer }),
         new SkillDefinition("multi_shot",    "다중 사격",   "화살 여러 대를 한 번에 메긴다.", 3, new[] { JobType.Archer }),
@@ -84,6 +87,13 @@ public static class SkillCatalog
 
         new SkillDefinition("taunt",         "도발",        "적의 시선을 자신에게 끌어온다.", 2, new[] { JobType.Tank }),
         new SkillDefinition("iron_wall",     "철벽",        "자리를 지키며 피해를 크게 덜어낸다.", 3, new[] { JobType.Tank }),
+
+        new SkillDefinition("parry_riposte", "받아넘기기", "상대 검을 흘려낸 그 자리에서 되받아친다.", 2, new[] { JobType.Melee }),
+        new SkillDefinition("sword_aura",    "검기",        "칼끝에 마력을 실어 장갑째 베어낸다.", 4, new[] { JobType.Melee }),
+
+        new SkillDefinition("leg_sweep",     "다리 걸기",   "정강이를 찔러 적의 발을 묶는다.", 2, new[] { JobType.Lancer }),
+        new SkillDefinition("brace",         "창벽",        "창을 세워 달려드는 적을 멈춰 세운다.", 3, new[] { JobType.Lancer }),
+        new SkillDefinition("impale",        "꿰뚫기",      "한 번에 깊게 찔러 부위를 망가뜨린다.", 4, new[] { JobType.Lancer }),
 
         new SkillDefinition("healing_hand",  "치유의 손길", "다친 동료의 상처를 아물게 한다.", 2, new[] { JobType.Support }),
         new SkillDefinition("blessing",      "축복",        "동료의 몸놀림을 한동안 끌어올린다.", 3, new[] { JobType.Support }),

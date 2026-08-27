@@ -123,6 +123,26 @@ public class UnitEmotion : MonoBehaviour
         if (bleedTickTimer <= 0f) bleedTickTimer = profile.bleedTickInterval;
     }
 
+    // 걷어낼 만한 상태이상을 지고 있는가. 사제가 치료 대상을 고를 때 본다 —
+    // 덜 다쳤어도 출혈 중이면 먼저 손이 가야 한다(원작에서 디스펠은 치유만큼 사제의 일이다).
+    public bool HasDispellableEffect => Has(EmotionState.Bleeding) || Has(EmotionState.Fear);
+
+    // 상태이상 해제. 출혈을 멈추고 공포 게이지를 낮춘다.
+    //
+    // 공포를 0으로 지우지 않고 임계 아래로만 내리는 이유: 게이지는 전투 상황(HP, 아군의 죽음)이
+    // 계속 밀어 올리는 값이라, 0으로 만들어 봐야 곧 되돌아온다. 임계 아래로 내려 "지금 이
+    // 순간 다시 움직일 수 있게" 만드는 것이 디스펠이 실제로 하는 일이다.
+    // 패닉으로 굳어 있는 동안은 풀지 못한다 — 그건 시간이 지나야 빠져나오는 상태다.
+    public void Dispel()
+    {
+        if (owner == null || owner.IsDead) return;
+
+        bleedRemaining = 0f;
+        bleedTickTimer = 0f;
+        fearGauge = Mathf.Min(fearGauge, profile.fearClearThreshold * 0.5f);
+        RecomputeState();
+    }
+
     // 피해를 입었을 때 UnitController가 호출. 잃은 HP 비율만큼 공포가 오르고,
     // 강타(스킬)에 맞으면 확률적으로 출혈이 걸린다.
     public void NotifyDamaged(int damage, bool fromSkill)

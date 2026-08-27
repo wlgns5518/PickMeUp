@@ -34,15 +34,28 @@ public partial class UnitController : MonoBehaviour
     [Tooltip("방어 중 위협 쪽으로 도는 속도. 일반 회전보다 느려야 등 뒤에서 들어오는 공격에 허점이 생긴다.")]
     [SerializeField] private float blockTurnSpeed = 240f;
 
-    [Header("Ranged")]
-    [Tooltip("사거리가 이 값 이상인 유닛만 원거리로 취급해 거리를 벌린다. 근접 유닛은 해당 없음.")]
+    [Header("Ranged (역할이 없는 유닛의 대비책)")]
+    // 아래 둘은 직업 역할(UnitStats.role / keepDistanceRange)이 정해지지 않은 유닛에만 쓰인다.
+    // 로스터 캐릭터는 CharacterBattleSpawner가 역할을 얹어 주므로 이 값을 거치지 않는다 —
+    // 프리팹에 직접 스탯을 넣는 유닛(고블린)과 옛 설정이 예전과 똑같이 동작하도록 남겨 둔 것이다.
+    [Tooltip("역할이 없는 유닛 한정. 사거리가 이 값 이상이면 원거리로 취급해 거리를 벌린다.")]
     [SerializeField] private float minKeepDistanceRange = 4f;
-    [Tooltip("사거리의 이 비율 안쪽까지 적이 붙으면 물러선다. " +
+    [Tooltip("역할이 없는 원거리 유닛이 물러서기 시작하는 거리 = 사거리 x 이 비율. " +
              "쫓아오는 근접 유닛과 이동 속도가 비슷해서 물러나 봐야 거의 못 벌리므로, " +
              "\"적이 실제로 때릴 수 있게 되는 순간\"에 맞춰 잡는다 — 사거리 9짜리에 0.3이면 2.7m로, " +
              "고블린의 타격 도달(1.85m) 바로 바깥이다. 더 올리면 사정권 밖의 적에게도 물러나느라 " +
              "쏘는 시간이 사라진다.")]
     [SerializeField, Range(0f, 1f)] private float keepDistanceRatio = 0.3f;
+
+    [Tooltip("가장 가까운 아군이 이보다 멀면(미터) 전선에서 떨어져 나온 것으로 보고, " +
+             "간격을 벌릴 때 적 반대쪽이 아니라 아군 쪽으로 물러난다. 0이면 제한 없음.\n\n" +
+             "이게 없으면 카이팅에 끝이 없다 — 물러나면 적이 따라오고, 따라오니까 또 물러난다. " +
+             "실제로 궁수가 고블린 하나를 45m 밖까지 끌고 가서 파티가 두 무리로 쪼개지고 " +
+             "사제의 치료 사거리(8m) 안에 아무도 남지 않는 것을 확인했다.\n\n" +
+             "값은 실측으로 잡았다: 대형 안의 유닛은 최근접 아군이 1.1~3.3m였고 " +
+             "혼자 도망친 궁수만 14.7m였다. 목숨이 걸린 후퇴(ShouldRetreatForSurvival)에는 " +
+             "걸리지 않는다 — 그때는 전선을 등지고 멀리 달아나는 것이 맞다.")]
+    [SerializeField, Min(0f)] private float regroupDistance = 8f;
 
     [Header("Targeting")]
     [SerializeField] private float targetChangeInterval = 0.5f;
@@ -132,6 +145,8 @@ public partial class UnitController : MonoBehaviour
     public PotionState PotionState { get; private set; }
     public StaggerState StaggerState { get; private set; }
     public HealState HealState { get; private set; }
+    // 마법사 전용. 스킬(SkillState)과 따로 둔 이유는 CastState 주석 참조.
+    public CastState CastState { get; private set; }
 
     public UnitTeam Team => team;
     public UnitEmotion Emotion => emotion;
@@ -160,7 +175,10 @@ public partial class UnitController : MonoBehaviour
     private float lastBlockTime = -999f;
     private float lastPotionTime = -999f;
     private float lastHealTime = -999f;
+    // CanHealAlly가 매 프레임 덮어쓰는 "지금 찾아본 후보".
     private UnitController healTarget;
+    // 영창을 시작할 때 잠가 둔 대상. 완성(CompleteHeal)은 이쪽만 본다 — BeginHealCast 주석 참조.
+    private UnitController castHealTarget;
     private UnitController blockThreat;
     private float attackLockedUntil;
     private float poiseImmuneUntil;
@@ -283,6 +301,13 @@ public partial class UnitController : MonoBehaviour
     {
         HasAttackedSinceEvade = false;
     }
+
+    // "물러난 뒤 한 수를 냈다"를 세운다. 평타(TriggerAttack)와 영창 시작(BeginSpellCast)이 부른다 —
+    // 마법사에게는 영창이 그 한 수다.
+    private void MarkAttackedSinceEvade()
+    {
+        HasAttackedSinceEvade = true;
+    }
     public float HitAnimationDuration => hitAnimationDuration;
     public float DeathAnimationDuration => deathAnimationDuration;
 
@@ -386,6 +411,7 @@ public partial class UnitController : MonoBehaviour
         // 피격 방향·방어 반동·경직·스트레이프처럼 "있으면 쓰고 없으면 대체"인 리액션 모션들.
         // 기본 모션 길이가 먼저 잡혀 있어야 대체값을 정할 수 있어서 마지막에 부른다.
         CacheCombatAnimationHashes();
+        CacheMagicAnimationHashes();
     }
 
     // 이름이 비어 있거나 애니메이터에 그런 상태가 없으면 0.
@@ -642,6 +668,31 @@ public partial class UnitController : MonoBehaviour
         return true;
     }
 
+    // 어그로 재평가(TargetScanner.ReviewAggro)가 고른 새 타깃으로 갈아탄다.
+    //
+    // TrySetTarget과 나눠 둔 이유는 "더 나은가"를 재는 기준이 다르기 때문이다.
+    // TrySetTarget은 순수 거리로 25% 더 가까운지를 본다(IsNewTargetClearlyBetter). 그 기준으로는
+    // 바로 옆에 선 탱커로 영영 옮겨가지 못한다 — 거리가 같으니까. 여기 들어오는 후보는
+    // 위협 가중치·혼잡도·유지 편향이 이미 다 반영된 결과라, 거리로 한 번 더 거르면
+    // 편향이 통째로 무효가 된다.
+    //
+    // 대신 지켜야 할 것은 지킨다: 휘두르는 중이거나 영창 중에는 바꾸지 않고,
+    // 최소 전환 간격(targetChangeInterval)도 그대로 건다.
+    public bool TryRetarget(UnitController target)
+    {
+        if (target == null || target == CurrentTarget) return false;
+        if (target.IsDead || !target.isActiveAndEnabled || !UnitRegistry.AreEnemies(this, target)) return false;
+
+        // 스윙 도중에 노리는 상대가 바뀌면 이미 나간 칼이 엉뚱한 곳을 향한다.
+        // 스윙과 스윙 사이의 틈에서만 갈아탄다.
+        if (IsAttackAnimationLocked || IsCasting) return false;
+        if (Time.time < lastTargetChangeTime + targetChangeInterval) return false;
+
+        AssignTarget(target);
+        ClearMoveDestination();
+        return true;
+    }
+
     public bool ShouldReleaseCurrentTarget()
     {
         if (CurrentTarget == null) return true;
@@ -768,8 +819,16 @@ public partial class UnitController : MonoBehaviour
         return targetPosition;
     }
 
+    // 마법사인가. 마법사에게는 평타가 없다 — 모든 공격이 영창을 거쳐 마법으로 나간다.
+    public bool IsCaster => stats.affinity != MagicAffinity.None;
+
     public bool CanAttack()
     {
+        // 마법사는 칼을 휘두르듯 즉발로 내지르는 동작이 하나도 없다. 가장 작은 마법(기본 마법)조차
+        // 짧게나마 마력을 모아 나가므로, 공격은 전부 CastState를 거친다(UnitController.Magic.cs).
+        // 여기서 막지 않으면 마법사가 맨손으로 허공을 치는 평타 모션을 섞어 쓰게 된다.
+        if (IsCaster) return false;
+
         return HasAttackAnimation &&
                IsTargetValid() &&
                IsTargetInAttackRange() &&
@@ -847,20 +906,62 @@ public partial class UnitController : MonoBehaviour
         if (Time.time < lastHealTime + stats.healCooldown) return false;
         if (!stats.HasMana(stats.healManaCost)) return false;
 
-        healTarget = UnitRegistry.FindMostWoundedAlly(this, stats.healRange, stats.healTargetHpRatio);
+        healTarget = UnitRegistry.FindMostWoundedAlly(
+            this, stats.healRange, stats.healTargetHpRatio, stats.dispelPriorityBonus);
         return healTarget != null;
     }
 
-    public void PerformHeal()
+    // 영창을 시작한다. 마력은 여기서 나간다 — 끊기면 그대로 손실이다.
+    //
+    // 예전에는 HealState.Enter가 곧바로 PerformHeal을 불러 시전과 동시에 회복이 끝났다.
+    // 그래서 "영창 중 무방비"라는 원작 설정이 성립할 수 없었다 — 맞아서 끊겨도 이미 치료가
+    // 끝난 뒤라 잃는 것이 없었기 때문이다. 지금은 시작(마력 소모)과 완성(실제 회복)을 나눠서,
+    // 사제가 탱커의 방어선 안에서만 영창을 끝낼 수 있게 만든다.
+    //
+    // 대상을 castHealTarget으로 옮겨 잠그는 것이 핵심이다. healTarget은 "지금 찾아본 후보"이고
+    // 매 프레임 CanHealAlly가 덮어쓴다 — 전역 전이(HealTransition)가 프레임마다 그걸 부르기
+    // 때문이다. 영창을 시작하면 그 순간 쿨다운이 걸려 CanHealAlly가 곧바로 false가 되고,
+    // 그때 healTarget이 null로 지워진다. 잠가 두지 않으면 영창을 마쳤을 때 치료할 대상이
+    // 사라져 있어서, 마력만 나가고 아무도 회복되지 않는다(실측으로 확인한 버그다).
+    public void BeginHealCast()
     {
-        if (healTarget == null || healTarget.IsDead || !healTarget.CanRecoverHp) return;
-
-        int healed = healTarget.Stats.Heal(stats.healAmount);
+        castHealTarget = healTarget;
         stats.SpendMana(stats.healManaCost);
         lastHealTime = Time.time;
+        BeginCast();
+    }
 
-        if (debugLogs) Debug.Log($"[UnitController] {name} 회복 시전: {healTarget.name} HP +{healed}");
-        healTarget = null;
+    // 영창을 끝까지 마쳤다. 여기서야 실제로 회복되고 상태이상이 걷힌다.
+    public void CompleteHeal()
+    {
+        EndCast();
+
+        UnitController target = castHealTarget;
+        castHealTarget = null;
+        if (target == null || target.IsDead || !target.CanRecoverHp) return;
+
+        int healed = target.Stats.Heal(stats.healAmount);
+
+        // 디스펠. 원작에서 독·마비·출혈을 제때 걷어내지 못하면 전열이 통째로 무력화된다 —
+        // 회복량보다 이쪽이 판을 가르는 경우가 많다.
+        bool dispelled = false;
+        if (stats.dispelOnHeal && target.Emotion != null && target.Emotion.HasDispellableEffect)
+        {
+            target.Emotion.Dispel();
+            dispelled = true;
+        }
+
+        if (debugLogs) Debug.Log($"[UnitController] {name} 회복 시전 완료: {target.name} HP +{healed}{(dispelled ? " (상태이상 해제)" : "")}");
+    }
+
+    // 영창이 끊겼다. 마력은 이미 나갔으므로 돌려주지 않는다 — 그것이 끊긴 대가다.
+    public void CancelHealCast()
+    {
+        if (!IsCasting) return;
+
+        EndCast();
+        castHealTarget = null;
+        if (debugLogs) Debug.Log($"[UnitController] {name} 영창 중단 — 마력만 소모됨");
     }
 
     public void TriggerHeal()
@@ -917,9 +1018,19 @@ public partial class UnitController : MonoBehaviour
         return blockThreat != null;
     }
 
-    // 방어 판정의 정면 180도 부채꼴. 공격자가 내 전방 반구 안에 있으면(코사인 0 이상) 막을 수 있고,
-    // 그 밖(등 뒤~옆 뒤쪽)이면 방어 자세여도 막지 못한다.
-    private bool IsWithinFrontArc(Vector3 attackerPosition)
+    // 등 뒤를 잡혔는가를 가르는 정면 반구(180도). 이건 몸의 앞뒤이므로 직군과 무관하게 고정이다 —
+    // 배후 피해 배율(backstabDamageMultiplier)과 피격 방향 판정이 이 값을 쓴다.
+    private bool IsWithinFrontArc(Vector3 attackerPosition) => IsWithinArc(attackerPosition, 180f);
+
+    // 자세로 받아낼 수 있는 각도. 이쪽은 막는 방식이 정한다(stats.guardArcAngle) —
+    // 방패는 정면 반구를 통째로 가리지만(180), 검신으로 쳐내는 패링은 훨씬 좁다(110).
+    // 검사가 여럿에게 둘러싸이면 방패병처럼 버티지 못하는 이유가 이 숫자다.
+    //
+    // 정면 반구와 나눠 둔 것이 중요하다. 하나로 합치면 패링 각도를 좁히는 순간 그 바깥이
+    // 통째로 "등 뒤"가 되어, 검사만 ±55도 밖에서 맞을 때마다 1.6배를 맞게 된다.
+    private bool IsWithinGuardArc(Vector3 attackerPosition) => IsWithinArc(attackerPosition, stats.guardArcAngle);
+
+    private bool IsWithinArc(Vector3 attackerPosition, float arcAngle)
     {
         Vector3 toAttacker = attackerPosition - transform.position;
         toAttacker.y = 0f;
@@ -929,20 +1040,102 @@ public partial class UnitController : MonoBehaviour
         forward.y = 0f;
         if (forward.sqrMagnitude <= 0.0001f) return true;
 
-        return Vector3.Dot(forward.normalized, toAttacker.normalized) >= 0f;
+        float minDot = Mathf.Cos(Mathf.Clamp(arcAngle * 0.5f, 0f, 180f) * Mathf.Deg2Rad);
+        return Vector3.Dot(forward.normalized, toAttacker.normalized) >= minDot;
     }
 
-    // 원거리 유닛이 적에게 붙잡혔는지 판단한다.
+    // 이 유닛이 원거리에서 싸우는가.
+    //
+    // 예전에는 이 판단이 전부 "사거리 >= minKeepDistanceRange"라는 숫자 하나였다. 그러면
+    // 무기에 따라 결과가 흔들린다 — 단검을 든 마법사가 근접으로 잡히고, 창수의 리치를 조금만
+    // 올리면 발차기와 쓸어베기를 잃는다. 역할이 있으면 역할로 묻고, 없는 유닛(고블린,
+    // 프리팹 직접 설정)만 예전 방식으로 떨어진다.
+    public bool IsRangedFighter =>
+        stats.role != JobRole.None
+            ? JobProfile.IsRangedRole(stats.role)
+            : stats.attackRange >= minKeepDistanceRange;
+
+    // 적이 이 거리 안으로 들어오면 물러선다. 0이면 붙어서 싸운다.
+    // 역할이 정해 준 값이 있으면 그것을 쓰고, 없으면 예전의 "사거리 x 비율"로 떨어진다.
+    private float KeepDistanceThreshold
+    {
+        get
+        {
+            if (stats.keepDistanceRange > 0f) return stats.keepDistanceRange;
+            if (stats.role != JobRole.None) return 0f;
+            return stats.attackRange >= minKeepDistanceRange ? stats.attackRange * keepDistanceRatio : 0f;
+        }
+    }
+
+    // 적에게 붙잡혀서 제 간격을 잃었는지 판단한다.
     // attackRange만 늘리면 "더 멀리서 공격을 시작"할 뿐, 이미 붙은 적에게서 물러나지는 않는다.
     // 실제로 돌려보니 사거리 9짜리가 1.4m에서 근접 유닛과 나란히 싸우고 있었다 —
-    // 원거리 역할이 성립하려면 교전 중에도 거리를 다시 벌리는 판단이 따로 필요하다.
+    // 거리로 먹고사는 역할이 성립하려면 교전 중에도 거리를 다시 벌리는 판단이 따로 필요하다.
+    //
+    // 원거리 직군만의 것이 아니다. 창수는 근접 무기를 들고도 이 판단을 한다 —
+    // 창의 리치는 붙이지 않았을 때만 우위이므로, 파고든 적을 밀어내며 찌르는 것이 그 직군이다.
     public bool ShouldKeepDistance()
     {
-        if (stats.attackRange < minKeepDistanceRange) return false;
         if (!IsTargetValid()) return false;
 
-        float threshold = stats.attackRange * keepDistanceRatio;
+        float threshold = KeepDistanceThreshold;
+        if (threshold <= 0f) return false;
+
         return SqrDistanceToTarget() < threshold * threshold;
+    }
+
+    // 전선에서 떨어져 나왔는가. 프레임당 한 번만 재고 그 답을 재사용한다 —
+    // 후퇴 판단이 한 프레임에 여러 번 물어보는데, 매번 팀 전체를 훑을 이유는 없다.
+    private int regroupCheckFrame = -1;
+    private bool regroupCheckResult;
+
+    public bool IsSeparatedFromLine
+    {
+        get
+        {
+            if (regroupDistance <= 0f) return false;
+            if (regroupCheckFrame == Time.frameCount) return regroupCheckResult;
+
+            regroupCheckFrame = Time.frameCount;
+
+            UnitController nearest = UnitRegistry.FindNearestAlly(this);
+            if (nearest == null)
+            {
+                // 혼자 남았으면 돌아갈 전선이 없다. 평소대로 적에게서 물러난다.
+                regroupCheckResult = false;
+                return false;
+            }
+
+            Vector3 offset = nearest.transform.position - transform.position;
+            offset.y = 0f;
+            regroupCheckResult = offset.sqrMagnitude > regroupDistance * regroupDistance;
+            return regroupCheckResult;
+        }
+    }
+
+    // 간격을 벌릴 때 실제로 물러날 방향.
+    //
+    // 평소에는 적의 반대쪽이다. 다만 전선에서 떨어져 나온 상태라면 아군 쪽으로 물러난다 —
+    // 그러지 않으면 물러남이 곧 이탈이 되어, 적 하나를 끌고 맵 끝까지 나가면서 파티가 쪼개진다
+    // (실측: 궁수가 45m). 원작에서도 검사가 반격을 받으면 "탱커의 방패 뒤나 후방으로" 물러나지,
+    // 아무 데로나 빠지지 않는다. 물러나면서 전열에 합류하는 쪽이 두 마리 토끼를 다 잡는다.
+    public Vector3 GetSpacingRetreatDirection()
+    {
+        Vector3 away = transform.position - (CurrentTarget != null ? CurrentTarget.transform.position : transform.position + transform.forward);
+        away.y = 0f;
+        if (away.sqrMagnitude <= 0.0001f) away = -transform.forward;
+        away.Normalize();
+
+        if (!IsSeparatedFromLine) return away;
+
+        UnitController anchor = UnitRegistry.FindNearestAlly(this);
+        if (anchor == null) return away;
+
+        Vector3 toAnchor = anchor.transform.position - transform.position;
+        toAnchor.y = 0f;
+        if (toAnchor.sqrMagnitude <= 0.0001f) return away;
+
+        return toAnchor.normalized;
     }
 
     public bool CanEvade()
@@ -1006,10 +1199,11 @@ public partial class UnitController : MonoBehaviour
         // 이미 죽은 유닛에 피가 튀거나 피격 상태로 되돌아가지 않도록 여기서 끊는다.
         if (IsDead) return;
 
-        // 방패/무기로는 정면 180도만 막는다. 등 뒤나 옆 뒤쪽에서 들어온 공격은 방어 자세여도
-        // 그대로 맞는다 — 아군끼리 서로 등을 지켜줘야 하는 이유가 된다.
+        // 뒤를 잡혔는가(피해 배율)와 받아낼 수 있는가(방어 각도)는 다른 질문이다.
+        // 방패는 정면 반구를 통째로 가리지만 패링은 훨씬 좁으므로, 검사에게는 "막지는 못했지만
+        // 등 뒤도 아닌" 구간이 생긴다 — 옆에서 들어온 칼은 정직하게 한 대 맞는다.
         bool inFrontArc = attacker == null || IsWithinFrontArc(attacker.transform.position);
-        bool wantsToBlock = IsBlocking && inFrontArc;
+        bool wantsToBlock = IsBlocking && (attacker == null || IsWithinGuardArc(attacker.transform.position));
 
         // 방패를 올린 직후에 들어온 공격은 막는 것이 아니라 통째로 흘려낸다.
         // 흘러가면 피해도 강인도 소모도 없으므로 아래 계산 자체를 건너뛴다.
@@ -1029,6 +1223,9 @@ public partial class UnitController : MonoBehaviour
         if (IsInAttackRecovery) damageMultiplier *= stats.recoveryVulnerabilityMultiplier;
         // 이미 자세가 무너져 있는 상태.
         if (IsStaggered) damageMultiplier *= stats.staggerDamageMultiplier;
+        // 마력을 모으는 중이라 몸을 뺄 수도 막을 수도 없는 상태. 후방 시전자에게 가장 큰 배율이다 —
+        // 원작에서 마법사·사제가 탱커의 방어선 없이는 아무것도 못 하는 이유가 이것이다.
+        if (IsCasting) damageMultiplier *= stats.castVulnerabilityMultiplier;
 
         int incoming = damage > 0 ? Mathf.Max(1, Mathf.RoundToInt(damage * damageMultiplier)) : damage;
 
@@ -1052,6 +1249,9 @@ public partial class UnitController : MonoBehaviour
         RecordHitDirection(attacker);
         if (!wasBlocking) SpawnBloodEffect(attacker);
         if (emotion != null) emotion.NotifyDamaged(dealt, fromSkill);
+
+        // 때린 쪽의 직군이 남기는 흔적. 막아낸 타격은 살에 닿지 않았으므로 아무것도 남기지 않는다.
+        if (!wasBlocking) ApplyOnHitDebuffs(attacker, inFrontArc);
 
         // 칼이 닿은 순간 양쪽의 애니메이션을 아주 짧게 눌러 붙인다. 막힌 타격은 살에 박히는
         // 것이 아니라 튕겨 나가는 것이라 더 짧게 끊는다.
@@ -1109,6 +1309,21 @@ public partial class UnitController : MonoBehaviour
         // 강인도가 안 깨졌으면 애니메이션은 끊지 않는다 — 슈퍼아머는 아니라서 살짝 밀리기만 하고
         // 곧장 다시 싸운다(콤보 마무리나 스킬만 진짜 경직을 유발한다).
         if (attacker != null) ApplyMicroPushback(attacker.transform.position);
+
+        // 영창은 여기서 끊지 않는다.
+        //
+        // 아래 두 줄(InterruptCurrentAction + AttackState)은 근접 유닛에게는 무해하다 — 어차피
+        // 공격 상태로 돌아갈 참이었기 때문이다. 그런데 마법사에게는 치명적이다: 상태가 바뀌는
+        // 순간 CastState.Exit이 영창을 통째로 흩어 버린다. 스치는 피해 한 번에 7.8초짜리
+        // 영창이 사라지는 셈이라, 실측에서 마법사가 붙잡힌 채 단 한 번도 완주하지 못하고
+        // 딜 0으로 끝났다(유성 낙하 3회, 화염구 4회 전부 중단).
+        //
+        // 규칙은 위 주석 그대로 가져간다: 진짜로 끊는 것은 강인도가 깨졌을 때뿐이다.
+        // 그 판정은 이미 위쪽에서 HitState로 보내며 처리했으므로, 여기까지 내려온 피격은
+        // "버텨 낸 것"이다. 영창 중에는 그 사이에도 무방비 배율(castVulnerabilityMultiplier)을
+        // 그대로 받으므로 공짜로 버티는 것이 아니다 — 계속 맞으면 강인도가 깨져 결국 끊긴다.
+        if (IsCasting) return;
+
         InterruptCurrentAction();
         ChangeState(AttackState);
     }
@@ -1207,8 +1422,14 @@ public partial class UnitController : MonoBehaviour
             return;
         }
 
+        // 탱커의 발차기는 실드 배시다. 밀어내는 것 자체가 목적이라 넉백을 함께 건다 —
+        // "다가오는 적의 기세를 꺾고 뒤로 밀쳐낸다"가 원작에서 탱커가 방어선을 유지하는 방식이고,
+        // 그 사이에 후방이 영창을 끝내거나 사선을 확보한다.
+        // 다른 직군의 발차기는 예전처럼 가드를 여는 용도로만 쓰인다(넉백 없음).
+        bool shieldBash = pendingIsKick && stats.role == JobRole.Vanguard;
+
         // 화살이 떠났으면 피해는 투사체가 도착할 때 들어간다(WeaponProjectile).
-        if (!fired) victim.TakeDamage(damage, this, false, false, poiseDamage);
+        if (!fired) victim.TakeDamage(damage, this, shieldBash, false, poiseDamage);
     }
 
     // 주무기가 투사체를 들고 있으면 쏘고 true. 근접 무기는 false를 돌려주고 그 자리에서 때린다.
@@ -1277,7 +1498,7 @@ public partial class UnitController : MonoBehaviour
         hasSwungAtLeastOnce = true;
 
         // 물러난 뒤 한 발은 쐈다는 표시. 원거리 유닛이 Attack↔Evade만 오가는 것을 막는다.
-        HasAttackedSinceEvade = true;
+        MarkAttackedSinceEvade();
 
         // 시위를 당기기 시작한다. 앞선 화살이 떠나면서 감춰 둔 화살을 다시 물린다.
         if (equipment != null) equipment.BeginDraw();
@@ -1384,11 +1605,12 @@ public partial class UnitController : MonoBehaviour
         return poise > stats.poiseDamagePerHit && poise <= stats.poiseDamageKick;
     }
 
-    // 발차기를 쓸 수 있는가. 모션이 있어야 하고, 근접 유닛이어야 한다 — 사거리가
-    // minKeepDistanceRange 이상인 원거리 유닛은 애초에 발이 닿지 않는 거리에서 싸운다.
+    // 발차기를 쓸 수 있는가. 모션이 있어야 하고, 근접 유닛이어야 한다 —
+    // 원거리 직군은 애초에 발이 닿지 않는 거리에서 싸운다.
+    // 창수는 거리를 유지하지만 근접이므로 발차기를 쓴다(IsRangedFighter 주석 참조).
     private bool CanKick()
     {
-        return kickAnimationHash != 0 && stats.attackRange < minKeepDistanceRange;
+        return kickAnimationHash != 0 && !IsRangedFighter;
     }
 
     private bool IsTargetGuarding()
@@ -1512,8 +1734,8 @@ public partial class UnitController : MonoBehaviour
     {
         if (!hasMoveSpeedParameter || animator == null) return;
 
-        // 공포/패닉으로 실제 이동이 느려지면 애니메이션도 같이 느려져야 한다.
-        float actualSpeed = speed * EmotionMultiplier;
+        // 공포/패닉이나 둔화로 실제 이동이 느려지면 애니메이션도 같이 느려져야 한다.
+        float actualSpeed = speed * MoveMultiplier;
         float multiplier = Mathf.Clamp(actualSpeed / Mathf.Max(0.1f, clipSpeed),
             moveSpeedMultiplierRange.x, moveSpeedMultiplierRange.y);
         animator.SetFloat(moveSpeedParameterHash, multiplier);
@@ -1680,6 +1902,7 @@ public partial class UnitController : MonoBehaviour
         PotionState = new PotionState(this);
         StaggerState = new StaggerState(this);
         HealState = new HealState(this);
+        CastState = new CastState(this);
     }
 
     // 공포 상태에서는 이동속도도 함께 깎인다. 요청 속도를 따로 들고 있는 이유는
@@ -1706,14 +1929,22 @@ public partial class UnitController : MonoBehaviour
     private void ApplyAgentSpeed(float speed)
     {
         requestedAgentSpeed = speed;
-        if (agent != null) agent.speed = speed * EmotionMultiplier;
+        if (agent != null) agent.speed = speed * MoveMultiplier;
     }
+
+    // 감정과 둔화가 걸린 값을 다시 계산해 에이전트에 밀어 넣는다.
+    // 둘 중 하나가 바뀌는 순간에만 부르면 되므로 매 프레임 계산하지 않는다.
+    private void RefreshAgentSpeed() => ApplyAgentSpeed(requestedAgentSpeed);
 
     private float EmotionMultiplier => emotion != null ? emotion.StatMultiplier : 1f;
 
+    // 실제로 다리가 움직이는 배율. 공포(전 능력치 감소)와 둔화(부위 억제)가 함께 곱해진다.
+    // 피해량에는 감정만 곱한다(ScaleDamage) — 다리를 찔린 것과 겁에 질린 것은 다른 일이다.
+    private float MoveMultiplier => EmotionMultiplier * SlowMultiplier;
+
     private void HandleEmotionChanged(UnitEmotion changed)
     {
-        ApplyAgentSpeed(requestedAgentSpeed);
+        RefreshAgentSpeed();
     }
 
     // CurrentTarget에 값을 넣는 유일한 자리. 여기서만 넣어야 "붙어 있는 적 수"가 어긋나지 않는다.
@@ -1736,12 +1967,33 @@ public partial class UnitController : MonoBehaviour
         return true;
     }
 
+    // 맞았을 때 때린 쪽으로 돌아설지 정한다.
+    //
+    // 예전에는 한 대만 맞으면 무조건 그쪽으로 돌아섰다. 그 한 줄이 어그로 체계를 통째로
+    // 무의미하게 만들고 있었다 — 탱커가 아무리 시선을 붙들어도 뒤에서 궁수가 한 발 쏘는
+    // 순간 몬스터가 궁수에게 달려갔다. 원작에서 방어선이 하는 일이 정확히 그 반대다.
+    //
+    // 지금은 위협 가중치를 비교한다. 나를 붙들고 있는 상대보다 무겁게 치는 쪽이 때렸을 때만
+    // 돌아선다. 그래서:
+    //  - 탱커(3.2)와 맞붙은 몬스터는 궁수(0.4)의 화살이나 암살자(0.55)의 단검에 돌아서지 않는다.
+    //    "공격 후 어그로를 탱커에게 넘기고 빠진다"가 여기서 성립한다.
+    //  - 반대로 후방을 물고 있는 몬스터는 탱커가 한 대 치면 곧바로 탱커에게 끌려온다(도발).
+    //  - 역할이 없는 유닛끼리는 가중치가 모두 1이라 항상 성립한다 — 예전 동작 그대로다.
     private void ForceSetAttackTarget(UnitController attacker)
     {
         if (attacker == CurrentTarget && IsTargetValid()) return;
+        if (!ShouldSwitchAggroTo(attacker)) return;
 
         AssignTarget(attacker);
         ClearMoveDestination();
+    }
+
+    private bool ShouldSwitchAggroTo(UnitController attacker)
+    {
+        // 붙들고 있는 상대가 없으면 때린 쪽을 본다. 판단할 다른 근거가 없다.
+        if (!IsTargetValid()) return true;
+
+        return attacker.Stats.threatWeight >= CurrentTarget.Stats.threatWeight;
     }
 
     private void SetKnockbackDirection(Vector3 attackerPosition)

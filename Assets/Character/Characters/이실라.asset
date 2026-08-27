@@ -22,6 +22,7 @@ MonoBehaviour:
   exp: 0
   expToNext: 10
   job: 3
+  affinity: 0
   constitution:
     name: "\uADF8\uB9BC\uC790"
     strengthGrowth: 1.1220833
@@ -41,9 +42,9 @@ MonoBehaviour:
     skill: 8
     body: 8
     sanity: 5
-  mainHand: 0
+  mainHand: 5
   offHand: 0
-  mainHandWeapon: {fileID: 0}
+  mainHandWeapon: {fileID: 11400000, guid: 008fb28a81ef518408bf7ef2637eecaa, type: 2}
   offHandWeapon: {fileID: 0}
   skillIds: []
   friendships: []
