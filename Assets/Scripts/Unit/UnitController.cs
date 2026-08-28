@@ -184,7 +184,13 @@ public partial class UnitController : MonoBehaviour
     public float RunDistance => runDistance;
     public float DestinationUpdateInterval => destinationUpdateInterval;
 
-    private float lastSkillTime = -999f;
+    // 스킬을 다시 쓸 수 있게 되는 시각.
+    private float nextSkillTime;
+
+    // 지금 타깃과 공격 거리 안에서 맞붙어 있은 시간(초). 사거리 밖으로 떨어지거나 상대가
+    // 바뀌면 0으로 돌아간다. stats.skillEngageDelay가 이 값을 본다.
+    private float engagedDwell;
+    private UnitController engagedDwellTarget;
     private float lastBlockTime = -999f;
     private float lastPotionTime = -999f;
     private float lastHealTime = -999f;
@@ -410,9 +416,6 @@ public partial class UnitController : MonoBehaviour
         // 배회 시각도 유닛마다 흩어 놓는다. 기본값 0이면 스폰 직후 전원이
         // 같은 프레임에 NavMesh.SamplePosition을 호출한다.
         nextRoamTime = Time.time + Random.Range(0f, roamInterval);
-        // 전투마다 새로 스폰되는 유닛은 Configure가 채워 주지만, 씬에 직접 놓인 유닛은
-        // 그 경로를 타지 않는다. 여기서 한 번 채워 두지 않으면 그런 유닛은 스킬을 영영 못 쓴다.
-        skillUsesLeft = Mathf.Max(0, stats.skillUsesPerBattle);
         if (emotion != null) emotion.Initialize(this);
         ApplyAgentSpeed(stats.runSpeed);
         // 에이전트가 회전을 맡는 구간(도주, 이동, 배회)도 코드가 돌릴 때와 같은 속도로 돌게 한다.
@@ -897,18 +900,19 @@ public partial class UnitController : MonoBehaviour
 
     public bool IsAttackAnimationLocked => Time.time < attackLockedUntil;
 
-    // 이번 전투에 남은 스킬 횟수. stats.skillUsesPerBattle이 0이면 제한이 없다는 뜻이라 세지 않는다.
-    public int SkillUsesLeft => stats.skillUsesPerBattle > 0 ? skillUsesLeft : int.MaxValue;
-    private int skillUsesLeft;
-
     public bool CanUseSkill()
     {
         return skillAnimationHash != 0 &&
-               // 전투당 횟수가 정해진 스킬은 그것부터 본다. 다 썼으면 쿨다운이 돌아와도 못 쓴다.
-               (stats.skillUsesPerBattle <= 0 || skillUsesLeft > 0) &&
                // 이번 전투에 쓸 몫이 남았는가. 쿨다운과는 다른 질문이다 — 쿨다운은 "얼마나 자주",
                // 이쪽은 "이번 판에 몇 번이나"다(UnitStats.skillUseCount 주석 참조).
                stats.HasSkillUse &&
+               // 상대가 방금 이 스킬에 당했으면 다시 걸지 않는다. 붙잡는 스킬에 반드시 필요하다 —
+               // 없으면 고블린 다섯이 같은 아군 하나의 목에 동시에 매달린다.
+               // 무는 쪽이 아니라 물리는 쪽에 걸린 시간이라, 여러 마리가 각자 세어도 결과가 같다.
+               (stats.skillVictimImmunity <= 0f || !IsTargetValid() || CurrentTarget.CanBeSkillVictim) &&
+               // 붙어서 겨룬 시간이 모자라면 아직 못 쓴다. 달려들자마자가 아니라 한 합
+               // 주고받은 뒤에 큰 수가 나오게 하는 조건이다(TickEngageDwell 주석 참조).
+               engagedDwell >= stats.skillEngageDelay &&
                // 스킬은 여는 수가 아니다. 한 번도 휘두르지 않았는데 먼저 나가면 교전의 첫 동작이
                // 늘 스킬로 똑같아진다. 원거리 유닛에서 특히 두드러졌다 — 스폰되자마자 사거리에
                // 들어서므로 "입장하자마자 스킬"이 매 전투 고정 연출이 됐다.
@@ -917,8 +921,20 @@ public partial class UnitController : MonoBehaviour
                IsTargetValid() &&
                IsTargetInAttackRange() &&
                stats.HasMana(stats.skillManaCost) &&
-               Time.time >= lastSkillTime + stats.skillCooldown;
+               Time.time >= nextSkillTime;
     }
+
+    // 이 유닛이 붙잡는 스킬에 다시 당할 수 있는가(무는 쪽이 아니라 물리는 쪽의 시계다).
+    public bool CanBeSkillVictim => Time.time >= skillVictimImmuneUntil;
+
+    // 붙잡는 스킬에 당했다고 표시한다. 시간은 건 쪽이 정한다 — 경직(Stagger)과 같은 규칙이다.
+    public void MarkSkillVictim(float duration)
+    {
+        if (duration <= 0f) return;
+        skillVictimImmuneUntil = Mathf.Max(skillVictimImmuneUntil, Time.time + duration);
+    }
+
+    private float skillVictimImmuneUntil;
 
     // 적은 전투 중 HP를 되돌릴 수단이 없다 — 인스펙터에서 회복약 개수를 넣어도 마시지 않는다.
     // 밸런스 수치가 아니라 설계 규칙이라 데이터가 아니라 코드에 둔다.
@@ -1726,9 +1742,17 @@ public partial class UnitController : MonoBehaviour
 
     public void TriggerSkill()
     {
-        lastSkillTime = Time.time;
-        if (stats.skillUsesPerBattle > 0 && skillUsesLeft > 0) skillUsesLeft--;
+        nextSkillTime = Time.time + stats.skillCooldown;
+        stats.ConsumeSkillUse();
         stats.SpendMana(stats.skillManaCost);
+
+        // 상대를 점유하는 스킬은 거는 그 순간에 상대를 잠가야 한다. 피해가 들어갈 때
+        // 잠그면 늦다 — 그 사이에 다른 고블린들이 이미 같은 목을 물기 시작한 뒤다.
+        if (stats.skillVictimImmunity > 0f && IsTargetValid())
+        {
+            CurrentTarget.MarkSkillVictim(stats.skillVictimImmunity);
+        }
+
         PlayAnimation(skillAnimationHash, true);
     }
 

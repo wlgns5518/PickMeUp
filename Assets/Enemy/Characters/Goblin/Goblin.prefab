@@ -1922,7 +1922,7 @@ MonoBehaviour:
     slowOnHitDuration: 0
     slowOnHitMultiplier: 1
     skillCooldown: 5
-    skillUseCount: -1
+    skillUseCount: 2
     evadeRange: 2.5
     blockDuration: 0.8
     blockCooldown: 1.5
@@ -1940,7 +1940,8 @@ MonoBehaviour:
     poiseDamageKick: 45
     poiseBreakImmunity: 2.5
     skillStaggerDuration: 1.5
-    skillUsesPerBattle: 2
+    skillEngageDelay: 1
+    skillVictimImmunity: 5
     poiseHitPushback: 0.15
     attackArcAngle: 130
     attackHitTolerance: 0.4
@@ -2007,6 +2008,7 @@ MonoBehaviour:
   minKeepDistanceRange: 4
   keepDistanceRatio: 0.5
   regroupDistance: 8
+  survivalFleeDistance: 12
   targetChangeInterval: 0.5
   targetSwitchDistanceRatio: 0.75
   roamWhenSearching: 1
@@ -2036,6 +2038,7 @@ MonoBehaviour:
   backpedalSpeed: 3.3
   dodgeClipSpeed: 4.08
   moveSpeedMultiplierRange: {x: 0.6, y: 2.2}
+  moveSpeedDampTime: 0.15
   animatorCullingMode: 1
   disableAnimatorAfterDeath: 1
   debugLogs: 0

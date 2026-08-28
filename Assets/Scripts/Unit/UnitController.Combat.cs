@@ -1239,6 +1239,32 @@ public partial class UnitController
         TickAvoidance();
         TickThreatAwareness();
         TickSlow();
+        TickEngageDwell();
+    }
+
+    // 지금 타깃과 얼마나 오래 맞붙어 있었는가. 붙잡는 스킬(고블린의 물어뜯기)이 이걸 본다.
+    //
+    // 전투 시작으로부터 재면 안 된다. 그러면 멀리서 달려오는 동안에도 시간이 흘러서,
+    // 정작 도착한 그 순간에 곧바로 물어뜯는다 — 막으려던 그림이 그대로 나온다.
+    // 사거리 안에 실제로 붙어 있은 시간만 센다.
+    private void TickEngageDwell()
+    {
+        // 상대가 바뀌면 처음부터 다시 센다. 앞사람과 겨룬 시간이 새 상대에게 넘어가면
+        // 옆으로 타깃을 옮기는 것만으로 조건이 채워진다.
+        if (!IsTargetValid() || CurrentTarget != engagedDwellTarget)
+        {
+            engagedDwellTarget = IsTargetValid() ? CurrentTarget : null;
+            engagedDwell = 0f;
+            return;
+        }
+
+        if (!IsTargetInAttackRange())
+        {
+            engagedDwell = 0f;
+            return;
+        }
+
+        engagedDwell += Time.deltaTime;
     }
 
     // 죽은 유닛을 되살려 재사용하는 경로(Configure)를 위한 초기화.
@@ -1263,8 +1289,11 @@ public partial class UnitController
         EndLeap();
         // 목을 문 채로 회수됐다면 NavMesh가 꺼진 채로 남는다.
         EndCling();
-        // 스테이지가 바뀌면(= 새로 스폰되면) 스킬 횟수도 다시 찬다.
-        skillUsesLeft = Mathf.Max(0, stats.skillUsesPerBattle);
+        // 남은 스킬 사용 횟수는 stats 쪽에 있고, 전투마다 프리팹에서 복제되므로 저절로 다시 찬다.
+        nextSkillTime = 0f;
+        skillVictimImmuneUntil = 0f;
+        engagedDwell = 0f;
+        engagedDwellTarget = null;
         slowUntil = 0f;
         slowMultiplier = 1f;
         slowWasActive = false;
