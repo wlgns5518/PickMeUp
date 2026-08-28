@@ -46,6 +46,18 @@ public class CastState : UnitBattleState
 
     public override void Update()
     {
+        // 붙잡히면 영창을 버리고 빠진다. 마법사가 파티에 묶여 있는 이유가 이것이다 —
+        // 영창은 방어선 안에서만 성립하고, 제 간격을 잃은 순간 그 자리에 서 있을 이유가 없다.
+        //
+        // 피격 한 번으로는 끊지 않는다는 규칙(UnitController.TakeDamage)과는 다른 문제다.
+        // 그쪽은 "스치는 피해에 영창이 통째로 날아가는 것"을 막고, 이쪽은 "이미 붙잡혔는데도
+        // 계속 서 있는 것"을 막는다. 접어도 마력은 잃지 않으므로 버티는 쪽이 늘 손해다.
+        if (context.ShouldAbandonCast())
+        {
+            context.ChangeState(context.EvadeState);
+            return;
+        }
+
         // 영창 중에도 상대를 마주 본다. 착탄 지점은 이미 잠겨 있으므로 조준이 바뀌지는 않는다 —
         // 등을 보인 채 마력을 모으는 그림이 나오지 않게 하는 것이 목적이다.
         context.FaceTarget();

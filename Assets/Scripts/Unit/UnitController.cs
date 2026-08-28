@@ -1146,6 +1146,24 @@ public partial class UnitController : MonoBehaviour
         return SqrDistanceToTarget() < threshold * threshold;
     }
 
+    // 영창을 버리고 빠져야 하는가.
+    //
+    // ShouldKeepDistance는 "지금 겨누고 있는 적"과의 거리만 본다. 그런데 영창 중인 마법사를
+    // 실제로 위협하는 것은 겨눈 적이 아니라 옆에서 파고든 적이다 — 먼 적을 조준한 채
+    // 발밑의 고블린에게 맞고 있으면 그 검사는 영영 참이 되지 않는다. 그래서 여기서는
+    // 겨눈 상대와 무관하게 "내 간격 안에 적이 들어왔는가"만 본다.
+    //
+    // 접어도 마력은 잃지 않는다(CancelSpellCast). 대가는 서 있던 시간과 다시 모으기까지의
+    // 한 박자(spellRetryDelay)뿐이라, 붙잡힌 채 버티는 것보다 언제나 낫다 — 영창 중에는
+    // 받는 피해가 castVulnerabilityMultiplier만큼 커지기 때문이다.
+    public bool ShouldAbandonCast()
+    {
+        float threshold = KeepDistanceThreshold;
+        if (threshold <= 0f) return false;
+
+        return UnitRegistry.CountEnemiesAround(this, transform.position, threshold) > 0;
+    }
+
     // 전선에서 떨어져 나왔는가. 프레임당 한 번만 재고 그 답을 재사용한다 —
     // 후퇴 판단이 한 프레임에 여러 번 물어보는데, 매번 팀 전체를 훑을 이유는 없다.
     private int regroupCheckFrame = -1;
