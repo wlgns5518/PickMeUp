@@ -93,3 +93,8 @@ crashlytics-build.properties
 /Secrets/apikeys.json
 !/Secrets/apikeys.example.json
 *.apikeys.json
+
+# Unity MCP 스크린샷 — 플레이 확인용으로 자동으로 쌓인다(장당 500KB 안팎).
+# 산출물이 아니라 디버깅 부산물이라 추적하지 않는다.
+/[Aa]ssets/[Ss]creenshots/
+/[Aa]ssets/[Ss]creenshots.meta
