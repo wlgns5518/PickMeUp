@@ -1937,7 +1937,7 @@ MonoBehaviour:
     poiseDamagePerHit: 15
     poiseDamageComboFinisherBonus: 25
     poiseDamageSkill: 60
-    poiseDamageKick: 45
+    poiseDamageKick: 20
     poiseBreakImmunity: 2.5
     skillStaggerDuration: 1.5
     skillEngageDelay: 1
@@ -2000,11 +2000,13 @@ MonoBehaviour:
   - {fileID: 5494213943435191861, guid: db51fe09adf27d640b4e10018c2d76ba, type: 3}
   - {fileID: 5371219466416337994, guid: f9e099178c81bee439a79eecec91dacb, type: 3}
   bloodEffectOffset: {x: 0, y: 1, z: 0}
+  bloodColor: {r: 0.235, g: 1, b: 0.16, a: 1}
   runDistance: 4
   destinationUpdateInterval: 0.15
   chasePredictionTime: 0.25
   rotationSpeed: 720
   blockTurnSpeed: 240
+  attackTurnSpeed: 120
   minKeepDistanceRange: 4
   keepDistanceRatio: 0.5
   regroupDistance: 8
@@ -2022,7 +2024,7 @@ MonoBehaviour:
   attackStateName: Attack
   attackComboLength: 7
   skillStateName: Bite
-  kickStateName: Kick
+  kickStateName: 
   blockStateName: 
   potionStateName: 
   healStateName: Cast

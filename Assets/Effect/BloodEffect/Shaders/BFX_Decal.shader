@@ -234,7 +234,9 @@ Shader "KriptoFX/BFX/BFX_Decal"
 					#if !UNITY_COLORSPACE_GAMMA
 							tintColor = tintColor * 1.35;
 					#endif
-					res.rgb = lerp(tintColor.rgb, tintColor.rgb * 0.25, mask.z * colorMask) + light;
+					// 바닥 데칼도 같은 이유로 하이라이트가 흰색이 된다. 틴트 색을 정규화해 곱한다.
+					half3 decalHighlightTint = tintColor.rgb / max(max(tintColor.r, max(tintColor.g, tintColor.b)), 0.0001);
+					res.rgb = lerp(tintColor.rgb, tintColor.rgb * 0.25, mask.z * colorMask) + light * decalHighlightTint;
 
 
 					half fresnel = (1 - dot(normal, normalize(i.viewDir)));

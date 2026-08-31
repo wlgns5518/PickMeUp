@@ -67,16 +67,19 @@ Shader "KriptoFX/BFX/BFX_Blood"
             uniform float _boundingMin;
             uniform float _speed;
             uniform int _numOfFrames;
-            half4 _Color;
 
             float4 _HeightOffset;
             float _HDRFix;
             float4 _SunPos;
 
+            // _Color는 인스턴싱 버퍼로 옮겼다. 종족마다 피 색이 다른데(고블린 초록),
+            // 머티리얼은 프리팹끼리 공유하므로 MaterialPropertyBlock으로 렌더러별로 덮어써야 한다.
+            // 인스턴싱이 꺼져 있으면 매크로가 알아서 일반 유니폼으로 폴백한다.
             UNITY_INSTANCING_BUFFER_START(Props)
                 UNITY_DEFINE_INSTANCED_PROP(float, _UseCustomTime)
                 UNITY_DEFINE_INSTANCED_PROP(float, _TimeInFrames)
                 UNITY_DEFINE_INSTANCED_PROP(float, _LightIntencity)
+                UNITY_DEFINE_INSTANCED_PROP(float4, _Color)
             UNITY_INSTANCING_BUFFER_END(Props)
 
             v2f vert (appdata v)
@@ -130,22 +133,28 @@ Shader "KriptoFX/BFX/BFX_Blood"
 
                 i.viewDir = normalize(i.viewDir);
 
+                half4 bloodColor = UNITY_ACCESS_INSTANCED_PROP(Props, _Color);
+
                 half fresnel = saturate(1 - dot(i.worldNormal, i.viewDir));
                 half intencity = UNITY_ACCESS_INSTANCED_PROP(Props, _LightIntencity);
                 half3 grabColor = intencity * 0.75;
                 half light = max(0.001, dot(normalize(i.worldNormal), normalize(_SunPos.xyz)));
                 light = pow(light, 50) * 10;
 #if !UNITY_COLORSPACE_GAMMA
-                _Color.rgb = _Color.rgb * .65;
+                bloodColor.rgb = bloodColor.rgb * .65;
                 fresnel = fresnel * fresnel;
 #endif
-                grabColor *= _Color.rgb;
+                grabColor *= bloodColor.rgb;
                 grabColor = lerp(grabColor * 0.15, grabColor, fresnel);
-                grabColor = min(grabColor, _Color.rgb * 0.55);
+                grabColor = min(grabColor, bloodColor.rgb * 0.55);
 
-                half3 color = grabColor.xyz + saturate(light) * intencity;
+                // 스페큘러를 스칼라 그대로 더하면 RGB가 같이 올라가서 하이라이트가 흰색으로 뜬다.
+                // 혈액 색을 최대 채널 기준으로 정규화한 톤을 곱해 하이라이트도 같은 색조로 유지한다.
+                half3 highlightTint = bloodColor.rgb / max(max(bloodColor.r, max(bloodColor.g, bloodColor.b)), 0.0001);
+
+                half3 color = grabColor.xyz + saturate(light) * intencity * highlightTint;
                 UNITY_APPLY_FOG(i.fogCoord, color);
-                return half4(color, _Color.a);
+                return half4(color, bloodColor.a);
 
             }
             ENDCG
