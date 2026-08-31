@@ -25,6 +25,8 @@ public partial class UnitController : MonoBehaviour
 [Header("Blood VFX")]
     [SerializeField] private GameObject[] bloodEffectPrefabs;
     [SerializeField] private Vector3 bloodEffectOffset = new Vector3(0f, 1f, 0f);
+    [Tooltip("피 색상. 프리팹 원본의 진하기와 알파는 유지되고 색조만 이 색으로 바뀐다. (고블린은 초록)")]
+    [SerializeField] private Color bloodColor = new Color(0.6f, 0f, 0f, 1f);
 
         [Header("Movement")]
     [SerializeField] private float runDistance = 4f;
@@ -33,6 +35,10 @@ public partial class UnitController : MonoBehaviour
     [SerializeField] private float rotationSpeed = 720f;
     [Tooltip("방어 중 위협 쪽으로 도는 속도. 일반 회전보다 느려야 등 뒤에서 들어오는 공격에 허점이 생긴다.")]
     [SerializeField] private float blockTurnSpeed = 240f;
+    [Tooltip("이미 휘두르기 시작한 뒤 상대를 따라 도는 속도. 평소 회전보다 훨씬 느려야 한다 — " +
+             "공격 클립은 제자리에서 베는 동작이라, 그 위에서 몸이 평소 속도로 돌아가면 " +
+             "발이 땅에 붙지 않고 미끄러지는 것이 그대로 보인다. 0이면 스윙 도중에는 아예 안 돈다.")]
+    [SerializeField] private float attackTurnSpeed = 120f;
 
     [Header("Ranged (역할이 없는 유닛의 대비책)")]
     // 아래 둘은 직업 역할(UnitStats.role / keepDistanceRange)이 정해지지 않은 유닛에만 쓰인다.
@@ -295,13 +301,15 @@ public partial class UnitController : MonoBehaviour
 
     public float SurvivalFleeDistance => survivalFleeDistance;
 
-    // 도약이 실제로 나아갈 속도. 클립이 원래 나아가는 속도를 밑으로 두고, 회피 거리를
-    // 클립 길이 안에 소화할 만큼 올린다. 위로는 1.8배까지만 — 그 이상은 뛰는 중에도 눈에 띄게 밀린다.
-    public float DodgeMoveSpeed(float distance)
-    {
-        float duration = Mathf.Max(0.05f, dodgeAnimationDuration);
-        return Mathf.Clamp(distance / duration, dodgeClipSpeed, dodgeClipSpeed * 1.8f);
-    }
+    // 도약이 실제로 나아갈 속도 — 클립이 원래 나아가는 속도 그대로다.
+    //
+    // 예전에는 "회피 거리를 클립 길이 안에 소화하도록" 최대 1.8배까지 올렸다. 그러면 원하는
+    // 거리는 나오지만 다리보다 몸이 빨라져 발이 미끄러진다. 도약은 화면에 크게 보이는
+    // 동작이라 그 미끄러짐이 그대로 읽힌다.
+    //
+    // 그래서 반대로 뒤집는다: 속도는 클립에 맞추고, 나아가는 거리는 그 결과로 정해진다
+    // (기본 클립 기준 4.08m/s x 0.67초 = 약 2.7m). 거리를 바꾸고 싶으면 클립을 바꿔야 한다.
+    public float DodgeMoveSpeed(float distance) => dodgeClipSpeed;
 
     // 회피 도약을 실제 이동으로 옮긴다.
     //
@@ -312,8 +320,15 @@ public partial class UnitController : MonoBehaviour
     public void MoveDodge(Vector3 direction, float speed, float deltaTime)
     {
         if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
+
+        // 도약하는 동안은 이 호출이 이 유닛을 움직이는 유일한 수단이어야 한다.
+        // 에이전트가 스스로 남긴 속도로 흘러가면 도약과 겹쳐 엉뚱한 쪽으로 간다.
+        agent.velocity = Vector3.zero;
         agent.Move(direction * (speed * deltaTime));
     }
+
+    // 도약 중인가. 켜져 있는 동안은 다른 이동 수단이 이 유닛을 건드리지 않는다.
+    public bool IsLeapingDodge { get; private set; }
 
     // 지금 실제로 땅 위를 나아가는 속도.
     // 재생 배속은 "요청한 속도"가 아니라 이 값에 맞춰야 한다 — NavMeshAgent는 가속 중이거나
@@ -738,7 +753,12 @@ public partial class UnitController : MonoBehaviour
 
         // 스윙 도중에 노리는 상대가 바뀌면 이미 나간 칼이 엉뚱한 곳을 향한다.
         // 스윙과 스윙 사이의 틈에서만 갈아탄다.
-        if (IsAttackAnimationLocked || IsCasting) return false;
+        //
+        // 영창 중에는 막지 않는다. 광역 마법의 착탄 지점은 영창을 시작할 때 이미 잠겨 있고
+        // (castingAimPoint) 단일 마법은 표적이 바뀌어도 그쪽으로 날아갈 뿐이라 깨지는 것이 없다.
+        // 반대로 여기서 막으면 마법사는 거의 늘 영창 중이라 파티 집중 표적으로 영영 옮겨가지
+        // 못한다 — 실측에서 마법사만 혼자 다른 적을 때리고 있던 원인이 이것이었다.
+        if (IsAttackAnimationLocked) return false;
         if (Time.time < lastTargetChangeTime + targetChangeInterval) return false;
 
         AssignTarget(target);
@@ -1152,14 +1172,21 @@ public partial class UnitController : MonoBehaviour
     //
     // 원거리 직군만의 것이 아니다. 창수는 근접 무기를 들고도 이 판단을 한다 —
     // 창의 리치는 붙이지 않았을 때만 우위이므로, 파고든 적을 밀어내며 찌르는 것이 그 직군이다.
+    // 겨누는 상대가 아니라 "내 간격 안에 누가 들어왔는가"를 본다.
+    //
+    // 예전에는 CurrentTarget과의 거리만 쟀다. 파티 집중 사격이 들어온 뒤로 그게 무너졌다 —
+    // 마법사의 표적은 8m 밖의 집중 표적인데 정작 위협은 발밑의 다른 고블린이라, 표적이 멀면
+    // "안전하다"고 판단해 버렸다. 그래서 물러났다가 곧바로 되돌아와 다시 맞는 왕복이 생겼다.
+    //
+    // 물러날지 정하는 기준(여기)과 어느 쪽으로 물러날지 정하는 기준
+    // (GetSpacingRetreatDirection), 영창을 접을지 정하는 기준(ShouldAbandonCast)이
+    // 전부 같은 것을 봐야 한다. 셋이 어긋나면 그 차이가 그대로 갈팡질팡으로 나타난다.
     public bool ShouldKeepDistance()
     {
-        if (!IsTargetValid()) return false;
-
         float threshold = KeepDistanceThreshold;
         if (threshold <= 0f) return false;
 
-        return SqrDistanceToTarget() < threshold * threshold;
+        return UnitRegistry.CountEnemiesAround(this, transform.position, threshold) > 0;
     }
 
     // 영창을 버리고 빠져야 하는가.
@@ -1172,12 +1199,27 @@ public partial class UnitController : MonoBehaviour
     // 접어도 마력은 잃지 않는다(CancelSpellCast). 대가는 서 있던 시간과 다시 모으기까지의
     // 한 박자(spellRetryDelay)뿐이라, 붙잡힌 채 버티는 것보다 언제나 낫다 — 영창 중에는
     // 받는 피해가 castVulnerabilityMultiplier만큼 커지기 때문이다.
-    public bool ShouldAbandonCast()
+    // ShouldKeepDistance와 같은 것을 본다. 한때 이 둘이 서로 다른 기준을 쓰다가
+    // "영창은 접는데 물러나지는 않는" 어긋남을 만들었다 — 이제 한 곳에서 판단한다.
+    public bool ShouldAbandonCast() => ShouldKeepDistance();
+
+    // 달아나기를 멈춰도 되는 거리 = 유지 거리 x 이 배수.
+    //
+    // 유지 거리(2.6m)에 딱 맞춰 멈추면 그 경계에서 도망과 복귀가 계속 뒤집힌다 —
+    // 물러나자마자 다시 붙잡혀 또 물러나는 것이 "공격하려다 버벅이는" 그림이었다.
+    // 넉넉히 떼어놓고 멈춰야 돌아와서 실제로 영창을 시작할 여유가 생긴다.
+    private const float ChaseEscapeRatio = 2.5f;
+
+    // 나를 노리고 쫓아오는 적이 아직 붙어 있는가. 달아나기(fleeByRunning)를 계속할지 정한다.
+    //
+    // 거리만 보지 않고 "그 적이 나를 타깃으로 들고 있는가"까지 본다. 쫓아오던 놈이 표적을
+    // 바꾸면(탱커가 도발로 끌어갔거나 다른 아군을 물었으면) 그 순간 도망칠 이유가 사라진다.
+    public bool IsBeingChased()
     {
         float threshold = KeepDistanceThreshold;
         if (threshold <= 0f) return false;
 
-        return UnitRegistry.CountEnemiesAround(this, transform.position, threshold) > 0;
+        return UnitRegistry.HasEnemyChasing(this, threshold * ChaseEscapeRatio);
     }
 
     // 전선에서 떨어져 나왔는가. 프레임당 한 번만 재고 그 답을 재사용한다 —
@@ -1215,15 +1257,129 @@ public partial class UnitController : MonoBehaviour
     // 그러지 않으면 물러남이 곧 이탈이 되어, 적 하나를 끌고 맵 끝까지 나가면서 파티가 쪼개진다
     // (실측: 궁수가 45m). 원작에서도 검사가 반격을 받으면 "탱커의 방패 뒤나 후방으로" 물러나지,
     // 아무 데로나 빠지지 않는다. 물러나면서 전열에 합류하는 쪽이 두 마리 토끼를 다 잡는다.
+    // 마지막으로 정한 후퇴 방향과 그 시각. 짧은 시간 안에 다시 물러날 때는 이 방향을 그대로 쓴다.
+    private Vector3 lastRetreatDirection;
+    private float lastRetreatDirectionTime = -999f;
+
+    [Tooltip("한 번 정한 후퇴 방향을 유지하는 시간(초). 이 안에 다시 물러나면 같은 쪽으로 간다. " +
+             "0이면 물러날 때마다 새로 계산한다 — 그러면 방향이 계속 바뀌어 갈팡질팡하는 것처럼 보인다.")]
+    [SerializeField, Min(0f)] private float retreatDirectionHold = 1.5f;
+
     public Vector3 GetSpacingRetreatDirection()
     {
-        Vector3 away = transform.position - (CurrentTarget != null ? CurrentTarget.transform.position : transform.position + transform.forward);
+        // 방금 정한 방향이 있으면 그대로 간다.
+        //
+        // 간격을 되찾는 후퇴는 짧게 여러 번 끊어 일어난다(물러났다 → 돌아왔다 → 또 붙잡혔다).
+        // 그때마다 방향을 새로 계산하면 매번 다른 쪽으로 튀어서 갈팡질팡하는 것처럼 보인다.
+        // 한 번 정한 쪽으로 잠깐이라도 꾸준히 가야 "물러난다"로 읽힌다.
+        if (retreatDirectionHold > 0f &&
+            Time.time < lastRetreatDirectionTime + retreatDirectionHold &&
+            lastRetreatDirection.sqrMagnitude > 0.0001f)
+        {
+            return lastRetreatDirection;
+        }
+
+        Vector3 direction = ResolveRetreatDirection();
+
+        lastRetreatDirection = direction;
+        lastRetreatDirectionTime = Time.time;
+        return direction;
+    }
+
+    // 실제로 갈 수 있는 방향이 정해졌으면 그것을 유지 대상으로 삼는다.
+    //
+    // 벽에 막혀 방향을 틀었을 때 이걸 부르지 않으면, 유지 창(retreatDirectionHold) 동안
+    // 막힌 원래 방향이 계속 돌아와 다음 도망도 같은 벽으로 향한다.
+    public void CommitRetreatDirection(Vector3 direction)
+    {
+        direction.y = 0f;
+        if (direction.sqrMagnitude <= 0.0001f) return;
+
+        lastRetreatDirection = direction.normalized;
+        lastRetreatDirectionTime = Time.time;
+    }
+
+    // 물러날 자리를 실제로 갈 수 있는 곳으로 잡는다.
+    //
+    // 원하는 쪽이 벽이면 그대로는 못 간다. 목적지가 벽 안이라 NavMesh 위로 끌어당겨지면
+    // 지금 서 있는 자리 바로 옆이 되고, 유닛은 "도착했다"고 판단해 제자리에 선다.
+    // 게다가 방향 유지(retreatDirectionHold)가 그 막힌 방향을 계속 돌려주므로 영영 못 움직인다.
+    //
+    // 그래서 원하는 쪽부터 좌우로 벌려 가며 훑어, 실제로 거리를 벌 수 있는 첫 방향을 고른다.
+    // 사람도 벽에 막히면 벽을 따라 비스듬히 빠지지 벽에 붙어 버티지 않는다.
+    // 어느 쪽도 뚫리지 않았으면 false — 부르는 쪽이 도망 대신 다른 수를 잡아야 한다.
+    public bool TryFindRetreatSpot(Vector3 preferred, float distance, out Vector3 direction, out Vector3 destination)
+    {
+        direction = preferred;
+        destination = transform.position;
+
+        preferred.y = 0f;
+        if (preferred.sqrMagnitude <= 0.0001f) return false;
+        preferred.Normalize();
+
+        // 원하는 쪽 → 좌우로 조금씩 → 끝내 안 되면 반대쪽까지.
+        for (int i = 0; i < RetreatFanAngles.Length; i++)
+        {
+            float angle = RetreatFanAngles[i];
+            Vector3 candidate = Quaternion.AngleAxis(angle, Vector3.up) * preferred;
+            Vector3 spot = transform.position + candidate * distance;
+
+            // 목표 지점 근처에만 붙인다. 넉넉히 잡으면 엉뚱한 곳으로 끌려가 뒤로 가려다
+            // 앞으로 가는 자리가 잡힐 수 있다.
+            if (!NavMesh.SamplePosition(spot, out NavMeshHit hit, RetreatSampleRadius, NavMesh.AllAreas)) continue;
+
+            Vector3 gained = hit.position - transform.position;
+            gained.y = 0f;
+            // 실제로 벌어지는 거리가 있어야 의미가 있다. 벽에 붙은 자리는 여기서 걸린다.
+            if (gained.sqrMagnitude < MinRetreatGain * MinRetreatGain) continue;
+
+            direction = gained.normalized;
+            destination = hit.position;
+            return true;
+        }
+
+        return false;
+    }
+
+    // 원하는 쪽에서 얼마나 벌려 가며 찾을지. 0이 원하는 방향 그대로다.
+    private static readonly float[] RetreatFanAngles = { 0f, 35f, -35f, 70f, -70f, 110f, -110f, 150f, -150f, 180f };
+    // 후보 지점을 NavMesh 위로 끌어당길 때 허용할 반경.
+    private const float RetreatSampleRadius = 1.5f;
+    // 이만큼도 못 벌면 막힌 것으로 본다.
+    private const float MinRetreatGain = 1.2f;
+
+    private Vector3 ResolveRetreatDirection()
+    {
+        // 무엇으로부터 물러나는가 — 겨누고 있는 상대가 아니라 실제로 품 안에 들어온 적들이다.
+        //
+        // 예전에는 CurrentTarget의 반대쪽으로 물러났다. 그런데 물러나기로 정하는 기준은
+        // "내 간격 안에 아무 적이나 들어왔는가"(ShouldAbandonCast)여서 둘이 어긋난다.
+        // 파티 집중 사격이 들어온 뒤로 그 어긋남이 커졌다 — 마법사의 CurrentTarget은 8m 밖의
+        // 집중 표적인 경우가 많은데, 정작 물러나게 만든 것은 발밑의 고블린이다.
+        // 그 상태로 "표적 반대쪽"으로 뛰면 위협 쪽으로 뛰어드는 일까지 생기고,
+        // 표적이 바뀔 때마다 방향이 통째로 홱 돈다.
+        Vector3 threatCenter = Vector3.zero;
+        float threshold = KeepDistanceThreshold;
+        bool hasThreat = threshold > 0f &&
+                         UnitRegistry.TryGetEnemyCentroidAround(this, transform.position, threshold, out threatCenter);
+
+        if (!hasThreat)
+        {
+            // 품 안에는 아무도 없다. 그러면 겨누는 상대가 유일한 근거다(예전 동작).
+            threatCenter = CurrentTarget != null
+                ? CurrentTarget.transform.position
+                : transform.position + transform.forward;
+        }
+
+        Vector3 away = transform.position - threatCenter;
         away.y = 0f;
         if (away.sqrMagnitude <= 0.0001f) away = -transform.forward;
         away.Normalize();
 
         if (!IsSeparatedFromLine) return away;
 
+        // 전선에서 떨어져 나온 상태라면 아군 쪽으로 물러난다 — 그러지 않으면 물러남이 곧 이탈이
+        // 되어, 적 하나를 끌고 맵 끝까지 나가면서 파티가 쪼개진다(실측: 궁수가 45m).
         UnitController anchor = UnitRegistry.FindNearestAlly(this);
         if (anchor == null) return away;
 
@@ -1389,14 +1545,20 @@ public partial class UnitController : MonoBehaviour
             stats.ResetPoise();
             poiseImmuneUntil = Time.time + stats.poiseBreakImmunity;
 
-            // 막고 있다가 강인도가 깨졌다 = 가드가 뚫린 것. 한 대 크게 맞은 것과는 무너지는
-            // 정도가 다르다 — 방패가 젖혀지며 몇 초를 통째로 서 있어야 하는 진짜 빈틈이 된다.
-            if (wasBlocking)
-            {
-                Stagger(stats.staggerDuration, true);
-                return;
-            }
-
+            // 가드가 뚫려도 통째로 무너지지는 않는다.
+            //
+            // 한때 여기서 Stagger(staggerDuration)로 보냈다. 그런데 막는 쪽 입장에서 그 결과가
+            // 가혹했다 — 방패를 들었다가 뚫리면 1.2초를 아무것도 못 하고 서 있어야 하고,
+            // 그 사이 CanEverBlock이 거짓이라 다시 막지도 못한다. 여러 마리에게 둘러싸이면
+            // 방패를 드는 것 자체가 손해가 됐다.
+            //
+            // 지금은 막다 뚫린 것도 평범한 강인도 파괴와 같은 무게로 친다: 짧은 피격 반응 한 번.
+            // 가드가 열렸다는 사실은 남는다(모션이 BlockBreak으로 바뀌고, 강인도가 0에서
+            // 다시 차오르며, 그 순간의 방어 자세는 InterruptCurrentAction이 내려놓는다).
+            //
+            // 진짜 경직(StaggerState)은 이제 두 곳에서만 나온다 — 흘려내기(퍼펙트 가드)에
+            // 걸린 공격자와, 붙잡아 무너뜨리는 스킬(TryForceStagger). 둘 다 "읽어냈다"의 보상이다.
+            hitFromGuardBreak = wasBlocking;
             InterruptCurrentAction();
             ChangeState(HitState);
             return;
@@ -1450,7 +1612,7 @@ public partial class UnitController : MonoBehaviour
         lookDirection.y = 0f;
         Quaternion rotation = lookDirection.sqrMagnitude > 0.0001f ? Quaternion.LookRotation(lookDirection.normalized) : transform.rotation;
 
-        BloodEffectPool.Instance.Spawn(prefab, spawnPosition, rotation);
+        BloodEffectPool.Instance.Spawn(prefab, spawnPosition, rotation, bloodColor);
     }
 
     public void Die()
@@ -1779,14 +1941,53 @@ public partial class UnitController : MonoBehaviour
 
     public void StopMovement()
     {
-        if (agent != null && agent.enabled && agent.isOnNavMesh)
-        {
-            agent.isStopped = true;
-            agent.ResetPath();
-        }
+        // 남은 속도까지 지운다.
+        //
+        // 감속하며 서는 편이 자연스럽다고 보고 한동안 velocity를 남겨 뒀는데, 그 판단이 틀렸다.
+        // 이 함수를 부르는 쪽(공격·방어·영창 진입)은 곧바로 애니메이션을 대기 자세로 바꾼다.
+        // 그림은 이미 멈췄는데 몸만 계속 미끄러지는 셈이라, 실측에서 달아나기를 마친 마법사가
+        // 대기 자세로 3.69m/s를 미끄러졌다. 그림과 몸은 같이 멈춰야 한다.
+        HaltAgent(true);
 
         hasAgentDestination = false;
         SetMoveAnimation(0f, false, false);
+    }
+
+    // 에이전트를 실제로 멈춘다.
+    //
+    // 순서가 중요하다. 예전에는 isStopped를 세운 뒤 ResetPath를 불렀는데, ResetPath가
+    // isStopped를 도로 false로 되돌린다 — 실측으로 StopMovement 직후 isStopped가 False였다.
+    // 즉 "멈췄다"고 부른 뒤에도 에이전트는 멈춰 있지 않았다.
+    //
+    // clearVelocity: 남은 속도까지 지울지. 평소에는 지우지 않는다 — 감속하며 서는 편이
+    // 자연스럽고, 공격·방어처럼 제자리에 서는 상태는 그 감속이 오히려 어울린다.
+    // 도약처럼 이동을 코드가 통째로 가져가는 경우에만 지운다(BeginDodgeMove 주석 참조).
+    private void HaltAgent(bool clearVelocity)
+    {
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
+
+        agent.ResetPath();
+        agent.isStopped = true;
+        if (clearVelocity) agent.velocity = Vector3.zero;
+    }
+
+    // 회피 도약을 시작하기 전에 부른다.
+    //
+    // 도약은 agent.Move로 직접 미는 동작이라(MoveDodge 주석 참조) 에이전트가 스스로 움직이면
+    // 그 둘이 겹친다. 물러나기 직전의 유닛은 대개 적 쪽으로 다가가던 참이라 남은 속도가
+    // 앞을 향하고 있고, 그게 뒤로 미는 도약과 상쇄되어 "뒷점프를 하는데 몸은 앞으로 가는"
+    // 그림이 된다. 도약이 시작되는 순간 에이전트의 속도를 통째로 지워 그 겹침을 없앤다.
+    public void BeginDodgeMove()
+    {
+        HaltAgent(true);
+        hasAgentDestination = false;
+        IsLeapingDodge = true;
+    }
+
+    // 도약이 끝났다. 이동 권한을 에이전트에게 돌려준다.
+    public void EndDodgeMove()
+    {
+        IsLeapingDodge = false;
     }
 
     public void MoveTo(Vector3 destination, float speed)
@@ -1856,13 +2057,20 @@ public partial class UnitController : MonoBehaviour
     // 클립이 원래 나아가는 속도와 실제 이동 속도가 어긋나면 발이 땅에서 미끄러진다.
     // 민첩과 직업 배율로 이동 속도가 캐릭터마다 달라지므로(달리기 4~6m/s) 고정 배속으로는 맞출 수 없다.
     // 그래서 Animator의 float 파라미터로 배속을 넘기고, Run/Walk 상태가 그 값을 곱해 재생한다.
-    private void ApplyMoveAnimationSpeed(float speed, float clipSpeed)
+    // speed는 "지금 실제로 땅 위를 나아가는 속도"다. 요청 속도가 아니다.
+    //
+    // 한때 여기서 MoveMultiplier(공포/둔화)를 곱했다. 그 시절에는 부르는 쪽이 요청 속도를
+    // 넘겼기 때문인데, 나중에 실측 속도를 넘기는 경로가 생기면서 배율이 두 번 곱해졌다.
+    // 게다가 상태마다 넘기는 기준이 달라져(Chase는 실측, Move는 요청, Evade는 실측) 같은
+    // 달리기인데도 상태가 바뀔 때마다 재생 속도가 달라졌다 — 그게 버벅임의 정체다.
+    //
+    // 지금은 규칙이 하나다: 배속은 언제나 실제 이동 속도에서 나온다.
+    // 공포와 둔화는 이미 그 속도 안에 들어 있으므로(agent.speed에 곱해져 있다) 여기서 또 곱하지 않는다.
+    private void ApplyMoveAnimationSpeed(float groundSpeed, float clipSpeed)
     {
         if (!hasMoveSpeedParameter || animator == null) return;
 
-        // 공포/패닉이나 둔화로 실제 이동이 느려지면 애니메이션도 같이 느려져야 한다.
-        float actualSpeed = speed * MoveMultiplier;
-        float multiplier = Mathf.Clamp(actualSpeed / Mathf.Max(0.1f, clipSpeed),
+        float multiplier = Mathf.Clamp(groundSpeed / Mathf.Max(0.1f, clipSpeed),
             moveSpeedMultiplierRange.x, moveSpeedMultiplierRange.y);
 
         // 기준 클립이 바뀌면(달리기↔걷기↔뒷걸음) 같은 배속 숫자가 다른 뜻을 갖는다.
@@ -1904,18 +2112,42 @@ public partial class UnitController : MonoBehaviour
     // 다리만 전속력으로 돌아 땅 위를 미끄러진다 — 몰려간 고블린들이 앞에서 떠는 것처럼 보이던
     // 그림의 절반이 이것이다. EvadeState가 후퇴 모션에 같은 보정을 이미 쓰고 있다.
     //
-    // SetMoveAnimation은 요청 속도를 받아 스스로 MoveMultiplier(공포/둔화)를 곱하므로,
-    // 이미 그것이 반영된 실측 속도를 넘길 때는 도로 나눠 두 번 곱해지지 않게 한다.
+    // 이동 모션을 재생하는 표준 경로. 이동 중인 상태는 전부 이것만 부르면 된다.
     public void SetMoveAnimationFromGroundSpeed(bool isRunning)
     {
         // 0으로 떨어지면 SetMoveAnimation이 대기 자세로 보내 버려, 막혔다 풀렸다 하는
         // 유닛의 모션이 달리기와 대기 사이에서 깜빡인다. 아주 작은 값으로 바닥을 깐다
         // (배속 하한은 moveSpeedMultiplierRange가 어차피 잡는다).
-        float compensated = CurrentMoveSpeed / Mathf.Max(0.01f, MoveMultiplier);
-        SetMoveAnimation(Mathf.Max(compensated, 0.05f), isRunning, false);
+        SetMoveAnimation(Mathf.Max(CurrentMoveSpeed, 0.05f), isRunning, false);
     }
 
     public void FaceTarget() => FaceDirection(CurrentTarget, rotationSpeed);
+
+    // 주어진 쪽을 즉시 바라본다. 서서히 도는 것이 아니라 그 프레임에 맞춘다.
+    //
+    // 이동 모션과 실제 이동 방향이 어긋나면 그대로 발이 미끄러져 보인다. 도약이나 도주처럼
+    // 시작하는 순간부터 방향이 정해져 있는 동작은, 돌아서는 동안의 짧은 어긋남조차 눈에 띈다.
+    public void SnapFacing(Vector3 forwardDirection)
+    {
+        Vector3 facing = forwardDirection;
+        facing.y = 0f;
+        if (facing.sqrMagnitude <= 0.0001f) return;
+
+        transform.rotation = Quaternion.LookRotation(facing.normalized);
+    }
+
+    // 주어진 방향을 등지고 선다. 뒷점프처럼 "뒤로 가는" 모션이 실제 이동과 맞으려면
+    // 몸이 그 반대쪽을 보고 있어야 한다.
+    public void FaceAwayFrom(Vector3 moveDirection) => SnapFacing(-moveDirection);
+
+    // 이미 내지른 스윙 도중의 회전. 겨누는 것은 휘두르기 전에 끝나 있어야 하고
+    // (attackFacingTolerance), 여기서는 상대가 조금 움직인 만큼만 따라간다.
+    // attackTurnSpeed가 0이면 스윙에 들어간 순간 방향이 고정된다.
+    public void FaceTargetWhileAttacking()
+    {
+        if (attackTurnSpeed <= 0f) return;
+        FaceDirection(CurrentTarget, attackTurnSpeed);
+    }
 
     private void FaceDirection(UnitController facingTarget, float turnSpeed)
     {
@@ -1983,11 +2215,26 @@ public partial class UnitController : MonoBehaviour
 
     // 맞은 방향에 맞는 피격 모션을 고른다(HitFront/Back/Left/Right).
     // 방향 클립이 하나도 없는 리그는 예전처럼 Hit 하나로 떨어진다.
+    //
+    // 가드가 뚫린 그 한 대만은 방향과 무관하게 BlockBreak으로 낸다. 경직을 없앤 뒤에도
+    // "방패가 젖혀졌다"는 것은 보여야 하기 때문이다 — 그러지 않으면 막다 뚫린 것과
+    // 그냥 한 대 맞은 것이 화면에서 구분되지 않는다.
     public void TriggerHit()
     {
+        if (hitFromGuardBreak && blockBreakAnimationHash != 0)
+        {
+            hitFromGuardBreak = false;
+            PlayAnimation(blockBreakAnimationHash, true);
+            return;
+        }
+
+        hitFromGuardBreak = false;
         int hash = ResolveHitAnimationHash();
         PlayAnimation(hash != 0 ? hash : hitAnimationHash, true);
     }
+
+    // 이번 피격이 "막다가 뚫린 것"인가. TakeDamage가 세우고 TriggerHit이 한 번 쓰고 내린다.
+    private bool hitFromGuardBreak;
 
     public void InterruptCurrentAction()
     {
@@ -2150,6 +2397,21 @@ public partial class UnitController : MonoBehaviour
     {
         // 붙들고 있는 상대가 없으면 때린 쪽을 본다. 판단할 다른 근거가 없다.
         if (!IsTargetValid()) return true;
+
+        // 파티 집중 표적을 때리는 중이면 맞아도 흔들리지 않는다.
+        //
+        // 이게 없으면 집중 사격이 성립하지 않는다. 적은 전부 위협 가중치가 같아서(고블린 1.0)
+        // 아래 비교가 늘 참이 되고, 딜러는 맞을 때마다 때린 적에게 끌려간다 —
+        // 실측에서 창수가 집중 표적에 붙었다가 피격 한 번에 매번 다른 적으로 떨어져 나갔다.
+        // 화력을 한 곳에 모으기로 한 이상, 맞는 것은 감수해야 하는 대가다(그러라고 탱커가 있다).
+        // 다만 이미 누군가 내 간격 안까지 들어왔다면 집중을 고집하지 않는다.
+        // 붙은 놈을 두고 먼 표적을 겨누는 것은 집중이 아니라 그냥 맞아 주는 것이다.
+        if (stats.focusBonus > 0f &&
+            CurrentTarget == UnitRegistry.GetFocusTarget(team) &&
+            !ShouldKeepDistance())
+        {
+            return false;
+        }
 
         return attacker.Stats.threatWeight >= CurrentTarget.Stats.threatWeight;
     }

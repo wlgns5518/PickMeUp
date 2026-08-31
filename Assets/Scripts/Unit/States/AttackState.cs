@@ -25,15 +25,24 @@ public class AttackState : UnitBattleState
     {
         if (TrySwitchToBetterState()) return;
 
-        context.FaceTarget();
-
         if (context.IsAttackAnimationLocked)
         {
+            // 휘두르는 중에는 몸을 거의 돌리지 않는다.
+            //
+            // 예전에는 여기서도 평소 회전 속도(720도/초)로 돌렸다. 공격 클립은 제자리에서
+            // 베는 동작인데 그 위에서 몸이 홱 돌아가니, 발이 땅에 붙지 않고 미끄러지는 것이
+            // 그대로 보였다. 겨누는 일은 휘두르기 전에 끝나 있어야 하고(attackFacingTolerance),
+            // 내지른 뒤에는 상대가 움직인 만큼만 조금 따라간다.
+            context.FaceTargetWhileAttacking();
+
             // 준비 동작 동안은 타깃 쪽으로 조금 파고든다. 예전에는 StopMovement로 완전히
             // 못 박고 휘둘렀기 때문에, 사거리 경계에서 시작한 스윙이 눈에 보이게 허공을 갈랐다.
+            // 이미 교전 간격에 서 있으면 한 발도 움직이지 않는다(UpdateAttackLunge 참조).
             context.UpdateAttackLunge();
             return;
         }
+
+        context.FaceTarget();
 
         // 클립은 끝났지만 아직 다음 스윙의 호흡이 남은 구간. 여기가 예전에는 통째로 비어 있었다 —
         // 사거리에 들어가면 그 자리에 못 박혀 마주 보고 계속 때리기만 했다. 이제 이 시간에

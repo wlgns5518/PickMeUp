@@ -136,7 +136,25 @@ public class TargetScanner : MonoBehaviour
     private void ReviewAggro()
     {
         if (aggroReviewInterval <= 0f || owner == null) return;
-        if (Time.time < nextAggroReviewTime) return;
+
+        // 아래 두 경우는 재검토 주기(2.5초)를 기다리지 않는다.
+        //
+        // 주기를 기다리면, 마침 그 순간에 휘두르는 중일 때(근접은 대부분 그렇다) TryRetarget이
+        // 실패하고 다음 기회까지 또 2.5초를 흘려보낸다. 그 사이 유닛은 계속 엉뚱한 적을 본다.
+        //
+        //  1) 쫓아온 적이 내 간격 안에 있는데 그놈을 겨누고 있지 않다 — 가장 급한 경우다.
+        //     쫓기기 시작한 순간 바로 돌아서야 견제가 된다.
+        //  2) 집중 딜러가 파티 집중 표적을 벗어나 있다 — 화력이 흩어진 상태다.
+        UnitController presser = ClosestPressuringEnemy();
+        bool urgent = presser != null && owner.CurrentTarget != presser;
+
+        if (!urgent)
+        {
+            urgent = owner.Stats.focusBonus > 0f
+                     && owner.CurrentTarget != UnitRegistry.GetFocusTarget(owner.Team);
+        }
+
+        if (!urgent && Time.time < nextAggroReviewTime) return;
 
         // 주기도 스캔과 같은 이유로 유닛마다 흩어 놓는다(ScatterSchedule 주석 참조).
         nextAggroReviewTime = Time.time + aggroReviewInterval * Random.Range(0.8f, 1.2f);
@@ -169,6 +187,29 @@ public class TargetScanner : MonoBehaviour
 
     private UnitController ScanForTarget()
     {
+        // 나를 쫓아와 간격을 무너뜨린 적이 있으면 그놈부터 쏜다.
+        //
+        // 거리로 먹고사는 직군(궁수·마법사·사제·창수)에게는 붙은 적이 곧 가장 급한 문제다.
+        // 파티 집중 표적이 아무리 중요해도, 코앞까지 온 놈을 두고 12m 밖을 겨누는 것은
+        // 카이팅이 아니라 그냥 맞아 주는 것이다. 물러나면서 쫓아오는 놈을 쏘는 것이 견제다.
+        //
+        // 이 판단은 물러남·영창 접기·발놀림이 쓰는 것과 같은 기준(내 간격 안의 적)을 쓴다.
+        // 넷이 같은 것을 봐야 "물러나는 이유"와 "쏘는 대상"이 어긋나지 않는다.
+        UnitController presser = ClosestPressuringEnemy();
+        if (presser != null) return presser;
+
+        // 집중 딜러는 파티가 정한 표적을 먼저 본다.
+        //
+        // 거리 편향(FocusBonus)만으로는 모이지 않았다. 편향은 "몇 미터 더 가깝게 친다"일 뿐이라
+        // 집중 표적이 12m 밖이고 다른 적이 2m 앞이면 9m를 깎아도 여전히 가까운 쪽이 이긴다.
+        // 실측에서 딜러 셋이 [집중] 성향을 갖고도 서로 다른 적을 때리고 있었다.
+        //
+        // 그래서 편향이 아니라 우선 선택으로 바꾼다: 닿을 수 있는 집중 표적이 있으면 그쪽이다.
+        // 닿을 수 없으면(사거리 밖이거나 벽 너머) 평소대로 고른다 — 도달하지 못할 표적을
+        // 붙들고 있으면 그것대로 아무것도 못 한다.
+        UnitController focus = ReachableFocusTarget();
+        if (focus != null) return focus;
+
         return UnitRegistry.FindNearestVisibleEnemy(
             owner, owner.Stats.detectRange, EffectiveViewAngle, GetCloseVisibleRange(), eyeHeight, obstacleMask,
             new UnitRegistry.TargetBias(
@@ -176,9 +217,79 @@ public class TargetScanner : MonoBehaviour
                 ThreatBonusScale(),
                 owner.Stats.backlinePreference,
                 owner.Stats.peelBonus,
+                owner.Stats.focusBonus,
                 currentTargetStickiness,
                 MaxAttackersPerTarget(),
                 crowdingPenalty));
+    }
+
+    // 간격 판정에 쓰는 공용 버퍼. 스캔마다 리스트를 새로 만들지 않는다.
+    private static readonly System.Collections.Generic.List<UnitController> PressureBuffer =
+        new System.Collections.Generic.List<UnitController>(8);
+
+    // 내 간격 안까지 들어온 적 중 가장 급한 하나. 없으면 null.
+    //
+    // 나를 노리고 온 놈(쫓아오는 적)을 먼저 고르고, 그런 놈이 없으면 그냥 가장 가까운 놈을
+    // 고른다 — 나를 노리지 않더라도 내 간격 안에 있는 이상 물러나게 만드는 원인은 같다.
+    private UnitController ClosestPressuringEnemy()
+    {
+        if (owner == null) return null;
+
+        float threshold = owner.Stats.keepDistanceRange;
+        if (threshold <= 0f) return null;
+
+        UnitRegistry.FindEnemiesAround(owner, owner.transform.position, threshold, PressureBuffer);
+        if (PressureBuffer.Count == 0) return null;
+
+        UnitController chasing = null;
+        float chasingSqr = float.MaxValue;
+        UnitController nearest = null;
+        float nearestSqr = float.MaxValue;
+        Vector3 origin = owner.transform.position;
+
+        for (int i = 0; i < PressureBuffer.Count; i++)
+        {
+            UnitController candidate = PressureBuffer[i];
+            if (candidate == null) continue;
+
+            float sqr = (candidate.transform.position - origin).sqrMagnitude;
+            if (sqr < nearestSqr)
+            {
+                nearestSqr = sqr;
+                nearest = candidate;
+            }
+
+            if (candidate.CurrentTarget != owner) continue;
+            if (sqr >= chasingSqr) continue;
+
+            chasingSqr = sqr;
+            chasing = candidate;
+        }
+
+        PressureBuffer.Clear();
+        return chasing != null ? chasing : nearest;
+    }
+
+    // 지금 닿을 수 있는 파티 집중 표적. 없으면 null.
+    //
+    // 시야각(cone)은 보지 않고 탐지 거리와 시야선만 본다. 유닛은 어차피 표적 쪽으로 몸을 돌리므로,
+    // "지금 등지고 있다"는 이유로 집중 표적을 놓치면 파티가 다시 흩어진다.
+    private UnitController ReachableFocusTarget()
+    {
+        if (owner == null || owner.Stats.focusBonus <= 0f) return null;
+
+        UnitController focus = UnitRegistry.GetFocusTarget(owner.Team);
+        if (focus == null || focus == owner || focus.IsDead || !focus.isActiveAndEnabled) return null;
+        if (!UnitRegistry.AreEnemies(owner, focus)) return null;
+
+        Vector3 offset = focus.transform.position - owner.transform.position;
+        offset.y = 0f;
+        float detect = owner.Stats.detectRange;
+        if (offset.sqrMagnitude > detect * detect) return null;
+
+        return UnitRegistry.HasLineOfSight(owner.transform.position, focus.transform.position, eyeHeight, obstacleMask)
+            ? focus
+            : null;
     }
 
     // 직업이 정해 준 시야각이 있으면 그것을 쓴다. 정찰을 겸하는 궁수만 넓다(200도) —

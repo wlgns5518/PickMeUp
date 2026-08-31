@@ -70,6 +70,16 @@ public readonly struct JobCombatProfile
     // 0이면 예전처럼 가장 가까운 적을 친다.
     public readonly float BacklinePreference;
 
+    // 파티가 정한 집중 표적으로 얼마나 강하게 끌리는가. 딜러가 크고, 탱커와 암살자는 0이다.
+    //
+    // 파티 전투인데 각자 다른 적을 때리면 아무도 죽지 않는다(실측: 아군 6명이 표적 5개로
+    // 갈라져 적 8마리가 전부 HP 100%). 딜러는 한 곳에 모여야 처치선을 넘길 수 있다.
+    //
+    // 다만 전원이 모이면 그것대로 파티가 무너진다. 탱커는 어그로를 붙들어야 하고
+    // (집중 표적을 쫓아가면 방어선이 따라 움직인다) 암살자는 후방을 파고들어야 한다.
+    // 그 둘이 0인 것은 놓친 것이 아니라 각자의 일이 따로 있기 때문이다.
+    public readonly float FocusBonus;
+
     // 나보다 약한 아군에게 붙어 있는 적을 얼마나 우선해서 노리는가(도발). 탱커만 크다.
     //
     // 어그로를 "적이 나를 고르게 하는 힘"으로만 두면 탱커는 수동적이 된다 — 이미 사제를 물고
@@ -118,6 +128,7 @@ public readonly struct JobCombatProfile
         float threatWeight = 1f,
         float backlinePreference = 0f,
         float peelBonus = 0f,
+        float focusBonus = 0f,
         float engageAngle = 0f,
         float keepDistanceRatio = 0f,
         float bleedChanceOnHit = 0f,
@@ -141,6 +152,7 @@ public readonly struct JobCombatProfile
         ThreatWeight = threatWeight;
         BacklinePreference = backlinePreference;
         PeelBonus = peelBonus;
+        FocusBonus = focusBonus;
         EngageAngle = engageAngle;
         KeepDistanceRatio = keepDistanceRatio;
         BleedChanceOnHit = bleedChanceOnHit;
@@ -194,7 +206,10 @@ public static class JobProfile
             case JobType.Melee:
                 return new JobCombatProfile(1.00f, 1.00f, 1.8f, 9f, 1.00f, 1.0f, 0.05f,
                     role: JobRole.Skirmisher, guard: GuardStyle.Parry,
-                    threatWeight: 1.0f, engageAngle: 55f);
+                    // 원작의 검사는 "탱커의 부담을 나누며 측면으로 우회하려는 몬스터의 발을 묶는"
+                    // 직군이다. 탱커보다 약하게 잡은 것은 전열을 통째로 비우고 달려가지 않게 하려는 것 —
+                    // 검사가 자리를 뜨면 그 측면이 그대로 열린다.
+                    threatWeight: 1.0f, peelBonus: 3.5f, focusBonus: 9f, engageAngle: 55f);
 
             // 탱커 — 어그로를 통째로 끌어안고 정면을 막는다.
             // 위협 가중치가 압도적으로 높아야 후방이 살아남는다(원작: 방어선이 뚫리면 파티 괴멸).
@@ -209,7 +224,10 @@ public static class JobProfile
             case JobType.Lancer:
                 return new JobCombatProfile(0.95f, 1.10f, 2.6f, 11f, 0.95f, 1.0f, 0.08f,
                     role: JobRole.Reach, guard: GuardStyle.None,
-                    threatWeight: 0.85f, engageAngle: 28f, keepDistanceRatio: 0.62f,
+                    // 창수의 리치는 "적의 돌진을 막아서는" 데 쓰인다. 후방으로 파고드는 적을
+                    // 창끝으로 멈춰 세우는 것이 이 직군의 몫이라 셋 중 가장 작게나마 지킨다.
+                    threatWeight: 0.85f, peelBonus: 2.5f, focusBonus: 9f,
+                    engageAngle: 28f, keepDistanceRatio: 0.62f,
                     slowOnHitDuration: 1.6f, slowOnHitMultiplier: 0.6f);
 
             // 암살자 — 배후(180도)로 파고들어 급소를 연타한다.
@@ -226,21 +244,22 @@ public static class JobProfile
             case JobType.Archer:
                 return new JobCombatProfile(0.80f, 1.05f, 9.0f, 15f, 1.05f, 1.0f, 0.00f,
                     role: JobRole.Marksman, guard: GuardStyle.None,
-                    threatWeight: 0.40f, keepDistanceRatio: 0.30f, viewAngle: 200f);
+                    threatWeight: 0.40f, focusBonus: 9f, keepDistanceRatio: 0.30f, viewAngle: 200f);
 
             // 마법사 — 영창 중 무방비. 시전 중 받는 피해가 2.2배다.
             // 그 대가로 스킬 한 방이 크고(마나 1.6배로 자주 쓴다) 사거리가 길다.
             case JobType.Mage:
                 return new JobCombatProfile(0.65f, 1.15f, 7.5f, 13f, 0.95f, 1.6f, 0.00f,
                     role: JobRole.Caster, guard: GuardStyle.None,
-                    threatWeight: 0.40f, keepDistanceRatio: 0.32f, castVulnerability: 2.2f);
+                    threatWeight: 0.40f, focusBonus: 9f, keepDistanceRatio: 0.32f, castVulnerability: 2.2f);
 
             // 사제 — 치유도 영창이다. 마법사보다는 덜하지만 시전 중에는 그대로 맞는다.
             // 위협 가중치가 가장 낮다 — 대신 적 암살자의 BacklinePreference가 정확히 이쪽을 노린다.
             case JobType.Support:
                 return new JobCombatProfile(0.90f, 0.60f, 6.0f, 12f, 1.00f, 1.8f, 0.05f,
                     role: JobRole.Mender, guard: GuardStyle.None,
-                    threatWeight: 0.30f, keepDistanceRatio: 0.35f, castVulnerability: 1.8f,
+                    // 사제도 손이 비면 집중 표적을 친다. 다만 본업은 치유라 딜러보다 약하게 끌린다.
+                    threatWeight: 0.30f, focusBonus: 5f, keepDistanceRatio: 0.35f, castVulnerability: 1.8f,
                     isHealer: true);
 
             // 생산 계열. 역할 없이 눈앞의 적을 친다 — 전투에 끌려나온 것 자체가 나쁜 선택이다.

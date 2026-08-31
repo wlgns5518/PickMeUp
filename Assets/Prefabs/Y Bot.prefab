@@ -1771,10 +1771,11 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   allyGroupingBonusPerAlly: 3
-  enemyTankThreatBonus: 4
+  threatBonusScale: 1.5
   currentTargetStickiness: 5
   maxAttackersPerAlly: 2
   crowdingPenalty: 10
+  aggroReviewInterval: 2.5
 --- !u!114 &380708866839357895
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1798,6 +1799,14 @@ MonoBehaviour:
   strafeRightStateName: StrafeRight
   strafeBackStateName: StrafeBack
   combatIdleStateName: CombatIdle
+  clingToNeckDuringSkill: 0
+  clingDistance: 0.42
+  clingMouthHeight: 1.2
+  clingSnapTime: 0.25
+  leapAttackStateName: 
+  leapAttackHeight: 0.5
+  leapLaunchRatio: 0.15
+  leapLandRatio: 0.45
   separationMargin: 0.15
   attackFacingTolerance: 35
   minFootworkWindow: 0.35
@@ -1805,6 +1814,10 @@ MonoBehaviour:
   movingAvoidanceQuality: 3
   engagedAvoidancePriority: 35
   movingAvoidancePriority: 60
+  avoidancePrioritySpread: 8
+  castStateName: Cast
+  spellAimSampleLimit: 12
+  spellRetryDelay: 0.8
   team: 0
   stats:
     maxHp: 100
@@ -1824,11 +1837,25 @@ MonoBehaviour:
     moveStopDistance: 0.25
     attackRange: 1.6
     detectRange: 8
+    role: 0
+    guardStyle: 0
     isTank: 0
+    threatWeight: 1
+    backlinePreference: 0
+    peelBonus: 0
+    engageAngle: 0
+    keepDistanceRange: 0
+    viewAngle: 0
+    affinity: 0
+    castSpeedMultiplier: 1
     attackDamage: 8
     skillDamage: 24
     kickDamageMultiplier: 0.6
+    bleedChanceOnHit: 0
+    slowOnHitDuration: 0
+    slowOnHitMultiplier: 1
     skillCooldown: 5
+    skillUseCount: -1
     evadeRange: 2.5
     blockDuration: 0.8
     blockCooldown: 1.5
@@ -1836,6 +1863,8 @@ MonoBehaviour:
     knockbackDuration: 0.12
     blockDamageReduction: 1
     damageReduction: 0
+    guardArcAngle: 180
+    counterAfterPerfectGuard: 0
     maxPoise: 100
     currentPoise: 100
     poiseDamagePerHit: 15
@@ -1843,6 +1872,9 @@ MonoBehaviour:
     poiseDamageSkill: 60
     poiseDamageKick: 45
     poiseBreakImmunity: 2.5
+    skillStaggerDuration: 0
+    skillEngageDelay: 0
+    skillVictimImmunity: 0
     poiseHitPushback: 0.15
     attackArcAngle: 130
     attackHitTolerance: 0.4
@@ -1852,12 +1884,15 @@ MonoBehaviour:
     comboFinisherRecoveryTime: 0
     lungeSpeed: 2.4
     lungeMaxDistance: 0.8
+    leapAttackRange: 0
+    leapAttackCooldown: 7
     combatSpacingRatio: 0.82
     footworkSpeedRatio: 0.65
     strafeFlipInterval: 1.8
     backstabDamageMultiplier: 1.6
     backstabPoiseMultiplier: 2
     recoveryVulnerabilityMultiplier: 1.35
+    castVulnerabilityMultiplier: 1
     blockReactionTime: 0.18
     perfectGuardWindow: 0.2
     perfectGuardChance: 0.35
@@ -1873,6 +1908,8 @@ MonoBehaviour:
     healCooldown: 6
     healManaCost: 15
     healTargetHpRatio: 0.7
+    dispelOnHeal: 1
+    dispelPriorityBonus: 0.2
   agent: {fileID: 0}
   animator: {fileID: 0}
   scanner: {fileID: 0}
@@ -1896,13 +1933,17 @@ MonoBehaviour:
   - {fileID: 5494213943435191861, guid: db51fe09adf27d640b4e10018c2d76ba, type: 3}
   - {fileID: 5371219466416337994, guid: f9e099178c81bee439a79eecec91dacb, type: 3}
   bloodEffectOffset: {x: 0, y: 1, z: 0}
+  bloodColor: {r: 0.6, g: 0, b: 0, a: 1}
   runDistance: 4
   destinationUpdateInterval: 0.15
   chasePredictionTime: 0.25
   rotationSpeed: 720
   blockTurnSpeed: 240
+  attackTurnSpeed: 120
   minKeepDistanceRange: 4
   keepDistanceRatio: 0.3
+  regroupDistance: 8
+  survivalFleeDistance: 12
   targetChangeInterval: 0.5
   targetSwitchDistanceRatio: 0.75
   roamWhenSearching: 1
@@ -1932,6 +1973,7 @@ MonoBehaviour:
   backpedalSpeed: 3.3
   dodgeClipSpeed: 4.08
   moveSpeedMultiplierRange: {x: 0.6, y: 2.2}
+  moveSpeedDampTime: 0.15
   animatorCullingMode: 1
   disableAnimatorAfterDeath: 1
   debugLogs: 0

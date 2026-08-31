@@ -374,12 +374,16 @@ public class CharacterBattleSpawner : MonoBehaviour
         stats.threatWeight = job.ThreatWeight;
         stats.backlinePreference = job.BacklinePreference;
         stats.peelBonus = job.PeelBonus;
+        stats.focusBonus = job.FocusBonus;
         stats.engageAngle = job.EngageAngle;
         stats.viewAngle = job.ViewAngle;
         stats.bleedChanceOnHit = job.BleedChanceOnHit;
         stats.slowOnHitDuration = job.SlowOnHitDuration;
         stats.slowOnHitMultiplier = job.SlowOnHitMultiplier;
         stats.castVulnerabilityMultiplier = job.CastVulnerability;
+        // 마법사만 달려서 달아난다. 붙잡히면 할 수 있는 것이 없는 직군이라,
+        // 뒷걸음으로 재는 대신 아예 떼어놓고 다시 영창하는 편이 낫다.
+        stats.fleeByRunning = job.Role == JobRole.Caster;
 
         // 유지 거리는 비율이 아니라 미터로 확정해서 넘긴다. 사거리는 이미 무기 보정까지
         // 끝난 값이라(위 Clamp), 여기서 굳혀 두면 AI가 매 프레임 다시 곱하지 않아도 된다.

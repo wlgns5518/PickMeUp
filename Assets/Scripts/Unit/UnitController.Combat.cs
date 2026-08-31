@@ -319,6 +319,28 @@ public partial class UnitController
         return SeparationFrom(CurrentTarget);
     }
 
+    // 교전 중 유지하려는 간격.
+    //
+    // 발놀림과 파고들기가 반드시 같은 값을 봐야 한다. 예전에는 파고들기만 더 안쪽
+    // (회피가 허용하는 최소 간격)을 노렸다 — 실측으로 아군은 1.52m에 서려 하는데 파고들기는
+    // 1.15m를 향했고, 그 1.15m가 마침 회피의 하한이라 파고든 만큼 그대로 도로 밀려났다.
+    // 그래서 스윙마다 앞뒤로 미끄러졌다. 제자리에서 베는 모션이라 그 미끄러짐이 그대로 보인다.
+    private float EngageDistance => Mathf.Max(
+        SeparationFromTarget(),
+        (stats.attackRange + stats.moveStopDistance) * stats.combatSpacingRatio);
+
+    // 유지하려는 간격 안에(여유 포함) 아직 적이 남아 있는가.
+    //
+    // 여유를 두는 이유: 임계에 딱 맞춰 판단하면 그 경계에서 "물러남 → 안전 → 파고듦 → 다시 위협"이
+    // 반복된다. 물러날 때보다 조금 더 멀어져야 다시 다가가게 해서 그 진동을 없앤다.
+    private bool IsThreatWithinSpacing()
+    {
+        float threshold = KeepDistanceThreshold;
+        if (threshold <= 0f) return false;
+
+        return UnitRegistry.CountEnemiesAround(this, transform.position, threshold * 1.3f) > 0;
+    }
+
     // ---------------------------------------------------------------- 파고들기
 
     // 준비 동작 동안 타깃 쪽으로 조금 파고든다. 예전에는 StopMovement로 완전히 못 박고
@@ -334,9 +356,11 @@ public partial class UnitController
         toTarget.y = 0f;
 
         float distance = toTarget.magnitude;
-        // 파고들어 멈출 지점. 사거리 안쪽 깊숙이가 아니라 "칼이 편하게 닿는" 정도까지만 간다.
-        // 회피가 허용하는 최소 간격이 하한이다 — 그보다 안쪽을 노리면 파고든 만큼 도로 밀려난다.
-        float contactDistance = Mathf.Max(SeparationFromTarget(), stats.attackRange * 0.7f);
+        // 파고들어 멈출 지점은 "교전 간격"이다(EngageDistance 주석 참조).
+        // 여기까지만 간다는 것이 중요하다 — 이미 그 간격에 서 있으면 한 발도 움직이지 않고
+        // 제자리에서 벤다. 파고들기는 상대가 물러나 칼이 닿지 않게 됐을 때를 위한 것이지,
+        // 스윙마다 앞으로 밀고 들어가라는 것이 아니다.
+        float contactDistance = EngageDistance;
         if (distance <= contactDistance) return;
 
         float step = Mathf.Min(stats.lungeSpeed * Time.deltaTime, lungeRemaining, distance - contactDistance);
@@ -412,9 +436,9 @@ public partial class UnitController
             if (distance > 0.0001f)
             {
                 leapDirection = toTarget / distance;
-                // 착지 지점은 파고들기와 같은 기준을 쓴다. 더 깊이 들어가면 회피가 도로 밀어낸다.
-                float contactDistance = Mathf.Max(SeparationFromTarget(), stats.attackRange * 0.7f);
-                leapDistance = Mathf.Max(0f, distance - contactDistance);
+                // 착지 지점도 교전 간격이다(EngageDistance). 그보다 안쪽에 내려앉으면
+                // 착지하자마자 회피가 도로 밀어내서, 뛰어든 보람 없이 뒷걸음질부터 하게 된다.
+                leapDistance = Mathf.Max(0f, distance - EngageDistance);
             }
         }
 
@@ -575,10 +599,12 @@ public partial class UnitController
         // "남은 시간 < minFootworkWindow"를 다시 봤는데, 그러면 어떤 틈이든 스윙 직전
         // 0.35초는 반드시 제자리에 멈춰 서게 된다 — 공격 후 멈칫하던 것의 정체가 이거였다.
         //
-        // 마법사는 이 판단에서 빠진다. 평타가 없어서 TriggerAttack을 한 번도 부르지 않으므로
-        // footworkThisGap이 영영 거짓이고, 그대로 두면 마법 쿨다운을 기다리는 내내 굳어 선다.
-        // 마법사에게 "스윙 사이의 틈"이란 것이 없으니 영창하지 않는 동안은 늘 자리를 잡는 것이 맞다.
-        if (!footworkThisGap && !IsCaster)
+        // 마법사도 예외를 두지 않는다.
+        //
+        // 한때 "마법사는 스윙이 없어 footworkThisGap이 영영 거짓이니 늘 발놀림하게 하자"고
+        // 예외를 뒀는데, 그 결과 영창 사이 내내 제자리에서 잔걸음을 치며 발이 미끄러졌다.
+        // 마력을 모으는 유닛은 가만히 서 있는 편이 맞고, 간격이 무너지면 그때 물러난다(EvadeState).
+        if (!footworkThisGap)
         {
             StopFootwork();
             return;
@@ -602,53 +628,31 @@ public partial class UnitController
 
         // 간격 조절. 너무 붙으면 물러서고 멀면 파고든다.
         // 목표 간격의 하한은 회피가 허용하는 최소 거리다(SeparationFrom 주석 참조).
-        float idealDistance = Mathf.Max(SeparationFromTarget(),
-            (stats.attackRange + stats.moveStopDistance) * stats.combatSpacingRatio);
-        float gap = distance - idealDistance;
+        float gap = distance - EngageDistance;
+
+        // 다만 근처에 위협이 남아 있으면 파고들지 않는다.
+        //
+        // 이 계산은 겨누는 상대와의 거리만 본다. 그런데 물러나게 만든 적은 대개 다른 놈이다 —
+        // 마법사가 발밑의 고블린을 피해 물러난 직후, 8m 밖 집중 표적까지 6.4m를 맞추겠다고
+        // 방금 도망친 그 고블린 쪽으로 도로 걸어 들어갔다("물러났다가 바로 돌아와 맞는다").
+        //
+        // 물러나는 성분(gap < 0)은 그대로 두고 파고드는 성분만 막는다. 임계에 여유(1.3배)를
+        // 두는 것은 경계에서 붙었다 물러났다를 반복하지 않게 하기 위해서다.
+        if (gap > 0f && IsThreatWithinSpacing()) gap = 0f;
 
         // 비례 제어. 예전에는 Mathf.Sign으로 늘 최고 속도로 밀어서, 이상 간격을 지나칠 때마다
         // 방향이 뒤집혀 그 주위를 진동했다. 가까울수록 약하게 밀어야 그 자리에서 멎는다.
         if (Mathf.Abs(gap) > 0.12f) direction += forward * Mathf.Clamp(gap / 0.7f, -1f, 1f);
 
-        // 옆으로 돌기.
+        // 옆으로 도는 성분은 없앴다.
         //
-        // 옆걸음 클립이 없는 리그(고블린)는 돌지 않고 간격만 맞춘다. 앞으로 달리는 다리로
-        // 게걸음을 치면 발이 대놓고 미끄러지는데, 그건 안 도는 것보다 나쁘다.
-        if (stats.strafeFlipInterval > 0f && HasStrafeAnimation)
-        {
-            // 서고 싶은 방위가 있는 직군은 그쪽으로 돈다. 목표에 닿으면 멈춘다 —
-            // 검사는 측면에, 암살자는 등 뒤에 자리를 잡고 거기서 싸운다.
-            //
-            // 접근(ChaseState)에서 잡은 자리를 교전 중에도 유지하는 담당이 이쪽이다.
-            // 상대가 몸을 돌리면 방위가 어긋나므로, 여기서 계속 따라 돌지 않으면
-            // 파고들어 봐야 첫 스윙 한 번에 정면으로 되돌아온다.
-            float angleError = EngageAngleError(CurrentTarget);
-            if (Mathf.Abs(angleError) > 0.01f)
-            {
-                // 목표 방위 근처에서는 진동하지 않도록 죽은 구간을 둔다.
-                const float AngleDeadzone = 12f;
-                if (Mathf.Abs(angleError) > AngleDeadzone)
-                {
-                    // +right 쪽으로 도는 것이 방위각을 키우는 방향이다(반시계).
-                    float sign = Mathf.Sign(angleError);
-                    // 많이 어긋났을수록 세게 돈다. 다 왔는데도 전속력이면 목표를 지나친다.
-                    float urgency = Mathf.Clamp01(Mathf.Abs(angleError) / 60f);
-                    direction += Vector3.Cross(Vector3.up, forward) * (sign * 0.85f * urgency);
-                }
-            }
-            else
-            {
-                // 방위 성향이 없는 직군(탱커, 생산직, 고블린)은 예전처럼 주기적으로 방향을 뒤집으며
-                // 좌우로 흔든다. 한쪽으로만 돌면 난전이 통째로 한 방향으로 흘러가 버린다.
-                if (Time.time >= nextStrafeFlipTime)
-                {
-                    strafeSign = -strafeSign;
-                    nextStrafeFlipTime = Time.time + Random.Range(0.6f, 1.4f) * stats.strafeFlipInterval;
-                }
-
-                direction += Vector3.Cross(Vector3.up, forward) * (strafeSign * 0.85f);
-            }
-        }
+        // 한때 여기서 상대 주위를 돌게 했다(직군별 교전 방위 + 좌우 흔들기). 재는 그림을
+        // 만들려던 것인데, 실제 화면에서는 "공격하면서 빙글빙글 회전이동하는" 것으로 보였다.
+        // 게다가 옆걸음 클립과 실제 이동 속도가 어긋나는 구간마다 발이 눈에 띄게 미끄러졌다.
+        //
+        // 자리를 잡는 일은 접근(ChaseState.GetEngageDestination)이 맡는다. 붙고 나서까지
+        // 계속 돌 이유는 없다 — 교전 중 발놀림은 간격만 맞추면 충분하다.
+        // 방위 성향(engageAngle) 자체는 접근 쪽에 그대로 살아 있다.
 
         // 목표 속도로 곧바로 튀지 않고 붙였다 뺀다. 정지 → 최고 속도가 한 프레임에 일어나면
         // 발이 땅을 딛기 전에 몸이 먼저 나간다.
@@ -1197,7 +1201,9 @@ public partial class UnitController
     {
         if (agent == null || !agent.enabled) return;
 
-        bool holdingGround = IsHoldingGround();
+        // 도약 중에는 회피도 끈다. 도약은 이동을 코드가 통째로 가져가는 동작인데
+        // 지역 회피가 옆에서 밀면 그만큼 궤적이 휘어 "뒤로 뛰는데 옆으로 흐르는" 그림이 된다.
+        bool holdingGround = IsHoldingGround() || IsLeapingDodge;
 
         ObstacleAvoidanceType desiredType = holdingGround
             ? ObstacleAvoidanceType.NoObstacleAvoidance
@@ -1281,9 +1287,13 @@ public partial class UnitController
         perfectGuardArmed = false;
         blockImpactUntil = 0f;
         hasLastHitAttacker = false;
+        hitFromGuardBreak = false;
+        EndDodgeMove();
         noticedThreat = null;
         footworkThisGap = false;
         footworkVelocity = Vector3.zero;
+        lastRetreatDirection = Vector3.zero;
+        lastRetreatDirectionTime = -999f;
         // 재사용되는 유닛이 도약 도중에 회수됐다면 모델이 떠 있는 채로 남는다.
         lastLeapAttackTime = -999f;
         EndLeap();

@@ -30,6 +30,122 @@ public static class UnitRegistry
         enemies.Clear();
         neutrals.Clear();
         unitColliders.Clear();
+        for (int i = 0; i < focusTargets.Length; i++) focusTargets[i] = null;
+    }
+
+    // ------------------------------------------------------------------
+    // 파티 집중 표적
+    //
+    // 파티 전투인데 각자 다른 적을 때리면 아무도 죽지 않는다. 실측에서 아군 6명이 표적 5개로
+    // 갈라져 적 8마리가 전부 HP 100%로 남았다 — 피해가 여덟 갈래로 흩어져 어느 하나도
+    // 처치선에 닿지 못한 것이다.
+    //
+    // 흩어지는 이유는 편향의 순서였다. 스폰 직후에는 전원이 같은 프레임에 표적을 고르므로
+    // "이미 아군이 붙은 적"(groupingBonus)이 읽을 정보가 없어 전부 0으로 보이고, 그 뒤로는
+    // 기존 타깃 유지 편향(stickiness 5m)이 그룹핑(아군 1명당 3m)보다 커서 아무도 옮기지 않는다.
+    //
+    // 그래서 "누구를 먼저 죽일 것인가"를 파티 차원에서 하나 정해 둔다. 고르는 기준은
+    // 가장 많이 깎인 적이다 — 이미 들인 피해를 버리지 않고 처치까지 밀어붙이는 쪽이
+    // 파티 전체의 화력을 가장 크게 만든다(적 하나가 죽으면 그만큼 들어오는 공격도 준다).
+    //
+    // 모두가 여기 모이지는 않는다. 탱커는 어그로를 붙들어야 하고 암살자는 후방을 파고들어야
+    // 하므로 그쪽은 이 편향을 받지 않는다(JobProfile.FocusBonus). 집중은 딜러의 몫이다.
+    // ------------------------------------------------------------------
+
+    private static readonly UnitController[] focusTargets = new UnitController[3];
+
+    // 한 번 정한 표적은 쓰러질 때까지 바꾸지 않는다.
+    //
+    // 처음에는 "가장 많이 깎인 적"을 주기적으로 다시 골랐는데, 그게 오히려 흩어지게 만들었다:
+    // 피해가 퍼질수록 최저 HP가 계속 바뀌어 표적이 매 초 옮겨 다녔고, 아무도 따라잡지 못했다
+    // (실측에서 집중 표적이 G4 → G7로 흔들리는 동안 딜러 셋이 서로 다른 적을 때리고 있었다).
+    //
+    // 집중 사격은 "지금 가장 약한 놈"을 쫓는 것이 아니라 "하나를 정해 끝까지 미는 것"이다.
+    // 그래서 표적은 죽어야만 바뀐다. 하나가 쓰러지면 그만큼 들어오는 공격도 줄어드는데,
+    // 표적을 계속 갈아타면 그 이득을 영영 얻지 못한다.
+    public static UnitController GetFocusTarget(UnitTeam team)
+    {
+        int index = TeamIndex(team);
+
+        UnitController current = focusTargets[index];
+        if (current != null && !current.IsDead && current.isActiveAndEnabled) return current;
+
+        focusTargets[index] = PickFocusTarget(team);
+        return focusTargets[index];
+    }
+
+    // 다음에 잡을 하나를 고른다.
+    //
+    // 이미 교전 중인 적을 먼저 본다 — 아무도 손대지 않은 적을 고르면 파티가 전선을 버리고
+    // 그쪽으로 끌려간다. 그 안에서는 가장 많이 깎인 쪽을 골라 들인 피해를 버리지 않는다.
+    // 교전 중인 적이 하나도 없으면(전투 시작 직후) 전선에서 가장 가까운 적으로 떨어진다.
+    private static UnitController PickFocusTarget(UnitTeam team)
+    {
+        GetHostileLists(team, out List<UnitController> first, out List<UnitController> second);
+
+        UnitController engaged = null;
+        float bestRatio = float.MaxValue;
+        UnitController nearest = null;
+        float nearestSqr = float.MaxValue;
+
+        Vector3 origin = TeamOrigin(team);
+
+        AccumulateFocusCandidate(team, first, origin, ref engaged, ref bestRatio, ref nearest, ref nearestSqr);
+        AccumulateFocusCandidate(team, second, origin, ref engaged, ref bestRatio, ref nearest, ref nearestSqr);
+
+        return engaged != null ? engaged : nearest;
+    }
+
+    private static void AccumulateFocusCandidate(UnitTeam team, List<UnitController> list, Vector3 origin,
+        ref UnitController engaged, ref float bestRatio, ref UnitController nearest, ref float nearestSqr)
+    {
+        if (list == null) return;
+
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            UnitController candidate = list[i];
+            if (candidate == null || candidate.IsDead || !candidate.isActiveAndEnabled) continue;
+
+            float sqr = (candidate.transform.position - origin).sqrMagnitude;
+            if (sqr < nearestSqr)
+            {
+                nearestSqr = sqr;
+                nearest = candidate;
+            }
+
+            if (CountAlliesTargeting(team, candidate) <= 0) continue;
+
+            float ratio = candidate.Stats.HpRatio;
+            if (ratio >= bestRatio) continue;
+
+            bestRatio = ratio;
+            engaged = candidate;
+        }
+    }
+
+    // 이 팀이 지금 서 있는 자리의 대표값. 집중 표적을 처음 고를 때 "가장 가까운"의 기준이 된다.
+    private static Vector3 TeamOrigin(UnitTeam team)
+    {
+        List<UnitController> list = GetList(team);
+        Vector3 sum = Vector3.zero;
+        int count = 0;
+
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            UnitController unit = list[i];
+            if (unit == null || unit.IsDead) continue;
+
+            sum += unit.transform.position;
+            count++;
+        }
+
+        return count > 0 ? sum / count : Vector3.zero;
+    }
+
+    private static int TeamIndex(UnitTeam team)
+    {
+        int index = (int)team;
+        return index >= 0 && index < focusTargets.Length ? index : 0;
     }
 
     // 가장 가까운 우리 편. "전선에서 떨어져 나왔는가"를 재는 기준이다.
@@ -178,6 +294,8 @@ public static class UnitRegistry
         public readonly float BacklineBonus;
         // 후보가 나보다 약한 아군을 물고 있으면 더한다. 탱커의 도발.
         public readonly float PeelBonus;
+        // 후보가 파티의 집중 표적이면 더한다. 딜러가 화력을 한 곳에 모으는 힘.
+        public readonly float FocusBonus;
         // 지금 싸우고 있는 타깃을 계속 유지하려는 성향.
         public readonly float Stickiness;
         // 이 수만큼 이미 물린 후보는 CrowdingPenalty만큼 멀게 쳐서 분산시킨다.
@@ -185,12 +303,13 @@ public static class UnitRegistry
         public readonly float CrowdingPenalty;
 
         public TargetBias(float groupingPerAlly, float threatScale, float backlineBonus, float peelBonus,
-            float stickiness, int maxAttackers, float crowdingPenalty)
+            float focusBonus, float stickiness, int maxAttackers, float crowdingPenalty)
         {
             GroupingPerAlly = groupingPerAlly;
             ThreatScale = threatScale;
             BacklineBonus = backlineBonus;
             PeelBonus = peelBonus;
+            FocusBonus = focusBonus;
             Stickiness = stickiness;
             MaxAttackers = maxAttackers;
             CrowdingPenalty = crowdingPenalty;
@@ -401,6 +520,80 @@ public static class UnitRegistry
         AddEnemiesAround(requester, second, center, radius, results);
     }
 
+    // 어느 지점 주위에 있는 적들의 무게중심. 없으면 false.
+    //
+    // "무엇으로부터 물러날 것인가"를 정하는 데 쓴다. 겨누고 있는 상대 하나가 아니라 실제로
+    // 품 안에 들어온 적들을 기준으로 잡아야 도망 방향이 안정된다 — 표적이 바뀔 때마다
+    // 방향이 홱 도는 것을 막는 것이 목적이다.
+    public static bool TryGetEnemyCentroidAround(UnitController requester, Vector3 center, float radius,
+        out Vector3 centroid)
+    {
+        centroid = Vector3.zero;
+        if (requester == null) return false;
+
+        GetHostileLists(requester.Team, out List<UnitController> first, out List<UnitController> second);
+
+        Vector3 sum = Vector3.zero;
+        int count = 0;
+        AccumulateCentroid(requester, first, center, radius, ref sum, ref count);
+        AccumulateCentroid(requester, second, center, radius, ref sum, ref count);
+
+        if (count == 0) return false;
+
+        centroid = sum / count;
+        return true;
+    }
+
+    private static void AccumulateCentroid(UnitController requester, List<UnitController> list,
+        Vector3 center, float radius, ref Vector3 sum, ref int count)
+    {
+        float radiusSqr = radius * radius;
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            UnitController candidate = list[i];
+            if (!IsValidTarget(requester, candidate)) continue;
+            if (!AreEnemies(requester, candidate)) continue;
+
+            Vector3 offset = candidate.transform.position - center;
+            offset.y = 0f;
+            if (offset.sqrMagnitude > radiusSqr) continue;
+
+            sum += candidate.transform.position;
+            count++;
+        }
+    }
+
+    // 나를 노리고 쫓아오는 적이 이 거리 안에 있는가.
+    //
+    // "간격 안에 들어왔는가"(CountEnemiesAround)와는 다른 질문이다. 그쪽은 이미 붙은 상태를 재고,
+    // 이쪽은 아직 멀어도 나를 쫓고 있는 중인지를 본다 — 달아나기를 언제 멈출지 정하는 기준이다.
+    public static bool HasEnemyChasing(UnitController self, float range)
+    {
+        if (self == null) return false;
+
+        GetHostileLists(self.Team, out List<UnitController> first, out List<UnitController> second);
+        return HasChaserInList(self, first, range) || HasChaserInList(self, second, range);
+    }
+
+    private static bool HasChaserInList(UnitController self, List<UnitController> list, float range)
+    {
+        float rangeSqr = range * range;
+        Vector3 origin = self.transform.position;
+
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            UnitController candidate = list[i];
+            if (candidate == null || candidate.IsDead || !candidate.isActiveAndEnabled) continue;
+            if (candidate.CurrentTarget != self) continue;
+
+            Vector3 offset = candidate.transform.position - origin;
+            offset.y = 0f;
+            if (offset.sqrMagnitude <= rangeSqr) return true;
+        }
+
+        return false;
+    }
+
     // 세지만 담지는 않는다. "이 자리에 광역기를 쓸 만한가"를 판단할 때 쓰는 값이라
     // 목록까지 만들면 매 판단마다 리스트가 채워졌다 비워진다.
     public static int CountEnemiesAround(UnitController requester, Vector3 center, float radius)
@@ -582,6 +775,9 @@ public static class UnitRegistry
         bool useThreat = settings.ThreatScale > 0f;
         bool useBackline = settings.BacklineBonus > 0f;
         bool usePeel = settings.PeelBonus > 0f;
+        bool useFocus = settings.FocusBonus > 0f;
+        UnitController focus = useFocus ? GetFocusTarget(requester.Team) : null;
+        if (focus == null) useFocus = false;
         bool useStickiness = settings.Stickiness > 0f && requester.IsTargetValid();
         bool useCrowdCap = settings.MaxAttackers > 0 && settings.CrowdingPenalty > 0f;
         bool needsAttackerCount = useGrouping || useCrowdCap;
@@ -630,9 +826,17 @@ public static class UnitRegistry
             // 어그로를 "적이 나를 고르게 하는 힘"으로만 두면 탱커는 수동적이다. 이미 사제를
             // 물고 있는 적은 사제가 죽을 때까지 그대로 붙어 있다(실측: 탱커 1마리 / 검사 3마리).
             // 여기서 탱커가 그쪽을 고르면, 걸어가 한 대 치는 순간 위협 비교가 적을 넘겨받는다.
-            if (usePeel && IsHoldingWeakerAlly(requester, candidate))
+            if (usePeel)
             {
-                bias += settings.PeelBonus;
+                bias += PeelBiasFor(requester, candidate, settings.PeelBonus);
+            }
+
+            // 파티 집중 표적. 딜러가 화력을 한 곳에 모으는 힘이다(GetFocusTarget 주석 참조).
+            // 기존 타깃 유지 편향(Stickiness)보다 크게 잡아야 실제로 옮겨 간다 —
+            // 작으면 각자 처음 문 적을 죽을 때까지 놓지 않아 파티 전투가 1대1 여러 개가 된다.
+            if (useFocus && candidate == focus)
+            {
+                bias += settings.FocusBonus;
             }
 
             if (useStickiness && candidate == requester.CurrentTarget)
@@ -671,15 +875,71 @@ public static class UnitRegistry
         }
     }
 
-    // 이 적이 지금 "나보다 약한 우리 편"을 물고 있는가. 탱커의 도발 대상 판정이다.
-    // 나를 물고 있는 적은 해당 없다 — 이미 내가 붙들고 있는 것이라 떼어낼 것이 없다.
-    private static bool IsHoldingWeakerAlly(UnitController requester, UnitController candidate)
+    // 지켜야 할 아군을 위협하는 적일수록 크게 당긴다. 전열이 후방을 지키는 판단 전부가 여기 있다.
+    //
+    // 세 갈래로 나뉜다:
+    //   1) 약한 아군을 물고 있다        — 떼어내야 한다(도발)
+    //   2) 그 아군이 지금 영창 중이다   — 가장 급하다. 영창은 붙잡히는 순간 접히므로
+    //                                    (ShouldAbandonCast) 지금 떼어내지 못하면 그 한 방은 사라진다
+    //   3) 아직 물지는 않았지만 약한 아군 곁에 있다 — 파고드는 중이다. 물기를 기다릴 이유가 없다
+    //
+    // 3이 없으면 전열은 "이미 맞고 있는 아군"만 구하러 간다. 그건 늦다 —
+    // 마법사를 노리고 달려가는 적은 아직 탱커를 타깃으로 들고 있을 수 있기 때문이다.
+    private static float PeelBiasFor(UnitController requester, UnitController candidate, float peelBonus)
     {
-        UnitController victim = candidate.CurrentTarget;
-        if (victim == null || victim == requester) return false;
-        if (victim.Team != requester.Team || victim.IsDead) return false;
+        float best = 0f;
 
-        return victim.Stats.threatWeight < requester.Stats.threatWeight;
+        // 1·2) 무언가를 물고 있는 경우.
+        UnitController victim = candidate.CurrentTarget;
+        if (IsWorthGuarding(requester, victim))
+        {
+            best = victim.IsCasting ? peelBonus * CastingGuardScale : peelBonus;
+        }
+
+        // 3) 물지 않았어도 지켜야 할 아군 곁에 있으면 그것만으로 이유가 된다.
+        if (best <= 0f && IsNearGuardedAlly(requester, candidate))
+        {
+            best = peelBonus * ApproachGuardScale;
+        }
+
+        return best;
+    }
+
+    // 영창 중인 아군을 물고 있는 적은 이만큼 더 급하게 친다.
+    private const float CastingGuardScale = 1.6f;
+    // 아직 물지는 않았지만 지켜야 할 아군 곁까지 온 적. 이미 문 적보다는 덜 급하다.
+    private const float ApproachGuardScale = 0.7f;
+    // "곁에 있다"로 볼 거리(미터).
+    private const float GuardProximity = 3.5f;
+
+    // 내가 지켜야 할 아군인가. 나보다 약한(위협 가중치가 낮은) 우리 편이 그 대상이다.
+    // 나 자신은 해당 없다 — 이미 내가 붙들고 있는 것이라 떼어낼 것이 없다.
+    private static bool IsWorthGuarding(UnitController requester, UnitController ally)
+    {
+        if (ally == null || ally == requester) return false;
+        if (ally.Team != requester.Team || ally.IsDead) return false;
+
+        return ally.Stats.threatWeight < requester.Stats.threatWeight;
+    }
+
+    // 이 적이 지켜야 할 아군 바로 곁에 와 있는가.
+    private static bool IsNearGuardedAlly(UnitController requester, UnitController candidate)
+    {
+        List<UnitController> team = GetList(requester.Team);
+        Vector3 enemyPosition = candidate.transform.position;
+        float rangeSqr = GuardProximity * GuardProximity;
+
+        for (int i = team.Count - 1; i >= 0; i--)
+        {
+            UnitController ally = team[i];
+            if (!IsWorthGuarding(requester, ally)) continue;
+
+            Vector3 offset = ally.transform.position - enemyPosition;
+            offset.y = 0f;
+            if (offset.sqrMagnitude <= rangeSqr) return true;
+        }
+
+        return false;
     }
 
     // 이 후보가 동시에 몇에게 붙잡혀도 "아직 여유 있다"고 볼 것인가.

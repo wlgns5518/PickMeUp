@@ -77,6 +77,10 @@ public class UnitStats
              "탱커가 그쪽으로 걸어가 한 대 치면 위협 비교가 적을 탱커에게 넘긴다.")]
     [Min(0f)] public float peelBonus;
 
+    [Tooltip("파티가 정한 집중 표적으로 얼마나 강하게 끌리는가(미터 단위 편향). 딜러가 크고 탱커·암살자는 0이다. " +
+             "0이면 각자 가까운 적을 친다 — 그러면 파티 전투가 1대1 여러 개로 흩어져 아무도 죽지 않는다.")]
+    [Min(0f)] public float focusBonus;
+
     [Tooltip("교전 중 서고 싶은 방위(도). 적의 정면이 0, 측면이 90, 등 뒤가 180이다. " +
              "좌우 중 어느 쪽인지는 유닛마다 스폰 시 따로 정해진다.")]
     [Range(0f, 180f)] public float engageAngle;
@@ -84,6 +88,11 @@ public class UnitStats
     [Tooltip("적이 이 거리(미터) 안으로 들어오면 물러선다. 0이면 붙어서 싸운다. " +
              "원거리 직군만의 것이 아니다 — 창수는 근접이면서도 이 값을 갖는다(리치 우위 유지).")]
     [Min(0f)] public float keepDistanceRange;
+
+    [Tooltip("붙잡혔을 때 뒷걸음(백스텝) 대신 등을 보이고 달려서 달아난다. 마법사만 켠다.\n\n" +
+             "마법사는 붙으면 할 수 있는 것이 하나도 없다 — 평타가 없고 영창은 접히므로, " +
+             "뒷걸음으로 조금씩 재는 것이 의미가 없다. 아예 달려서 떼어놓고 다시 영창하는 편이 낫다.")]
+    public bool fleeByRunning;
 
     [Tooltip("시야각(도). 0이면 TargetScanner의 기본값을 쓴다. 정찰을 겸하는 궁수만 넓다.")]
     [Range(0f, 360f)] public float viewAngle;

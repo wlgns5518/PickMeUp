@@ -46,7 +46,12 @@ public class MoveState : UnitBattleState
         float speed = shouldRun ? context.Stats.runSpeed : context.Stats.walkSpeed;
 
         context.MoveTo(context.MoveDestination, speed);
-        context.SetMoveAnimation(speed, shouldRun, shouldJump);
+
+        // 재생 배속은 요청 속도가 아니라 실제로 나아가는 속도에서 나온다.
+        // 예전에는 여기만 요청 속도(고정값)를 넘겨서, 무리에 막히거나 가속 중일 때
+        // 다리만 전속력으로 돌았고 Chase로 넘어가는 순간 재생 속도가 눈에 띄게 달라졌다.
+        if (shouldJump) context.SetMoveAnimation(speed, shouldRun, true);
+        else context.SetMoveAnimationFromGroundSpeed(shouldRun);
     }
 
     private bool TrySwitchToDetectedTarget()
