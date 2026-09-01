@@ -20,6 +20,11 @@ public class BlockState : UnitBattleState
     {
     }
 
+    // 자리를 지키고 받아내는 동작이다.
+    public override bool HoldsGround => true;
+
+    public override bool AcceptsCombatRedirect => false;
+
     public override void Enter()
     {
         base.Enter();

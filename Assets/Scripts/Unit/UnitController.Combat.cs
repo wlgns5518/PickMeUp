@@ -603,7 +603,7 @@ public partial class UnitController
         //
         // 한때 "마법사는 스윙이 없어 footworkThisGap이 영영 거짓이니 늘 발놀림하게 하자"고
         // 예외를 뒀는데, 그 결과 영창 사이 내내 제자리에서 잔걸음을 치며 발이 미끄러졌다.
-        // 마력을 모으는 유닛은 가만히 서 있는 편이 맞고, 간격이 무너지면 그때 물러난다(EvadeState).
+        // 마력을 모으는 유닛은 가만히 서 있는 편이 맞고, 간격이 무너지면 그때 달아난다(FleeState).
         if (!footworkThisGap)
         {
             StopFootwork();
@@ -1159,30 +1159,13 @@ public partial class UnitController
 
     // 제자리에서 무언가를 하는 중인가. 이 상태들은 위치를 스스로 정하므로
     // NavMesh 쪽에 자리를 맡기지 않는다.
+    //
+    // 답은 상태가 들고 있다(UnitBattleState.HoldsGround). 예전에는 여기서 구체 상태를
+    // 일곱 개 늘어놓고 비교했는데, 상태를 추가할 때 이 목록을 뒤져야 한다는 것을 아무것도
+    // 알려주지 않았다.
     private bool IsHoldingGround()
     {
-        if (stateMachine == null) return false;
-
-        IState<UnitController> current = stateMachine.CurrentState;
-        if (current == AttackState ||
-            current == BlockState ||
-            current == StaggerState ||
-            current == HitState ||
-            current == SkillState ||
-            current == PotionState ||
-            current == HealState)
-        {
-            return true;
-        }
-
-        // 쫓아가다 앞이 막혀 멈춰 선 것도 제자리다(ChaseState의 "자리 나기를 기다림").
-        // 이때까지 회피를 켜 두면, 정작 더 갈 수도 없는 유닛이 앞줄에 계속 떠밀리며 떤다.
-        if (current == ChaseState)
-        {
-            return agent != null && agent.enabled && agent.isOnNavMesh && agent.isStopped;
-        }
-
-        return false;
+        return CurrentBattleState != null && CurrentBattleState.HoldsGround;
     }
 
     // 지역 회피(RVO)와 회피 우선순위를 상황에 맞게 켜고 끈다.

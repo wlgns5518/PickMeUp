@@ -6,6 +6,14 @@ public class AttackState : UnitBattleState
     {
     }
 
+    // 제자리에서 휘두른다. 그 사이 밀려나면 발이 땅을 딛지 않은 채 미끄러진다.
+    public override bool HoldsGround => true;
+
+    // 이미 나간 칼은 되돌리지 못한다. 스윙 사이의 틈에서만 갈아탄다.
+    public override bool LocksTarget => true;
+
+    public override bool AcceptsCombatRedirect => false;
+
     public override void Enter()
     {
         base.Enter();
@@ -107,7 +115,7 @@ public class AttackState : UnitBattleState
         // 죽고 사는 문제는 콤보 도중이라도 항상 본다 — 콤보를 완주하는 것보다 목숨이 우선이다.
         if (context.ShouldRetreatForSurvival())
         {
-            context.ChangeState(context.EvadeState);
+            context.ChangeState(context.RetreatState);
             return true;
         }
 
@@ -120,7 +128,7 @@ public class AttackState : UnitBattleState
         // 쏘지 못한 채 Evade로 되돌아간다(EvadeState 안에서 반복하던 문제가 자리만 옮긴 꼴).
         if (context.HasAttackedSinceEvade && context.ShouldKeepDistance())
         {
-            context.ChangeState(context.EvadeState);
+            context.ChangeState(context.RetreatState);
             return true;
         }
 

@@ -61,12 +61,16 @@ public class SearchState : UnitBattleState
         {
             if (!context.TrySetTarget(target)) return false;
 
-            if (context.CanEvade())
-            {
-                context.ChangeState(context.EvadeState);
-                return true;
-            }
-
+            // 물러날지는 여기서 보지 않는다.
+            //
+            // 한때 여기에 CanEvade()라는 검사가 따로 있었다. 표적이 사거리의 70% 안에 있는가만
+            // 보는 것이라 직군도 HP도 보지 않았고, 나머지 진입 지점 넷이 전부 역할 기반으로
+            // 옮겨간 뒤에도 이 자리만 남아 있었다. 그 결과 근접 유닛(간격 임계가 0이라
+            // ShouldKeepDistance가 늘 거짓)이 표적을 잃고 코앞의 다음 적을 잡으면 만피인 채로
+            // 위기 도주 갈래를 타서, 등을 돌리고 달아났다가 0.35초 뒤 돌아왔다.
+            //
+            // ChaseState가 들어서는 순간 같은 것을 제대로 판단하므로(TrySwitchToActionState)
+            // 여기서는 그냥 넘기면 된다.
             if (context.CanBlock())
             {
                 context.ChangeState(context.BlockState);

@@ -156,7 +156,10 @@ public partial class UnitController : MonoBehaviour
     public AttackState AttackState { get; private set; }
     public SkillState SkillState { get; private set; }
     public LeapAttackState LeapAttackState { get; private set; }
+    // 물러나는 방식 둘. 뒷걸음으로 사거리를 되찾는 쪽(EvadeState)과 등을 보이고 달아나는
+    // 쪽(FleeState)이다. 어느 쪽인지는 부르는 곳이 아니라 RetreatState가 정한다.
     public EvadeState EvadeState { get; private set; }
+    public FleeState FleeState { get; private set; }
     public BlockState BlockState { get; private set; }
     public HitState HitState { get; private set; }
     public DeadState DeadState { get; private set; }
@@ -294,7 +297,7 @@ public partial class UnitController : MonoBehaviour
     public float SkillAnimationDuration => skillAnimationDuration;
     public float PotionAnimationDuration => potionAnimationDuration;
     public float HealAnimationDuration => healAnimationDuration;
-    // 회피 모션이 없는 리그(고블린)는 0. EvadeState가 이 값으로 "구를지 달릴지"를 정한다.
+    // 회피 모션이 없는 리그(고블린)는 0. EvadeState가 이 값으로 "뛸지 걸어서 뺄지"를 정한다.
     public float DodgeAnimationDuration => dodgeAnimationHash != 0 ? dodgeAnimationDuration : 0f;
 
     public float BackpedalSpeed => backpedalSpeed;
@@ -352,7 +355,7 @@ public partial class UnitController : MonoBehaviour
     // 물러난 직후 한 발은 반드시 쏘게 해서 그 왕복을 끊는다.
     public bool HasAttackedSinceEvade { get; private set; }
 
-    // EvadeState가 물러나기 시작할 때 부른다.
+    // 회피(EvadeState)와 도주(FleeState)가 물러나기 시작할 때 부른다.
     public void MarkEvadeStarted()
     {
         HasAttackedSinceEvade = false;
@@ -649,6 +652,13 @@ public partial class UnitController : MonoBehaviour
         stateMachine?.ChangeState(state);
     }
 
+    // 지금 상태에게 무언가를 물어볼 때 쓴다(HoldsGround / LocksTarget / AcceptsCombatRedirect).
+    //
+    // as로 내리는 이유는 상태머신이 IState<UnitController>만 알기 때문이다. 전투 유닛의 상태는
+    // 전부 UnitBattleState라 실패할 일이 없지만, 그 사실을 타입으로 강제하지는 않는다 —
+    // 상태머신은 전투를 모르는 채로 남겨 두는 편이 맞다.
+    private UnitBattleState CurrentBattleState => stateMachine?.CurrentState as UnitBattleState;
+
     // 인스펙터 표시용. 요청한 상태가 아니라 실제로 적용된 상태를 읽어야 한다 —
     // 전이는 지연 적용되고, 같은 프레임에 덮어써져 건너뛰는 요청도 있기 때문이다.
     // GetType().Name은 호출할 때마다 문자열을 새로 만들므로 참조가 바뀐 프레임에만 읽는다.
@@ -790,19 +800,11 @@ public partial class UnitController : MonoBehaviour
         if (!acceptedTarget) return;
 
         ClearMoveDestination();
-        if (stateMachine == null) return;
-        if (stateMachine.CurrentState == DeadState ||
-            stateMachine.CurrentState == HitState ||
-            stateMachine.CurrentState == StaggerState ||
-            stateMachine.CurrentState == AttackState ||
-            stateMachine.CurrentState == SkillState ||
-            // 이미 몸이 떠 있다. 여기서 상태를 갈아 끼우면 도약이 공중에서 잘리고
-            // 모델이 뜬 채로 남는다(LeapAttackState.Exit이 내려놓기 전에 빠져나간다).
-            stateMachine.CurrentState == LeapAttackState ||
-            stateMachine.CurrentState == BlockState)
-        {
-            return;
-        }
+
+        // 표적만 갈아 끼우고 하던 동작은 그대로 끝내는 상태들이 있다
+        // (UnitBattleState.AcceptsCombatRedirect). 대표적으로 도약 공격 — 이미 몸이 떠 있는데
+        // 여기서 상태를 갈아 끼우면 LeapAttackState.Exit이 내려놓기 전에 빠져나가 모델이 뜬 채로 남는다.
+        if (CurrentBattleState != null && !CurrentBattleState.AcceptsCombatRedirect) return;
 
         ChangeState(IsTargetInAttackRange() ? AttackState : ChaseState);
     }
@@ -1390,16 +1392,31 @@ public partial class UnitController : MonoBehaviour
         return toAnchor.normalized;
     }
 
-    public bool CanEvade()
+    // 물러나기로 했을 때 실제로 어느 방식으로 물러나는가.
+    //
+    // 부르는 쪽(Chase/Attack/Cast)은 "물러나야 한다"까지만 알면 되고, 뒷걸음인지 도주인지는
+    // 여기 한 곳에서 답한다. 예전에는 이 판단이 EvadeState 안에서 불리언 두 개로 갈렸는데,
+    // 그러면 어느 갈래로 갈지가 상태에 들어가 봐야 알 수 있어서 전이 그래프에 드러나지 않았다.
+    //
+    // 간격을 잃었는가를 먼저 본다. 붙잡힌 상태에서는 그놈을 떼어내는 것이 먼저이고,
+    // 그게 곧 살아남는 길이기도 하다. 여기까지 왔다는 것은 부르는 쪽이 이미 "물러나야 한다"를
+    // 판단했다는 뜻이므로, 간격 문제가 아니면 남는 이유는 HP뿐이다.
+    public UnitBattleState RetreatState
     {
-        return IsTargetValid() && SqrDistanceToTarget() < stats.attackRange * stats.attackRange * 0.5f;
+        get
+        {
+            // 마법사는 붙잡히면 뒷걸음으로 재지 않고 등을 보이고 달린다(FleeState 주석 참조).
+            if (ShouldKeepDistance()) return stats.fleeByRunning ? (UnitBattleState)FleeState : EvadeState;
+
+            return FleeState;
+        }
     }
 
     // HP가 위험 수위인데 회복 수단(회복약/치료)이 없거나 이미 바닥났을 때 거리를 벌린다.
     // 적은 CanRecoverHp가 항상 false라 회복약이 없으면 이게 유일한 생존 수단이다.
     // 쿨다운으로 한 번만 물러나게 막으면, 여전히 위험한데도 한 박자 쉬고 다시 근접전으로
     // 걸어 들어가 버린다(맞다가 죽는 원인). HP가 임계치 아래인 동안은 매 프레임 계속 true를 줘서
-    // EvadeState가 안전해질 때까지 반복해서 물러나게 한다.
+    // FleeState가 안전해질 때까지 반복해서 물러나게 한다.
     public bool ShouldRetreatForSurvival()
     {
         // 적은 체력이 바닥나도 물러서지 않는다. 회복 수단이 없는 쪽(CanRecoverHp)이 도망까지 다니면
@@ -1417,7 +1434,7 @@ public partial class UnitController : MonoBehaviour
     }
 
     // 전투 중 거리를 벌려야 하는 모든 상황(원거리 유닛의 근접 회피 + 위기 후퇴)을 한데 묶는다.
-    // ChaseState/AttackState/EvadeState가 매 프레임 이거 하나만 물어보면 된다.
+    // 부르는 쪽은 이거 하나만 물어보면 되고, 어느 방식으로 물러날지는 RetreatState가 답한다.
     public bool ShouldEvade()
     {
         return ShouldKeepDistance() || ShouldRetreatForSurvival();
@@ -2300,6 +2317,7 @@ public partial class UnitController : MonoBehaviour
         SkillState = new SkillState(this);
         LeapAttackState = new LeapAttackState(this);
         EvadeState = new EvadeState(this);
+        FleeState = new FleeState(this);
         BlockState = new BlockState(this);
         HitState = new HitState(this);
         DeadState = new DeadState(this);
@@ -2434,15 +2452,11 @@ public partial class UnitController : MonoBehaviour
         hasPendingKnockback = false;
     }
 
+    // 답은 상태가 들고 있다(UnitBattleState.LocksTarget). 어느 상태가 해당하는지는
+    // 그 상태의 파일에 적혀 있다.
     private bool IsTargetChangeLocked()
     {
-        if (stateMachine == null) return false;
-
-        return stateMachine.CurrentState == AttackState ||
-               stateMachine.CurrentState == SkillState ||
-               // 뛰어오른 방향은 이미 정해졌다. 공중에서 타깃을 바꿔 봐야 엉뚱한 쪽으로 착지한다.
-               stateMachine.CurrentState == LeapAttackState ||
-               stateMachine.CurrentState == EvadeState;
+        return CurrentBattleState != null && CurrentBattleState.LocksTarget;
     }
 
     private bool IsNewTargetClearlyBetter(UnitController target)

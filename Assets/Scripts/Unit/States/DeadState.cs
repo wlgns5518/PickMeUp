@@ -11,6 +11,8 @@ public class DeadState : UnitBattleState
     {
     }
 
+    public override bool AcceptsCombatRedirect => false;
+
     public override void Enter()
     {
         base.Enter();

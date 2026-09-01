@@ -13,6 +13,9 @@ public class PotionState : UnitBattleState
     {
     }
 
+    // 서서 들이켠다.
+    public override bool HoldsGround => true;
+
     public override void Enter()
     {
         base.Enter();

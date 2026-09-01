@@ -18,6 +18,11 @@ public class LeapAttackState : UnitBattleState
     {
     }
 
+    // 뛰어오른 방향은 이미 정해졌다. 공중에서 타깃을 바꿔 봐야 엉뚱한 쪽으로 착지한다.
+    public override bool LocksTarget => true;
+
+    public override bool AcceptsCombatRedirect => false;
+
     public override void Enter()
     {
         base.Enter();

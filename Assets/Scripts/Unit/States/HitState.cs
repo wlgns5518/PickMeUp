@@ -9,6 +9,11 @@ public class HitState : UnitBattleState
     {
     }
 
+    // 넉백은 이 상태가 직접 민다. 지역 회피가 겹치면 궤적이 휜다.
+    public override bool HoldsGround => true;
+
+    public override bool AcceptsCombatRedirect => false;
+
     public override void Enter()
     {
         base.Enter();

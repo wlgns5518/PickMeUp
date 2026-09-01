@@ -9,6 +9,13 @@ public class SkillState : UnitBattleState
     {
     }
 
+    public override bool HoldsGround => true;
+
+    // 스킬 모션이 향한 쪽은 이미 정해졌다.
+    public override bool LocksTarget => true;
+
+    public override bool AcceptsCombatRedirect => false;
+
     public override void Enter()
     {
         base.Enter();

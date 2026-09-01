@@ -19,6 +19,11 @@ public class StaggerState : UnitBattleState
     {
     }
 
+    // 자세가 무너져 스스로 움직이지 못한다.
+    public override bool HoldsGround => true;
+
+    public override bool AcceptsCombatRedirect => false;
+
     public override void Enter()
     {
         base.Enter();

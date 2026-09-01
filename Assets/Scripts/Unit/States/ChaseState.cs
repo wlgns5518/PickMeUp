@@ -18,6 +18,12 @@ public class ChaseState : UnitBattleState
     {
     }
 
+    // 쫓아가다 앞이 막혀 멈춰 선 것도 제자리다(아래 TickStall 주석 참조).
+    // 이때까지 회피를 켜 두면, 정작 더 갈 수도 없는 유닛이 앞줄에 계속 떠밀리며 떤다.
+    // 상태 중에 유일하게 조건부로 답하는 자리다 — 쫓는 중에도 서 있을 때가 있다.
+    public override bool HoldsGround =>
+        context.Agent != null && context.Agent.enabled && context.Agent.isOnNavMesh && context.Agent.isStopped;
+
     public override void Enter()
     {
         base.Enter();
@@ -112,7 +118,7 @@ public class ChaseState : UnitBattleState
         // 쫓아가는 도중에도 위기면 방향을 바꾼다 — 사거리 안까지 들어갈 때까지 기다리지 않는다.
         if (context.ShouldEvade())
         {
-            context.ChangeState(context.EvadeState);
+            context.ChangeState(context.RetreatState);
             return true;
         }
 

@@ -54,7 +54,7 @@ public class CastState : UnitBattleState
         // 계속 서 있는 것"을 막는다. 접어도 마력은 잃지 않으므로 버티는 쪽이 늘 손해다.
         if (context.ShouldAbandonCast())
         {
-            context.ChangeState(context.EvadeState);
+            context.ChangeState(context.RetreatState);
             return;
         }
 

@@ -17,6 +17,9 @@ public class HealState : UnitBattleState
     {
     }
 
+    // 서서 시전한다.
+    public override bool HoldsGround => true;
+
     public override void Enter()
     {
         base.Enter();
