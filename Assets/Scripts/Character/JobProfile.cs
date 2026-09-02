@@ -242,8 +242,10 @@ public static class JobProfile
                     threatWeight: 0.55f, backlinePreference: 7f, engageAngle: 180f,
                     bleedChanceOnHit: 0.35f);
 
-            // 궁수 — 고지 선점은 아직 없지만, 시야만은 먼저 확보한다.
+            // 궁수 — 고지를 먼저 잡고 시야를 먼저 확보한다.
             // 탐지 15m에 시야각 200도로 팀에서 가장 먼저 적을 발견해 게시판에 올린다(정찰).
+            // 고지 선점은 UnitController.TryFindHighGround가 맡는다. 다만 지금 전투장이
+            // 평지(y 0.10~0.19)라 후보가 잡히지 않는다 — 씬에 고저차가 생겨야 그림이 나온다.
             case JobType.Archer:
                 return new JobCombatProfile(0.80f, 1.05f, 9.0f, 15f, 1.05f, 1.0f, 0.00f,
                     role: JobRole.Marksman, guard: GuardStyle.Weapon,
