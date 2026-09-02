@@ -1249,8 +1249,124 @@ public partial class UnitController
     }
 
     // 매 프레임 돌려야 하는 전투 잔무. UnitController.Update가 상태머신보다 먼저 부른다.
+    // ---------------------------------------------------------------- 고지 선점
+
+    // 마지막으로 잡은 고지와 그 시각. 매 프레임 다시 훑으면 비싸고, 그때마다 답이 조금씩
+    // 달라져 궁수가 언덕 위에서 잔걸음을 친다. 한 번 고른 자리를 잠시 붙들고 간다.
+    private Vector3 highGroundSpot;
+    private float highGroundTime = -999f;
+    private const float HighGroundHold = 3f;
+    // 이보다 덜 높으면 고지가 아니다. 평지의 NavMesh 잡음에 끌려다니지 않게 하는 하한.
+    private const float MinHighGroundGain = 0.8f;
+    private static readonly float[] HighGroundAngles = { 0f, 45f, 90f, 135f, 180f, 225f, 270f, 315f };
+
+    // 쏘기 좋은 높은 자리가 있으면 그리로 간다.
+    //
+    // 원작의 궁수는 "고지 선점 → 시야 확보 → 정찰"이 한 묶음이다. 높은 곳은 그 자체로
+    // 사거리를 벌어 주고, 난전 위로 시선이 통해 후방까지 보인다. 지금 구조에서는 높이가
+    // 직접 이득을 주지는 않지만, 적어도 근접 유닛이 붙기 어려운 자리에 서게 된다.
+    //
+    // 표적에서 멀어지는 쪽으로는 가지 않는다 — 고지를 찾다 사거리 밖으로 나가면 정찰이
+    // 아니라 이탈이다(예전에 궁수가 45m 밖으로 나가 파티가 쪼개진 적이 있다).
+    public bool TryFindHighGround(Vector3 desiredSpot, out Vector3 highGround)
+    {
+        highGround = desiredSpot;
+        if (stats.role != JobRole.Marksman || !IsTargetValid()) return false;
+
+        // 아직 유지 시간이 남았으면 지난번 자리를 그대로 쓴다.
+        if (Time.time < highGroundTime + HighGroundHold && highGroundSpot.sqrMagnitude > 0.0001f)
+        {
+            highGround = highGroundSpot;
+            return true;
+        }
+
+        Vector3 origin = transform.position;
+        Vector3 targetPos = CurrentTarget.transform.position;
+        float searchRadius = Mathf.Max(2f, stats.attackRange * 0.5f);
+        float maxRangeSqr = stats.attackRange * stats.attackRange;
+
+        Vector3 best = desiredSpot;
+        float bestHeight = origin.y + MinHighGroundGain;
+        bool found = false;
+
+        for (int i = 0; i < HighGroundAngles.Length; i++)
+        {
+            Vector3 dir = Quaternion.AngleAxis(HighGroundAngles[i], Vector3.up) * Vector3.forward;
+            Vector3 probe = origin + dir * searchRadius;
+            if (!NavMesh.SamplePosition(probe, out NavMeshHit hit, searchRadius * 0.6f, NavMesh.AllAreas)) continue;
+
+            if (hit.position.y <= bestHeight) continue;
+            // 그 자리에서 표적이 사거리 안에 들어와야 의미가 있다.
+            if ((hit.position - targetPos).sqrMagnitude > maxRangeSqr) continue;
+
+            bestHeight = hit.position.y;
+            best = hit.position;
+            found = true;
+        }
+
+        highGroundSpot = found ? best : Vector3.zero;
+        highGroundTime = Time.time;
+        highGround = best;
+        return found;
+    }
+
+    // ---------------------------------------------------------------- 은신
+
+    // 손을 놓고 있으면 모습을 감춘다. 원작의 암살자는 몸으로 버티는 직군이 아니라
+    // 사각지대로 침투해 후방을 치는 게릴라라, 살아남는 방식이 방어가 아니라 "거기 없는 것"이다.
+    //
+    // 은신 중에는 적이 겨누지 못하고(UnitRegistry.IsHiddenFrom) 받는 피해도 줄어든다.
+    // 때리거나 맞으면 그 자리에서 풀린다 — 치고 빠지는 리듬이 여기서 나온다.
+    public bool IsStealthed { get; private set; }
+
+    // 마지막으로 때리거나 맞은 시각. 이때부터 stealthDelay가 흐른다.
+    private float lastStealthBreakTime = -999f;
+
+    private void TickStealth()
+    {
+        if (!stats.canStealth || IsDead)
+        {
+            IsStealthed = false;
+            return;
+        }
+
+        // 자세가 무너져 있으면 숨을 수 없다. 넘어져 있는 사람은 그림자에 못 든다.
+        if (IsStaggered || (emotion != null && emotion.IsActionBlocked))
+        {
+            IsStealthed = false;
+            return;
+        }
+
+        // 아직 드러나 있는 시간이면 숨을 수 없다.
+        if (Time.time < lastStealthBreakTime + stats.stealthDelay)
+        {
+            IsStealthed = false;
+            return;
+        }
+
+        // 여기가 핵심이다: 은신은 시간이 아니라 **거리**로 갈린다.
+        //
+        // 처음에는 "일정 시간 손을 놓고 있으면 숨는다"로 만들었는데 전투 내내 한 번도 걸리지
+        // 않았다. 실측해 보니 난전 중 암살자가 손을 놓는 빈틈이 중앙값 0.1초, 최대 1.55초라
+        // 어떤 값을 넣어도 성립하지 않았다 — 칼이 닿는 자리에 서 있는 한 계속 휘두르기 때문이다.
+        //
+        // 그래서 조건을 바꿨다. 붙어서 칼을 섞는 동안은 숨지 못하고, 그 자리에서 떨어져 나온
+        // 순간(다음 표적으로 파고드는 중, 전선을 가로지르는 중) 그림자로 든다. 원작의 암살자가
+        // 위험한 순간이 바로 그 이동 구간이고, 은신이 지켜 주어야 할 것도 정확히 그 구간이다.
+        float contact = Mathf.Max(1f, stats.attackRange * 1.2f);
+        IsStealthed = UnitRegistry.CountEnemiesAround(this, transform.position, contact) == 0;
+    }
+
+    // 은신이 풀리는 두 순간: 내가 때렸을 때와 내가 맞았을 때.
+    public void BreakStealth()
+    {
+        IsStealthed = false;
+        lastStealthBreakTime = Time.time;
+    }
+
     private void TickCombat()
     {
+        TickStealth();
         TickHitStop();
         TickBlockPose();
         TickAvoidance();

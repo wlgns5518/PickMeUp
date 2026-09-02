@@ -169,6 +169,12 @@ public class ChaseState : UnitBattleState
             ? context.GetEngageDestination(standoff)
             : context.GetPredictedTargetPosition();
 
+        // 궁수는 같은 값이면 높은 자리를 고른다. 원작의 "고지 선점 → 시야 확보 → 정찰"이
+        // 한 묶음이라, 쏠 수 있는 자리 중에서는 위쪽이 언제나 낫다.
+        // 사거리 안에 드는 자리만 후보라, 고지를 찾다 전선에서 떨어져 나가지는 않는다.
+        Vector3 highGround;
+        if (context.TryFindHighGround(destination, out highGround)) destination = highGround;
+
         // 파고드는 자리로 갈 때는 그 지점까지 실제로 걸어가야 한다. 여기에 standoff를 다시
         // 걸면 목표에서 한 번 더 물러난 자리에 서게 되어 영영 사거리에 닿지 못한다.
         float stoppingDistance = flanking ? context.Stats.moveStopDistance : standoff;

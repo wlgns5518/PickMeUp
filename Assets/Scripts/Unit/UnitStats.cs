@@ -324,6 +324,45 @@ public class UnitStats
              "덜 다쳤어도 출혈 중이면 먼저 손이 가게 만든다. 0이면 순수하게 HP만 본다.")]
     [Range(0f, 0.5f)] public float dispelPriorityBonus = 0.2f;
 
+    [Header("Stealth (Assassin)")]
+    [Tooltip("암살자만 켜진다. 손을 놓고 있으면 모습을 감춘다.")]
+    public bool canStealth;
+    [Tooltip("때리거나 맞은 뒤 모습이 드러나 있는 시간(초). 이 시간이 지나고 '칼이 닿는 거리에 " +
+             "적이 없으면' 다시 그림자로 든다 — 시간만으로는 은신에 들지 못한다. " +
+             "실측: 난전 중 암살자가 손을 놓는 빈틈은 중앙값 0.1초, 최대 1.55초뿐이라 " +
+             "시간 조건만으로는 전투 내내 한 번도 숨지 못했다.")]
+    public float stealthDelay = 0.8f;
+    [Tooltip("은신 중 받는 피해 배율. 그림자 속에 있으면 겨눠 맞히기 어렵다.")]
+    [Range(0.05f, 1f)] public float stealthDamageMultiplier = 0.35f;
+    [Tooltip("이 거리 안까지 들어온 적에게는 들킨다(미터). 0이면 붙어도 안 보인다 — 그건 과하다.")]
+    public float stealthRevealRange = 2.2f;
+
+    [Tooltip("콤보를 끝내면 일단 빠졌다가 다시 파고든다(게릴라). 암살자만 켠다. " +
+             "이게 없으면 적 한복판에 서서 계속 칼을 섞느라 은신에 들 틈이 없다 — " +
+             "실측에서 은신 비율이 11%에 그쳤고 파티 최다 피해를 입었다.")]
+    public bool stalkAfterCombo;
+    [Tooltip("한 번 빠질 때 벌리는 거리(미터). 접촉이 끊겨 은신에 들 만큼은 되어야 한다.")]
+    public float stalkDistance = 6f;
+    [Tooltip("빠져 있는 최소/최대 시간(초). 최소는 은신이 걸릴 틈을 주고, 최대는 영영 안 돌아오는 것을 막는다.")]
+    public float stalkMinDuration = 0.7f;
+    public float stalkMaxDuration = 2.5f;
+    [Tooltip("표적의 HP가 이 비율 아래면 빠지지 않고 끝을 본다. 급소를 문 상대를 놓아 주는 것은 " +
+             "게릴라가 아니라 그냥 도망이다.")]
+    [Range(0f, 1f)] public float stalkSkipHpRatio = 0.3f;
+
+    [Header("Shield (Support)")]
+    [Tooltip("사제만 켜진다. 맞기 전에 미리 보호막을 걸 수 있는지 여부. " +
+             "치유가 '이미 깎인 것을 되돌리는' 일이라면 이쪽은 '아직 오지 않은 결정타를 미리 받는' 일이다.")]
+    public bool canShieldAllies;
+    public int shieldAmount = 45;
+    [Tooltip("걸린 보호막이 유지되는 시간(초). 짧아야 '결정타 직전에 정확히 거는' 판단이 값어치를 가진다.")]
+    public float shieldDuration = 6f;
+    public float shieldCooldown = 7f;
+    public int shieldManaCost = 18;
+    [Tooltip("이 수 이상의 적에게 노려지고 있는 아군을 보호막 대상으로 본다. " +
+             "1이면 한 마리라도 붙은 아군 전부라 사실상 상시 발동이고, 2면 몰린 쪽에만 간다.")]
+    [Min(1)] public int shieldThreatCount = 2;
+
     public bool IsDead => currentHp <= 0;
     public bool HasPotion => potionCount > 0;
     // 음수 = 제한 없음, 0 = 이번 전투에는 다 썼다.
@@ -429,6 +468,53 @@ public class UnitStats
         // 즉 완전히 흘려내도 교착이 아니라 "강인도를 쓰고 시간을 번다"가 된다.
         if (damage > 0 && !isBlocking) finalDamage = Mathf.Max(1, finalDamage);
 
+        // 보호막이 먼저 깎인다. 남은 것만 살에 닿는다.
+        finalDamage = AbsorbWithShield(finalDamage);
+
         currentHp = Mathf.Max(0, currentHp - finalDamage);
+    }
+
+    // ---------------------------------------------------------------- 보호막
+
+    // 사제가 미리 걸어 두는 보호막. HP와 별개 자원이고 먼저 깎이며, 시간이 지나면 사라진다.
+    //
+    // 치유와 나눠 둔 이유는 원작에서 사제가 하는 일이 둘로 갈리기 때문이다 — 이미 깎인 것을
+    // 되돌리는 것(치유)과 아직 오지 않은 결정타를 미리 받아 두는 것(보호막)은 쓰는 시점이 다르다.
+    // 전자는 늦으면 죽고, 후자는 늦으면 아무 의미가 없다.
+    public int currentShield;
+    private float shieldExpireTime;
+
+    public bool HasShield => currentShield > 0 && Time.time < shieldExpireTime;
+    public int CurrentShield => HasShield ? currentShield : 0;
+
+    public void ApplyShield(int amount, float duration)
+    {
+        if (amount <= 0 || duration <= 0f || IsDead) return;
+
+        // 겹쳐 걸면 더 두꺼운 쪽이 남는다. 더하면 사제 하나로 무적이 만들어진다.
+        currentShield = HasShield ? Mathf.Max(currentShield, amount) : amount;
+        shieldExpireTime = Time.time + duration;
+    }
+
+    public void ClearShield()
+    {
+        currentShield = 0;
+        shieldExpireTime = 0f;
+    }
+
+    // 보호막으로 받아내고 남은 피해를 돌려준다.
+    private int AbsorbWithShield(int incoming)
+    {
+        if (incoming <= 0) return incoming;
+        if (!HasShield)
+        {
+            // 만료된 값이 남아 있으면 다음에 다시 걸 때 Max 비교가 오염된다.
+            currentShield = 0;
+            return incoming;
+        }
+
+        int absorbed = Mathf.Min(currentShield, incoming);
+        currentShield -= absorbed;
+        return incoming - absorbed;
     }
 }

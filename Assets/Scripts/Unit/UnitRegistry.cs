@@ -466,6 +466,47 @@ public static class UnitRegistry
     // dispelBonus는 상태이상에 걸린 아군의 비율에서 빼 주는 값이다. 원작에서 사제의 판단은
     // "누가 가장 아픈가"가 아니라 "지금 무엇이 전열을 무너뜨리는가"이므로, 덜 다쳤어도
     // 출혈이 흐르고 있으면 그쪽이 먼저다. 0이면 예전처럼 HP만 본다.
+    // 보호막을 미리 걸어 줄 아군. 가장 많이 노려지고 있는 쪽을 고른다.
+    //
+    // 치유 대상 선정(FindMostWoundedAlly)과 정반대 기준이다. 저쪽은 HP가 낮은 순인데
+    // 여기는 HP를 아예 보지 않는다 — 보호막은 맞기 전에 걸어야 값어치가 있고, 이미 깎인
+    // 사람에게 거는 것은 치유가 할 일이다. 대신 "몇 마리가 붙어 있는가"를 본다.
+    //
+    // 같은 조건이면 HP가 낮은 쪽이 이긴다. 셋이 붙은 만피 탱커와 셋이 붙은 반피 검사가
+    // 있으면 후자가 먼저 무너지기 때문이다.
+    public static UnitController FindShieldTarget(UnitController caster, float range, int minAttackers)
+    {
+        if (caster == null) return null;
+
+        List<UnitController> team = GetList(caster.Team);
+        Vector3 origin = caster.transform.position;
+        float rangeSqr = range * range;
+        UnitTeam hostile = caster.Team == UnitTeam.Ally ? UnitTeam.Enemy : UnitTeam.Ally;
+
+        UnitController best = null;
+        int bestAttackers = Mathf.Max(1, minAttackers) - 1;
+        float bestRatio = 0f;
+
+        for (int i = team.Count - 1; i >= 0; i--)
+        {
+            UnitController candidate = team[i];
+            if (candidate == null || candidate.IsDead || !candidate.isActiveAndEnabled) continue;
+            // 이미 걸려 있으면 덧바르지 않는다. 마력을 그냥 버리는 셈이다.
+            if (candidate.Stats.HasShield) continue;
+
+            int attackers = candidate.AttackersFrom(hostile);
+            if (attackers < bestAttackers) continue;
+            if (attackers == bestAttackers && best != null && candidate.Stats.HpRatio >= bestRatio) continue;
+            if ((candidate.transform.position - origin).sqrMagnitude > rangeSqr) continue;
+
+            bestAttackers = attackers;
+            bestRatio = candidate.Stats.HpRatio;
+            best = candidate;
+        }
+
+        return best;
+    }
+
     public static UnitController FindMostWoundedAlly(
         UnitController healer, float range, float hpRatioThreshold, float dispelBonus = 0f)
     {
@@ -982,7 +1023,27 @@ public static class UnitRegistry
                target != null &&
                requester != target &&
                target.isActiveAndEnabled &&
-               !target.IsDead;
+               !target.IsDead &&
+               !IsHiddenFrom(requester, target);
+    }
+
+    // 은신한 유닛은 적에게 보이지 않는다 — 겨눌 수도, 쫓아갈 수도 없다.
+    //
+    // 여기(IsValidTarget) 한 곳에 걸면 탐색·시야·어그로 경로 전부에 한 번에 먹는다.
+    // 이미 그 유닛을 겨누고 있던 적도 다음 스캔에서 표적을 잃고 다른 데로 간다
+    // (TargetScanner.IsCurrentTargetValid가 같은 판정을 쓴다) — 은신이 곧 이탈이 되는 셈이다.
+    //
+    // 다만 코앞까지 오면 들킨다. 붙어도 안 보이면 게릴라가 아니라 유령이 된다.
+    public static bool IsHiddenFrom(UnitController observer, UnitController target)
+    {
+        if (observer == null || target == null) return false;
+        if (!target.IsStealthed) return false;
+        if (!AreEnemies(observer, target)) return false;
+
+        float reveal = target.Stats.stealthRevealRange;
+        if (reveal <= 0f) return true;
+
+        return (target.transform.position - observer.transform.position).sqrMagnitude > reveal * reveal;
     }
 
     private static List<UnitController> GetList(UnitTeam team)

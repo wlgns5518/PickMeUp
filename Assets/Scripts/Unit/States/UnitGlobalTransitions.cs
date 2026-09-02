@@ -16,6 +16,7 @@ public static class UnitGlobalTransitions
         new PanicTransition(),
         new PotionTransition(),
         new HealTransition(),
+        new ShieldTransition(),
     };
 
     // 죽으면 무엇을 하고 있었든 끝이다. 가장 먼저 본다.
@@ -78,6 +79,24 @@ public static class UnitGlobalTransitions
             if (!unit.CanHealAlly()) return null;
 
             return unit.HealState;
+        }
+    }
+
+    // 사제의 선제 보호막. 치유보다 뒤에 둔다 — 이미 깎여 죽어 가는 아군이 있으면 그쪽이 먼저다.
+    // 보호막은 "아직 안 깎였는데 곧 깎일 사람"에게 거는 것이라, 급한 불을 끈 뒤에 나가는 것이 맞다.
+    private sealed class ShieldTransition : GlobalTransition<UnitController>
+    {
+        public override IState<UnitController> Evaluate(UnitController unit, IState<UnitController> current)
+        {
+            if (current == unit.PotionState || current == unit.HealState) return null;
+            if (unit.Emotion != null && unit.Emotion.IsActionBlocked) return null;
+            if (unit.IsAttackAnimationLocked) return null;
+            if (unit.IsStaggered) return null;
+            // 이미 무언가를 시전하는 중이면 끊지 않는다. 끊어 봐야 마력만 두 번 버린다.
+            if (unit.IsCasting) return null;
+            if (!unit.CanShieldAlly()) return null;
+
+            return unit.ShieldState;
         }
     }
 }

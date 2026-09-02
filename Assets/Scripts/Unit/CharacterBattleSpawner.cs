@@ -344,6 +344,9 @@ public class CharacterBattleSpawner : MonoBehaviour
 
         // 서포터만 아군을 회복시킬 수 있다.
         stats.canHealAllies = job.IsHealer;
+        // 보호막도 사제의 일이다. 원작의 사제는 깎인 것을 되돌리는 것만큼이나
+        // 결정타가 오기 전에 미리 받아 두는 쪽으로 판을 가른다.
+        stats.canShieldAllies = job.IsHealer;
         // 방패를 든 캐릭터는 직업과 무관하게 적이 우선 노린다 — 방패를 앞에 세우고
         // 나머지가 뒤에서 때리는 진형은 여기서 시작된다.
         stats.isTank = so.job == JobType.Tank || hasShield;
@@ -378,6 +381,12 @@ public class CharacterBattleSpawner : MonoBehaviour
         stats.engageAngle = job.EngageAngle;
         stats.viewAngle = job.ViewAngle;
         stats.bleedChanceOnHit = job.BleedChanceOnHit;
+        // 은신은 암살자만이다. 몸으로 버티는 직군이 아니라 사각지대로 침투하는 게릴라라,
+        // 살아남는 방식이 방어가 아니라 "거기 없는 것"이다.
+        stats.canStealth = job.Role == JobRole.Flanker;
+        // 치고 빠지는 리듬도 같이 켠다. 은신만 켜고 이걸 빼면 적 한복판에 서서
+        // 계속 칼을 섞느라 숨을 틈이 없다(실측: 은신 비율 11%).
+        stats.stalkAfterCombo = job.Role == JobRole.Flanker;
         stats.slowOnHitDuration = job.SlowOnHitDuration;
         stats.slowOnHitMultiplier = job.SlowOnHitMultiplier;
         stats.castVulnerabilityMultiplier = job.CastVulnerability;

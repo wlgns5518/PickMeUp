@@ -171,6 +171,15 @@ public class AttackState : UnitBattleState
             return true;
         }
 
+        // 암살자는 한 바퀴 돌리고 나면 일단 빠진다. 그 사이에 은신이 걸리고,
+        // 다음 접근은 그림자 속에서 배후로 들어간다(StalkState 주석 참조).
+        // 스킬보다 뒤에 두는 이유는 쓸 수 있는 한 방이 있으면 그것부터 꽂는 편이 낫기 때문이다.
+        if (context.ShouldStalk())
+        {
+            context.ChangeState(context.StalkState);
+            return true;
+        }
+
         return false;
     }
 

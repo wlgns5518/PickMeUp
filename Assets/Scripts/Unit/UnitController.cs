@@ -167,6 +167,10 @@ public partial class UnitController : MonoBehaviour
     public PotionState PotionState { get; private set; }
     public StaggerState StaggerState { get; private set; }
     public HealState HealState { get; private set; }
+    // 사제의 선제 보호막. 치유와 나눠 둔 이유는 ShieldState 주석 참조.
+    public ShieldState ShieldState { get; private set; }
+    // 암살자의 치고 빠지기. 콤보를 끝내면 여기로 빠졌다가 은신이 걸리면 다시 파고든다.
+    public StalkState StalkState { get; private set; }
     // 마법사 전용. 스킬(SkillState)과 따로 둔 이유는 CastState 주석 참조.
     public CastState CastState { get; private set; }
 
@@ -540,6 +544,35 @@ public partial class UnitController : MonoBehaviour
     // 원거리 유닛에서 특히 드러났다 — 스폰되자마자 사거리 안이라 첫 행동이 곧바로 스킬이 되는데,
     // 스킬 모션은 근접 동작이라 7m 밖에서 발차기를 하며 피해를 넣었다.
     public bool IsComboRecoveryPoint => hasSwungAtLeastOnce && attackComboIndex == 0;
+
+    // 콤보를 끝냈으니 일단 빠질 것인가(암살자의 게릴라 리듬 — StalkState 주석 참조).
+    //
+    // 부르는 쪽은 이미 콤보 레커버리 시점인지 확인한 뒤다. 여기서는 "빠질 이유가 있는가"만 본다.
+    // 지난번에 빠진 뒤로 실제로 한 번이라도 휘둘렀는가.
+    //
+    // 이게 없으면 빠지기가 무한 루프가 된다. 콤보 복귀 판정(IsComboRecoveryPoint)은
+    // hasSwungAtLeastOnce와 attackComboIndex로 재는데, 그 둘은 상태를 넘어 남는다.
+    // 그래서 빠졌다 돌아와 AttackState에 들어서는 순간 이미 "콤보를 막 끝낸 시점"으로 읽혀
+    // 한 번도 휘두르지 않고 곧바로 다시 빠졌다 — 실측에서 암살자의 준피해가 t=50부터
+    // 25초 동안 1,237에서 1도 오르지 않았다.
+    private bool hasSwungSinceStalk = true;
+
+    // StalkState.Enter가 부른다. 다음 빠지기는 반드시 새 콤보 뒤에만 나온다.
+    public void MarkStalkStarted() => hasSwungSinceStalk = false;
+
+    public bool ShouldStalk()
+    {
+        if (!stats.stalkAfterCombo || IsDead) return false;
+        if (!hasSwungSinceStalk) return false;
+        if (!HasUsableTarget()) return false;
+
+        // 다 잡아 가는 상대는 놓지 않는다. 급소를 문 채 물러나는 것은 게릴라가 아니라 그냥 도망이다.
+        if (CurrentTarget.Stats.HpRatio <= stats.stalkSkipHpRatio) return false;
+
+        // 이미 아무도 안 붙어 있으면 빠질 것도 없다 — 그대로 다음 표적으로 간다.
+        float contact = Mathf.Max(1f, stats.attackRange * 1.2f);
+        return UnitRegistry.CountEnemiesAround(this, transform.position, contact) > 0;
+    }
 
     // WeaponEquipper가 무기를 갈아 끼운 뒤 호출. Awake는 장비가 붙기 전에 한 번 끝나므로
     // 처음 캐시된 길이는 맨손 기준이라 무기 장착 후 다시 계산해야 한다.
@@ -1009,6 +1042,61 @@ public partial class UnitController : MonoBehaviour
         healTarget = UnitRegistry.FindMostWoundedAlly(
             this, stats.healRange, stats.healTargetHpRatio, stats.dispelPriorityBonus);
         return healTarget != null;
+    }
+
+    // ---------------------------------------------------------------- 선제 보호막
+
+    private UnitController shieldTarget;
+    private UnitController castShieldTarget;
+    private float lastShieldTime = -999f;
+
+    // 미리 보호막을 걸어 줄 아군이 있는가.
+    //
+    // 치유(CanHealAlly)와 보는 것이 정반대다. 치유는 "이미 깎인 사람"을 찾지만 여기는
+    // "아직 안 깎였는데 곧 깎일 사람"을 찾는다 — 몰려 있는 쪽이다. HP를 조건으로 걸지
+    // 않는 것이 핵심이다. 만피인 탱커에게 미리 걸어 두는 것이 이 기술의 전부다.
+    public bool CanShieldAlly()
+    {
+        shieldTarget = null;
+
+        if (!stats.canShieldAllies || IsDead) return false;
+        if (Time.time < lastShieldTime + stats.shieldCooldown) return false;
+        if (!stats.HasMana(stats.shieldManaCost)) return false;
+
+        shieldTarget = UnitRegistry.FindShieldTarget(this, stats.healRange, stats.shieldThreatCount);
+        return shieldTarget != null;
+    }
+
+    // 대상을 잠그는 이유는 치유와 같다(BeginHealCast 주석 참조) — shieldTarget은 전역 전이가
+    // 매 프레임 덮어쓰는 후보라, 영창을 시작한 순간 쿨다운에 걸려 곧바로 null이 된다.
+    public void BeginShieldCast()
+    {
+        castShieldTarget = shieldTarget;
+        stats.SpendMana(stats.shieldManaCost);
+        lastShieldTime = Time.time;
+        BeginCast();
+    }
+
+    public void CompleteShield()
+    {
+        EndCast();
+
+        UnitController target = castShieldTarget;
+        castShieldTarget = null;
+        if (target == null || target.IsDead) return;
+
+        target.Stats.ApplyShield(stats.shieldAmount, stats.shieldDuration);
+
+        if (debugLogs) Debug.Log($"[UnitController] {name} 보호막 시전 완료: {target.name} +{stats.shieldAmount} ({stats.shieldDuration}초)");
+    }
+
+    public void CancelShieldCast()
+    {
+        if (!IsCasting) return;
+
+        EndCast();
+        castShieldTarget = null;
+        if (debugLogs) Debug.Log($"[UnitController] {name} 보호막 영창 중단 — 마력만 소모됨");
     }
 
     // 영창을 시작한다. 마력은 여기서 나간다 — 끊기면 그대로 손실이다.
@@ -1495,6 +1583,9 @@ public partial class UnitController : MonoBehaviour
         // 마력을 모으는 중이라 몸을 뺄 수도 막을 수도 없는 상태. 후방 시전자에게 가장 큰 배율이다 —
         // 원작에서 마법사·사제가 탱커의 방어선 없이는 아무것도 못 하는 이유가 이것이다.
         if (IsCasting) damageMultiplier *= stats.castVulnerabilityMultiplier;
+        // 그림자 속에 있으면 겨눠 맞히기 어렵다. 암살자가 몸으로 버티지 않고도 사는 방식이다.
+        // (이 한 대로 은신은 풀린다 — 아래에서 BreakStealth를 부른다.)
+        if (IsStealthed) damageMultiplier *= stats.stealthDamageMultiplier;
 
         int incoming = damage > 0 ? Mathf.Max(1, Mathf.RoundToInt(damage * damageMultiplier)) : damage;
 
@@ -1513,6 +1604,9 @@ public partial class UnitController : MonoBehaviour
                           $"(피해 {incoming} → {dealt}, 남은 강인도 {stats.currentPoise - poiseDamage:0}/{stats.maxPoise:0})");
             }
         }
+
+        // 맞았으면 위치가 드러난다. 배율은 위에서 이미 적용됐으므로 이 한 대는 감면을 받는다.
+        BreakStealth();
 
         RecordDamage(dealt, attacker);
         RecordHitDirection(attacker);
@@ -1795,6 +1889,12 @@ public partial class UnitController : MonoBehaviour
 
         // 물러난 뒤 한 발은 쐈다는 표시. 원거리 유닛이 Attack↔Evade만 오가는 것을 막는다.
         MarkAttackedSinceEvade();
+
+        // 이번 빠지기 뒤로 실제로 휘둘렀다는 표시. 이게 없으면 빠지기가 무한 루프가 된다.
+        hasSwungSinceStalk = true;
+
+        // 칼을 뽑는 순간 모습이 드러난다. 치고 빠지는 리듬이 여기서 시작된다.
+        BreakStealth();
 
         // 시위를 당기기 시작한다. 앞선 화살이 떠나면서 감춰 둔 화살을 다시 물린다.
         if (equipment != null) equipment.BeginDraw();
@@ -2325,6 +2425,8 @@ public partial class UnitController : MonoBehaviour
         PotionState = new PotionState(this);
         StaggerState = new StaggerState(this);
         HealState = new HealState(this);
+        ShieldState = new ShieldState(this);
+        StalkState = new StalkState(this);
         CastState = new CastState(this);
     }
 
