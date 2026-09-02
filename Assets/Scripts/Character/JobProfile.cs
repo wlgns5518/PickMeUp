@@ -39,9 +39,12 @@ public enum JobRole
 // 날아오는 공격을 어떻게 받아내는가. 탱커의 "막기"와 검사의 "흘려내기"는 다른 동작이다.
 public enum GuardStyle
 {
-    None,   // 받아내지 않는다. 원거리 직군과 암살자는 맞기 전에 빠지는 쪽이다.
+    None,   // 받아내지 않는다. 마법사는 손에 든 것이 없어 막을 수단 자체가 없다.
     Shield, // 방패. 넓은 각도를 오래 버티고 피해를 통째로 흘린다. 대신 읽어내는 판정은 낮다.
     Parry,  // 검신으로 쳐낸다. 각도가 좁고 오래 못 버티지만 읽어내면 그 자리에서 반격이 열린다.
+    Weapon, // 들고 있는 무기를 급히 들어 받아낸다. 훈련된 기술이 아니라 마지막 수단이다 —
+            // 각도가 좁고 짧으며 충격도 상당히 넘어온다. 무기에 따라 성능이 크게 갈린다
+            // (WeaponGuardFactor 참조): 자루가 긴 창은 제법 받아내지만 단검과 활은 거의 못 받는다.
 }
 
 public readonly struct JobCombatProfile
@@ -223,7 +226,7 @@ public static class JobProfile
             // 사거리 0.62배 안쪽으로 파고들면 물러서고, 찌른 상대의 발을 묶는다(부위 억제).
             case JobType.Lancer:
                 return new JobCombatProfile(0.95f, 1.10f, 2.6f, 11f, 0.95f, 1.0f, 0.08f,
-                    role: JobRole.Reach, guard: GuardStyle.None,
+                    role: JobRole.Reach, guard: GuardStyle.Weapon,
                     // 창수의 리치는 "적의 돌진을 막아서는" 데 쓰인다. 후방으로 파고드는 적을
                     // 창끝으로 멈춰 세우는 것이 이 직군의 몫이라 셋 중 가장 작게나마 지킨다.
                     threatWeight: 0.85f, peelBonus: 2.5f, focusBonus: 9f,
@@ -235,7 +238,7 @@ public static class JobProfile
             // BacklinePreference가 적 진영의 궁수/마법사/사제를 먼저 찾아 들어가게 만든다.
             case JobType.Assassin:
                 return new JobCombatProfile(0.75f, 1.45f, 1.6f, 10f, 1.25f, 1.0f, 0.00f,
-                    role: JobRole.Flanker, guard: GuardStyle.None,
+                    role: JobRole.Flanker, guard: GuardStyle.Weapon,
                     threatWeight: 0.55f, backlinePreference: 7f, engageAngle: 180f,
                     bleedChanceOnHit: 0.35f);
 
@@ -243,7 +246,7 @@ public static class JobProfile
             // 탐지 15m에 시야각 200도로 팀에서 가장 먼저 적을 발견해 게시판에 올린다(정찰).
             case JobType.Archer:
                 return new JobCombatProfile(0.80f, 1.05f, 9.0f, 15f, 1.05f, 1.0f, 0.00f,
-                    role: JobRole.Marksman, guard: GuardStyle.None,
+                    role: JobRole.Marksman, guard: GuardStyle.Weapon,
                     threatWeight: 0.40f, focusBonus: 9f, keepDistanceRatio: 0.30f, viewAngle: 200f);
 
             // 마법사 — 영창 중 무방비. 시전 중 받는 피해가 2.2배다.
@@ -257,7 +260,7 @@ public static class JobProfile
             // 위협 가중치가 가장 낮다 — 대신 적 암살자의 BacklinePreference가 정확히 이쪽을 노린다.
             case JobType.Support:
                 return new JobCombatProfile(0.90f, 0.60f, 6.0f, 12f, 1.00f, 1.8f, 0.05f,
-                    role: JobRole.Mender, guard: GuardStyle.None,
+                    role: JobRole.Mender, guard: GuardStyle.Weapon,
                     // 사제도 손이 비면 집중 표적을 친다. 다만 본업은 치유라 딜러보다 약하게 끌린다.
                     threatWeight: 0.30f, focusBonus: 5f, keepDistanceRatio: 0.35f, castVulnerability: 1.8f,
                     isHealer: true);
@@ -265,7 +268,7 @@ public static class JobProfile
             // 생산 계열. 역할 없이 눈앞의 적을 친다 — 전투에 끌려나온 것 자체가 나쁜 선택이다.
             default:
                 return new JobCombatProfile(0.70f, 0.50f, 1.6f, 7f, 0.95f, 0.6f, 0.00f,
-                    role: JobRole.None, guard: GuardStyle.None,
+                    role: JobRole.None, guard: GuardStyle.Weapon,
                     threatWeight: 0.9f);
         }
     }
@@ -320,4 +323,39 @@ public static class JobProfile
     // 원거리 유닛이 자기 사거리 밖을 못 보면 영원히 접근만 하다 끝난다.
     // 탐지 범위는 항상 사거리보다 넉넉히 넓게 유지한다.
     public const float DetectRangeMargin = 3f;
+
+    // 들고 있는 무기로 얼마나 받아낼 수 있는가(GuardStyle.Weapon에만 적용).
+    //
+    // 방패와 패링은 훈련된 기술이라 무기가 정해져 있지만, 이쪽은 "지금 손에 있는 것을 급히
+    // 들어 올리는" 동작이라 무엇을 들었느냐가 그대로 결과가 된다. 기준은 두 가지다 —
+    // 막아설 길이가 있는가, 두 손으로 버틸 수 있는가.
+    //
+    // 1.0을 넘기지 않는다. 무기 받아내기가 패링만큼 좋아지면 검사가 검사일 이유가 없다.
+    public static float WeaponGuardFactor(WeaponType weapon)
+    {
+        switch (weapon)
+        {
+            // 자루가 길고 두 손으로 잡는다. 날아오는 궤적에 가로로 걸치기 가장 좋다.
+            case WeaponType.Polearm: return 1.00f;
+            case WeaponType.Spear: return 0.95f;
+            case WeaponType.SwordTwoHand: return 0.90f;
+
+            // 한 손이라 버티는 힘이 부족하지만 검신 자체는 받아낼 만하다.
+            case WeaponType.SwordOneHand: return 0.75f;
+
+            // 무겁고 머리가 한쪽에 몰려 있다. 급히 들어 올리기가 느리다.
+            case WeaponType.Axe: return 0.60f;
+            case WeaponType.Blunt: return 0.60f;
+
+            // 짧다. 손목 앞 한 뼘으로 막는 셈이라 각도도 힘도 안 나온다.
+            case WeaponType.Dagger: return 0.45f;
+
+            // 활대를 세워 막기는 한다. 다만 부러뜨릴 각오를 하는 동작이다.
+            case WeaponType.Bow: return 0.35f;
+
+            // 맨손 시전과 빈손. 막을 것이 손에 없다.
+            default: return 0f;
+        }
+    }
+
 }

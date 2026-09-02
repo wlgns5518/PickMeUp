@@ -811,31 +811,59 @@ public partial class UnitController
         UnitController threat = UnitRegistry.FindTelegraphingAttacker(this);
         if (threat == null)
         {
-            // 준비 동작이 끝났다(내질렀거나 끊겼다). 다음 스윙은 새 반응 판정을 받는다 —
-            // 스윙 하나에 반응 굴림 하나.
-            noticedThreat = null;
+            // 칼을 든 놈이 잠깐 없어도 곧바로 경계를 풀지 않는다.
+            //
+            // 여럿에게 둘러싸이면 "지금 준비 동작 중인 적"이 프레임마다 바뀌고, 그 사이사이
+            // 아무도 아닌 순간이 끼어든다. 그때마다 경계를 처음부터 다시 세우면 반응 시간이
+            // 영영 끝나지 않아서, 둘러싸일수록 덜 막게 되는 거꾸로 된 결과가 나온다.
+            // (실측: 고블린 10마리에 둘러싸인 탱커가 56대를 맞는 동안 막은 것은 5번뿐이었다.)
+            if (Time.time >= alertGraceUntil) noticedThreat = null;
             return;
         }
 
+        alertGraceUntil = Time.time + AlertGrace;
+
         if (threat == noticedThreat) return;
 
-        // 새 위협을 처음 본 순간. 반응 시간은 유닛마다 다르게 뽑아 전원이 같은 박자로
-        // 방패를 올리는 것을 막는다.
+        if (noticedThreat != null)
+        {
+            // 이미 경계 중이다. 보는 대상만 바꾸고 반응 시간은 다시 재지 않는다.
+            // 사람은 칼을 든 특정 한 명이 아니라 눈앞의 난투 전체를 경계한다 — 옆 놈으로
+            // 시선이 옮겨갔다고 해서 처음부터 다시 놀라지는 않는다.
+            noticedThreat = threat;
+            return;
+        }
+
+        // 아무것도 없다가 처음 칼을 본 순간. 반응 시간은 유닛마다 다르게 뽑아 전원이 같은
+        // 박자로 방패를 올리는 것을 막는다.
         noticedThreat = threat;
         noticedThreatTime = Time.time;
         noticedThreatDelay = stats.blockReactionTime * Random.Range(0.6f, 1.4f);
     }
 
+    // 준비 동작이 잠깐 비어도 경계를 유지하는 시간. 고블린의 준비 동작이 0.4초라
+    // 스윙과 스윙 사이의 빈 구간을 넘길 만큼은 되어야 한다.
+    private const float AlertGrace = 0.5f;
+    private float alertGraceUntil;
+
     // 방어라는 수단 자체를 가진 상태인가. 지금 막을 이유가 있는지(위협)와는 별개다.
     private bool CanEverBlock()
     {
         if (IsDead) return false;
-        // 받아내는 방식을 가진 직군만 막는다.
+        // 손에 든 것으로 받아낼 수 있는 직군만 막는다.
         //
-        // 예전에는 "아군이면 전부"였다. 그 결과 궁수도 마법사도 사제도 코앞의 적에게 방패를
-        // 들었는데, 그 셋은 원작에서 막는 직군이 아니다 — 맞기 전에 빠지는 쪽이다. 암살자도
-        // 마찬가지고(방어할 몸이 아니라 뒤를 잡는다), 지금은 탱커(방패)와 검사(패링)만 받아낸다.
-        // 적이 방어하지 않는 성질도 그대로 남는다: 고블린 프리팹의 guardStyle은 None이다.
+        // 마법사만 None이다. 맨손 시전이라 들어 올릴 것이 손에 없다 — 막지 못하는 것이
+        // 이 직군이 파티에 묶여 있는 이유의 절반이다(나머지 절반은 영창 중 무방비).
+        //
+        // 나머지는 전부 막되, 어떻게 막느냐가 갈린다: 탱커는 방패, 검사는 패링, 그 외는
+        // 들고 있는 무기(GuardStyle.Weapon)다. 마지막 것은 무기에 따라 성능이 크게 벌어진다
+        // (JobProfile.WeaponGuardFactor) — 막아도 절반 넘게 들어오고 각도도 좁다.
+        //
+        // 막을 수 있는 공격은 전부 막는다. 재사용 대기가 없고(blockCooldown 0), 휘두르던 것도
+        // 거두고 들어가며(AttackState), 위협이 이어지는 동안은 자세를 유지한다(BlockState).
+        // 남는 조건은 몸이 정하는 것뿐이다 — 각도, 반응 시간, 그리고 자세가 살아 있는가.
+        //
+        // 적이 방어하지 않는 성질은 그대로 남는다: 고블린 프리팹의 guardStyle은 None이다.
         if (stats.guardStyle == GuardStyle.None) return false;
         if (blockAnimationHash == 0) return false;
         // 자세가 무너져 있는 동안은 방패를 들 수 없다. 예전에는 방어 지구력이 이 역할까지

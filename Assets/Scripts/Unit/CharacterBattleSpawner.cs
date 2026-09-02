@@ -348,7 +348,7 @@ public class CharacterBattleSpawner : MonoBehaviour
         // 나머지가 뒤에서 때리는 진형은 여기서 시작된다.
         stats.isTank = so.job == JobType.Tank || hasShield;
 
-        ApplyRole(stats, job, hasShield);
+        ApplyRole(stats, job, hasShield, so.mainHand);
 
         // 마법사가 평생 다루는 속성 하나. 이 값이 그가 쓸 수 있는 마법 전부를 정한다(SpellCatalog).
         // 마법사가 아닌 직업은 None이라 영창 경로 자체를 타지 않는다.
@@ -368,7 +368,7 @@ public class CharacterBattleSpawner : MonoBehaviour
     // 상태, UnitRegistry)는 CharacterSO도 JobType도 모르고 UnitStats만 본다. 그 경계를
     // 유지하는 이유는 적(고블린)처럼 로스터를 거치지 않는 유닛이 있기 때문이다.
     // 그런 유닛은 이 함수를 타지 않으므로 전부 기본값(JobRole.None)이라 예전과 똑같이 싸운다.
-    private void ApplyRole(UnitStats stats, JobCombatProfile job, bool hasShield)
+    private void ApplyRole(UnitStats stats, JobCombatProfile job, bool hasShield, WeaponType weapon)
     {
         stats.role = job.Role;
         stats.threatWeight = job.ThreatWeight;
@@ -420,7 +420,7 @@ public class CharacterBattleSpawner : MonoBehaviour
         // 방패를 든 캐릭터는 직업이 무엇이든 방패로 막는다 — 손에 든 것이 방식을 정한다.
         // 그래서 방패를 든 검사는 패링이 아니라 방패 가드가 된다(그게 실제로 하는 동작이다).
         stats.guardStyle = hasShield && job.Guard != GuardStyle.Shield ? GuardStyle.Shield : job.Guard;
-        ApplyGuardStyle(stats);
+        ApplyGuardStyle(stats, weapon);
     }
 
     // 막는 방식에 따라 방어 관련 수치를 통째로 갈아 끼운다.
@@ -429,23 +429,63 @@ public class CharacterBattleSpawner : MonoBehaviour
     //  - 방패는 정면 반구를 넓게 오래 가린다. 대신 궤적을 읽어 튕겨내는 일은 잘 못한다.
     //  - 패링은 좁고 짧다. 대신 읽어내면 그 자리에서 반격이 열린다 — 그게 검사가
     //    탱커보다 얇은 몸으로 전열에 설 수 있는 이유다.
-    private static void ApplyGuardStyle(UnitStats stats)
+    //
+    // 재사용 대기시간은 전 방식에서 0이다. 막을 수 있는 공격은 전부 막는다는 규칙이라,
+    // "방금 막아서 지금은 못 막는다"가 없다. 막을 수 있는지는 자세를 다시 잡는 시간이 아니라
+    // 몸과 무기가 정한다 — 그 궤도가 각도 안에 들어왔는가(guardArcAngle), 알아채고 손이
+    // 따라갈 시간이 있었는가(blockReactionTime), 자세가 무너져 있지 않은가(IsStaggered).
+    // 그 셋을 통과하면 언제나 막는다.
+    private static void ApplyGuardStyle(UnitStats stats, WeaponType weapon)
     {
         switch (stats.guardStyle)
         {
             case GuardStyle.Shield:
                 stats.guardArcAngle = 180f;
                 stats.blockDuration = 1.0f;
-                stats.blockCooldown = 1.2f;
+                stats.blockCooldown = 0f;
                 stats.perfectGuardChance = 0.22f;
                 stats.counterAfterPerfectGuard = false;
                 break;
 
+            // 손에 있는 것을 급히 들어 받아낸다. 패링과 달리 훈련된 기술이 아니라서
+            // 좁고 짧고 자주 못 쓰며, 충격도 상당히 넘어온다. 그 위에 무기별 성능이 곱해진다 —
+            // 창수는 자루로 제법 걸치고, 궁수는 활대가 부러질 각오로 겨우 막는다.
+            case GuardStyle.Weapon:
+            {
+                float factor = JobProfile.WeaponGuardFactor(weapon);
+                // 들 것이 없으면(맨손/시전) 애초에 막지 못한다. CanEverBlock이 None으로 걸러낸다.
+                if (factor <= 0f)
+                {
+                    stats.guardStyle = GuardStyle.None;
+                    break;
+                }
+
+                // 각도가 좁으면 자세를 잡고도 옆에서 들어온 칼을 그대로 맞는다.
+                // (실측: 무방비로 맞은 113대 중 20대가 방어 각도 밖이었고, 그중 7대는
+                //  분명히 자세를 잡고 있던 중이었다.) 몸을 돌려 마주 보는 만큼은 쳐낼 수
+                //  있어야 해서 정면 반구의 3분의 1~4분의 3까지 잡는다.
+                stats.guardArcAngle = Mathf.Lerp(70f, 130f, factor);
+                // 위협이 이어지는 동안은 이 시간에 관계없이 계속 든다(BlockState 참조).
+                // 여기서 정하는 것은 "마지막 칼이 지나간 뒤 얼마나 더 들고 있는가"다.
+                stats.blockDuration = Mathf.Lerp(0.22f, 0.40f, factor);
+                stats.blockCooldown = 0f;
+                // 읽어서 튕겨내는 것은 이 직군들의 기술이 아니다. 어쩌다 맞아떨어질 뿐이다.
+                stats.perfectGuardChance = Mathf.Lerp(0.04f, 0.15f, factor);
+                stats.perfectGuardWindow = 0.16f;
+                // 막아도 절반 넘게 들어온다. 몸으로 버티는 직군이 아니라는 것이 여기서 드러난다.
+                stats.blockDamageReduction = Mathf.Lerp(0.20f, 0.50f, factor);
+                // 손에 익은 동작이 아니라 반응이 한 박자 늦다.
+                stats.blockReactionTime = Mathf.Lerp(0.30f, 0.20f, factor);
+                stats.counterAfterPerfectGuard = false;
+                break;
+            }
+
             case GuardStyle.Parry:
-                stats.guardArcAngle = 110f;
+                // 검신을 쓰는 만큼 무기 받아내기보다는 넓다. 방패의 정면 반구에는 못 미친다.
+                stats.guardArcAngle = 140f;
                 // 오래 들고 있지 못한다. 검신으로 버티는 자세가 아니라 쳐내는 한 동작이다.
                 stats.blockDuration = 0.5f;
-                stats.blockCooldown = 0.9f;
+                stats.blockCooldown = 0f;
                 // 궤적을 읽는 것이 이 직군의 기술이다.
                 stats.perfectGuardChance = 0.55f;
                 stats.perfectGuardWindow = 0.24f;

@@ -52,7 +52,15 @@ public class BlockState : UnitBattleState
         context.FaceBlockThreat();
 
         minHoldTimer -= Time.deltaTime;
-        stateTimer -= Time.deltaTime;
+
+        // 막을 것이 아직 날아오는 동안은 시간을 깎지 않는다.
+        //
+        // blockDuration을 하드 상한으로 쓰면 여럿에게 둘러싸였을 때 그 시간이 다한 순간
+        // 자세가 풀리고, 이어지던 다음 칼을 그대로 맞는다 — 재사용 대기가 0이라 곧바로 다시
+        // 들 수는 있지만 그 사이 한 대가 들어간다. 규칙이 "막을 수 있는 공격은 전부 막는다"라면
+        // 여기서 끊을 이유가 없다. 이 값은 마지막 칼이 지나간 뒤 자세를 내리기까지의 여유다.
+        if (stillThreatened) stateTimer = context.Stats.blockDuration;
+        else stateTimer -= Time.deltaTime;
 
         if (stateTimer <= 0f)
         {
