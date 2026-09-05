@@ -135,6 +135,12 @@ public static class UnitBehaviorTree
         // 이미 시작해서 값을 치른 동작도 마찬가지다(스킬, 도약, 방어 자세).
         // 겨눌 상대가 사라졌다고 그 모션을 중간에 끊으면 그 값만 버린다.
         // 상대를 잃었을 때 접어야 하는 동작은 스스로 그 검사를 한다(빠지기, 후퇴).
+        //
+        // 이 잎 검사가 HasUsableTarget보다 앞에 있는 것은 비용 때문이 아니라 순서가 규칙이라서다.
+        // 싼 쪽을 앞에 두고 싶은 유혹이 있는데(트리를 세 단 걸어 내려오는 것보다 필드 두 개를
+        // 읽는 쪽이 싸다) 그렇게 하면 안 된다 — HasUsableTarget은 순수 판정이 아니라 표적이
+        // 쓸 수 없으면 그 자리에서 ClearTarget을 부른다. 앞으로 옮기면 매달리는 스킬이
+        // 도는 도중에 표적이 지워져 UpdateCling이 붙잡을 목을 잃는다.
         BTNode<UnitController> leaf = engage.FindRunningLeaf();
         if (leaf != null && !leaf.AllowsReprioritize) return true;
 
@@ -206,6 +212,10 @@ public static class UnitBehaviorTree
     private static bool WantsBlock(UnitController unit)
     {
         // "지금 누가 나를 향해 칼을 들어올렸는가"일 때만 참이다. 아무 때나 방패를 들지는 않는다.
+        //
+        // 이게 반드시 첫 줄이어야 한다. 순수 판정이 아니라 막을 상대를 blockThreat에 실어 두고,
+        // BlockBehavior가 자세를 잡을 때 그 값을 쓴다 — 뒤로 밀면 방패는 드는데 어느 쪽을
+        // 향해야 할지 모르는 상태가 된다. (비용은 어차피 전부 필드 검사라 앞에 둬도 싸다.)
         if (!unit.CanBlock()) return false;
 
         if (!unit.IsAttackAnimationLocked) return true;
@@ -228,13 +238,14 @@ public static class UnitBehaviorTree
     // 한 박자 늦는다. 예전에도 이 검사는 AttackState — 즉 사거리 안 — 에서만 돌았다.
     private static bool WantsCast(UnitController unit)
     {
-        return unit.IsTargetInAttackRange() && unit.CanCastSpell();
+        // 직군부터 본다. 일곱 중 여섯은 마법사가 아니라 열거 비교 한 번에 끝나므로,
+        // 이 한 줄이 나머지 검사(거리 계산과 CanCastSpell의 앞단)를 통째로 건너뛴다.
+        return unit.IsCaster && unit.IsTargetInAttackRange() && unit.CanCastSpell();
     }
 
     private static bool WantsSkill(UnitController unit, AttackBehavior attack)
     {
         if (unit.IsAttackAnimationLocked) return false;
-        if (!unit.CanUseSkill()) return false;
 
         // 콤보 레커버리 게이트. 스윙 하나 끝날 때마다 재량 전환을 검토하면 콤보가 거의 끝까지
         // 이어지지 않는다("뚝배기 깨기") — 콤보가 한 바퀴 돌았을 때만 검토한다.
@@ -242,7 +253,15 @@ public static class UnitBehaviorTree
         // 다만 이 게이트는 이미 붙어서 칼을 섞는 중일 때만 건다. 쫓아가다 사거리에 막 들어선
         // 순간에는 게이트 없이 한 번 검토한다 — 예전 ChaseState가 그랬고, 그쪽은 애초에
         // 콤보를 돌리는 중이 아니라 게이트가 걸 대상이 없다.
-        return !attack.IsRunning || unit.IsComboRecoveryPoint;
+        //
+        // 이 게이트가 CanUseSkill보다 앞에 있는 것이 중요하다. 둘 다 순수 판정이라 순서를
+        // 바꿔도 결과는 같은데, 비용이 다르다 — 게이트는 필드 두 개를 읽고 끝나는 반면
+        // CanUseSkill은 아홉 가지를 훑고 그 안에서 IsTargetValid를 두 번 부른다
+        // (isActiveAndEnabled는 네이티브 호출이다). 그리고 근접 유닛이 콤보를 돌리는 동안은
+        // 이 게이트가 거의 언제나 거짓이라, 뒤에 두면 매 프레임 그 아홉 가지를 헛돈다.
+        if (attack.IsRunning && !unit.IsComboRecoveryPoint) return false;
+
+        return unit.CanUseSkill();
     }
 
     // CanLeapAttack이 "사거리 안이면 거짓"이므로 아래 공격 가지와 겹치지 않는다.
