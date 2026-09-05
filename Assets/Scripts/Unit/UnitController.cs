@@ -141,38 +141,14 @@ public partial class UnitController : MonoBehaviour
     [SerializeField] private bool debugLogs;
 #if UNITY_EDITOR
     // 인스펙터 확인용. GetType().Name / GameObject.name은 호출할 때마다 문자열을 새로 만들기 때문에
-    // 상태·타깃이 바뀔 때마다 GC 쓰레기가 쌓인다. 빌드에는 포함하지 않는다.
-    [SerializeField] private string currentStateName;
+    // 동작·타깃이 바뀔 때마다 GC 쓰레기가 쌓인다. 빌드에는 포함하지 않는다.
+    [SerializeField] private string currentBehaviorName;
     [SerializeField] private string currentTargetName;
-    private IState<UnitController> debugTrackedState;
+    private BTNode<UnitController> debugTrackedNode;
 #endif
 
-    private StateMachine<UnitController> stateMachine;
-
-    public IdleState IdleState { get; private set; }
-    public SearchState SearchState { get; private set; }
-    public ChaseState ChaseState { get; private set; }
-    public MoveState MoveState { get; private set; }
-    public AttackState AttackState { get; private set; }
-    public SkillState SkillState { get; private set; }
-    public LeapAttackState LeapAttackState { get; private set; }
-    // 물러나는 방식 둘. 뒷걸음으로 사거리를 되찾는 쪽(EvadeState)과 등을 보이고 달아나는
-    // 쪽(FleeState)이다. 어느 쪽인지는 부르는 곳이 아니라 RetreatState가 정한다.
-    public EvadeState EvadeState { get; private set; }
-    public FleeState FleeState { get; private set; }
-    public BlockState BlockState { get; private set; }
-    public HitState HitState { get; private set; }
-    public DeadState DeadState { get; private set; }
-    public PanicState PanicState { get; private set; }
-    public PotionState PotionState { get; private set; }
-    public StaggerState StaggerState { get; private set; }
-    public HealState HealState { get; private set; }
-    // 사제의 선제 보호막. 치유와 나눠 둔 이유는 ShieldState 주석 참조.
-    public ShieldState ShieldState { get; private set; }
-    // 암살자의 치고 빠지기. 콤보를 끝내면 여기로 빠졌다가 은신이 걸리면 다시 파고든다.
-    public StalkState StalkState { get; private set; }
-    // 마법사 전용. 스킬(SkillState)과 따로 둔 이유는 CastState 주석 참조.
-    public CastState CastState { get; private set; }
+    // 이 유닛의 판단 전체. 어떤 동작이 있고 무엇이 무엇보다 먼저인지는 UnitBehaviorTree에 있다.
+    private BehaviorTree<UnitController> brain;
 
     public UnitTeam Team => team;
     public UnitEmotion Emotion => emotion;
@@ -301,7 +277,7 @@ public partial class UnitController : MonoBehaviour
     public float SkillAnimationDuration => skillAnimationDuration;
     public float PotionAnimationDuration => potionAnimationDuration;
     public float HealAnimationDuration => healAnimationDuration;
-    // 회피 모션이 없는 리그(고블린)는 0. EvadeState가 이 값으로 "뛸지 걸어서 뺄지"를 정한다.
+    // 회피 모션이 없는 리그(고블린)는 0. EvadeBehavior가 이 값으로 "뛸지 걸어서 뺄지"를 정한다.
     public float DodgeAnimationDuration => dodgeAnimationHash != 0 ? dodgeAnimationDuration : 0f;
 
     public float BackpedalSpeed => backpedalSpeed;
@@ -359,7 +335,7 @@ public partial class UnitController : MonoBehaviour
     // 물러난 직후 한 발은 반드시 쏘게 해서 그 왕복을 끊는다.
     public bool HasAttackedSinceEvade { get; private set; }
 
-    // 회피(EvadeState)와 도주(FleeState)가 물러나기 시작할 때 부른다.
+    // 회피(EvadeBehavior)와 도주(FleeBehavior)가 물러나기 시작할 때 부른다.
     public void MarkEvadeStarted()
     {
         HasAttackedSinceEvade = false;
@@ -535,7 +511,7 @@ public partial class UnitController : MonoBehaviour
     // 공격 모션이 하나라도 있는가. 없으면 CanAttack이 false가 되어 공격 상태로 들어가지 않는다.
     public bool HasAttackAnimation => hasAttackAnimation;
 
-    // 콤보가 한 바퀴를 다 돌아 다음 스윙이 다시 1번부터 시작하는 시점. AttackState가 이때만
+    // 콤보가 한 바퀴를 다 돌아 다음 스윙이 다시 1번부터 시작하는 시점. 트리가 이때만
     // 스킬 같은 재량 전환을 검토한다 — 콤보 스텝 사이마다 검토하면 스윙 하나 끝날 때마다
     // 다른 상태로 튀어서 콤보가 거의 끝까지 이어지지 않는다.
     //
@@ -545,19 +521,19 @@ public partial class UnitController : MonoBehaviour
     // 스킬 모션은 근접 동작이라 7m 밖에서 발차기를 하며 피해를 넣었다.
     public bool IsComboRecoveryPoint => hasSwungAtLeastOnce && attackComboIndex == 0;
 
-    // 콤보를 끝냈으니 일단 빠질 것인가(암살자의 게릴라 리듬 — StalkState 주석 참조).
+    // 콤보를 끝냈으니 일단 빠질 것인가(암살자의 게릴라 리듬 — StalkBehavior 주석 참조).
     //
     // 부르는 쪽은 이미 콤보 레커버리 시점인지 확인한 뒤다. 여기서는 "빠질 이유가 있는가"만 본다.
     // 지난번에 빠진 뒤로 실제로 한 번이라도 휘둘렀는가.
     //
     // 이게 없으면 빠지기가 무한 루프가 된다. 콤보 복귀 판정(IsComboRecoveryPoint)은
     // hasSwungAtLeastOnce와 attackComboIndex로 재는데, 그 둘은 상태를 넘어 남는다.
-    // 그래서 빠졌다 돌아와 AttackState에 들어서는 순간 이미 "콤보를 막 끝낸 시점"으로 읽혀
+    // 그래서 빠졌다 돌아와 공격 동작에 들어서는 순간 이미 "콤보를 막 끝낸 시점"으로 읽혀
     // 한 번도 휘두르지 않고 곧바로 다시 빠졌다 — 실측에서 암살자의 준피해가 t=50부터
     // 25초 동안 1,237에서 1도 오르지 않았다.
     private bool hasSwungSinceStalk = true;
 
-    // StalkState.Enter가 부른다. 다음 빠지기는 반드시 새 콤보 뒤에만 나온다.
+    // StalkBehavior가 진입할 때 부른다. 다음 빠지기는 반드시 새 콤보 뒤에만 나온다.
     public void MarkStalkStarted() => hasSwungSinceStalk = false;
 
     public bool ShouldStalk()
@@ -659,51 +635,54 @@ public partial class UnitController : MonoBehaviour
 
     private void Start()
     {
-        CreateStates();
-        stateMachine = new StateMachine<UnitController>();
-        IState<UnitController> initialState = UnitRegistry.HasLivingEnemy(this) ? SearchState : IdleState;
-        stateMachine.Initialize(this, initialState, UnitGlobalTransitions.All);
+        brain = UnitBehaviorTree.Build(this);
         SyncDebugState();
     }
 
     private void Update()
     {
-        // 히트스톱 해제와 방어 자세 복귀는 상태머신보다 먼저 처리한다 — 상태의 Update가
-        // AnimatorSpeed로 타이머를 재기 때문에, 그 전에 이번 프레임의 배속이 확정돼 있어야 한다.
+        // 히트스톱 해제와 방어 자세 복귀는 트리보다 먼저 처리한다 — 동작의 타이머가
+        // AnimatorSpeed로 시간을 재기 때문에, 그 전에 이번 프레임의 배속이 확정돼 있어야 한다.
         TickCombat();
 
         if (scanner != null) scanner.Tick();
         if (emotion != null) emotion.Tick(Time.deltaTime);
-        // 사망/패닉/회복약/치료처럼 어느 상태에서든 걸리는 전이는 상태머신이 직접 들고 있다.
-        // (UnitGlobalTransitions 참조 — 예전에는 그 판단이 여기 있었다.)
-        stateMachine?.Update();
+        // 사망/패닉/경직/회복약/치료처럼 무엇을 하고 있든 걸리는 판단은 트리 위쪽 가지가
+        // 들고 있다(UnitBehaviorTree 참조 — 예전에는 그 판단이 여기 있었다).
+        brain?.Tick();
         SyncDebugState();
     }
 
-    public void ChangeState(IState<UnitController> state)
+    // 하던 동작을 그 자리에서 접는다. 다음 틱에 트리가 뿌리부터 다시 고른다.
+    //
+    // 바깥에서 들어오는 개입이 여기로 온다 — 피격으로 하던 동작이 끊겼을 때와, 팀이 표적을
+    // 넘겨줘 교전을 다시 잡아야 할 때다. 예전에는 그 둘이 ChangeState(AttackState)로 특정
+    // 상태를 지목했는데, 지목한 상태는 진입하자마자 다시 판단해서 다른 곳으로 넘어가곤 했다
+    // (사거리 밖이면 그 프레임에 곧바로 Chase로). 트리에서는 지목할 이유가 없다.
+    public void InterruptBehavior()
     {
-        stateMachine?.ChangeState(state);
+        brain?.Abort();
     }
 
-    // 지금 상태에게 무언가를 물어볼 때 쓴다(HoldsGround / LocksTarget / AcceptsCombatRedirect).
+    // 지금 돌고 있는 동작에게 무언가를 물어볼 때 쓴다
+    // (HoldsGround / LocksTarget / AcceptsCombatRedirect).
     //
-    // as로 내리는 이유는 상태머신이 IState<UnitController>만 알기 때문이다. 전투 유닛의 상태는
-    // 전부 UnitBattleState라 실패할 일이 없지만, 그 사실을 타입으로 강제하지는 않는다 —
-    // 상태머신은 전투를 모르는 채로 남겨 두는 편이 맞다.
-    private UnitBattleState CurrentBattleState => stateMachine?.CurrentState as UnitBattleState;
+    // as로 내리는 이유는 트리가 BTNode<UnitController>만 알기 때문이다. 전투 유닛의 잎은
+    // 전부 UnitBehavior라 실패할 일이 없지만, 그 사실을 타입으로 강제하지는 않는다 —
+    // 트리 쪽은 전투를 모르는 채로 남겨 두는 편이 맞다.
+    private UnitBehavior RunningBehavior => brain?.RunningLeaf as UnitBehavior;
 
-    // 인스펙터 표시용. 요청한 상태가 아니라 실제로 적용된 상태를 읽어야 한다 —
-    // 전이는 지연 적용되고, 같은 프레임에 덮어써져 건너뛰는 요청도 있기 때문이다.
-    // GetType().Name은 호출할 때마다 문자열을 새로 만들므로 참조가 바뀐 프레임에만 읽는다.
+    // 인스펙터 표시용. GetType().Name은 호출할 때마다 문자열을 새로 만들므로
+    // 참조가 바뀐 프레임에만 읽는다.
     [System.Diagnostics.Conditional("UNITY_EDITOR")]
     private void SyncDebugState()
     {
 #if UNITY_EDITOR
-        IState<UnitController> state = stateMachine?.CurrentState;
-        if (ReferenceEquals(state, debugTrackedState)) return;
+        BTNode<UnitController> node = brain?.RunningLeaf;
+        if (ReferenceEquals(node, debugTrackedNode)) return;
 
-        debugTrackedState = state;
-        currentStateName = state != null ? state.GetType().Name : "";
+        debugTrackedNode = node;
+        currentBehaviorName = node != null ? node.GetType().Name : "";
 #endif
     }
 
@@ -834,12 +813,15 @@ public partial class UnitController : MonoBehaviour
 
         ClearMoveDestination();
 
-        // 표적만 갈아 끼우고 하던 동작은 그대로 끝내는 상태들이 있다
-        // (UnitBattleState.AcceptsCombatRedirect). 대표적으로 도약 공격 — 이미 몸이 떠 있는데
-        // 여기서 상태를 갈아 끼우면 LeapAttackState.Exit이 내려놓기 전에 빠져나가 모델이 뜬 채로 남는다.
-        if (CurrentBattleState != null && !CurrentBattleState.AcceptsCombatRedirect) return;
+        // 표적만 갈아 끼우고 하던 동작은 그대로 끝내는 것들이 있다
+        // (UnitBehavior.AcceptsCombatRedirect). 대표적으로 도약 공격 — 이미 몸이 떠 있는데
+        // 여기서 접어 버리면 LeapAttackBehavior가 내려놓기 전에 빠져나가 모델이 뜬 채로 남는다.
+        UnitBehavior current = RunningBehavior;
+        if (current != null && !current.AcceptsCombatRedirect) return;
 
-        ChangeState(IsTargetInAttackRange() ? AttackState : ChaseState);
+        // 어디로 갈지는 지목하지 않는다. 접어 두면 다음 틱에 트리가 새 표적을 놓고
+        // 처음부터 다시 고른다 — 사거리 안이면 공격, 아니면 추격이다.
+        InterruptBehavior();
     }
 
     public void SetMoveDestination(Vector3 destination)
@@ -936,7 +918,7 @@ public partial class UnitController : MonoBehaviour
     public bool CanAttack()
     {
         // 마법사는 칼을 휘두르듯 즉발로 내지르는 동작이 하나도 없다. 가장 작은 마법(기본 마법)조차
-        // 짧게나마 마력을 모아 나가므로, 공격은 전부 CastState를 거친다(UnitController.Magic.cs).
+        // 짧게나마 마력을 모아 나가므로, 공격은 전부 CastBehavior를 거친다(UnitController.Magic.cs).
         // 여기서 막지 않으면 마법사가 맨손으로 허공을 치는 평타 모션을 섞어 쓰게 된다.
         if (IsCaster) return false;
 
@@ -945,7 +927,7 @@ public partial class UnitController : MonoBehaviour
                IsTargetInAttackRange() &&
                !IsAttackAnimationLocked &&
                // 스윙과 스윙 사이의 호흡. 이게 없으면 클립이 끝난 프레임에 곧바로 다음 스윙이
-               // 나가 쉼 없이 칼을 돌린다. 그 사이 시간에 AttackState가 발놀림을 한다.
+               // 나가 쉼 없이 칼을 돌린다. 그 사이 시간에 AttackBehavior가 발놀림을 한다.
                IsSwingReady &&
                // 마주 보기 전에는 휘두르지 않는다. 도착하자마자 등을 진 채 스윙을 시작하면
                // 모션이 비스듬히 나갈 뿐 아니라, 타격 판정(attackArcAngle)에서 그대로 빗나간다.
@@ -971,7 +953,8 @@ public partial class UnitController : MonoBehaviour
                // 스킬은 여는 수가 아니다. 한 번도 휘두르지 않았는데 먼저 나가면 교전의 첫 동작이
                // 늘 스킬로 똑같아진다. 원거리 유닛에서 특히 두드러졌다 — 스폰되자마자 사거리에
                // 들어서므로 "입장하자마자 스킬"이 매 전투 고정 연출이 됐다.
-               // AttackState는 콤보 레커버리로 한 번 더 거르지만, ChaseState는 이 검사가 전부다.
+               // 콤보 레커버리 게이트는 이미 붙어서 칼을 섞는 중일 때만 걸리므로
+               // (UnitBehaviorTree.WantsSkill), 막 사거리에 들어선 순간에는 이 검사가 전부다.
                hasSwungAtLeastOnce &&
                IsTargetValid() &&
                IsTargetInAttackRange() &&
@@ -1030,7 +1013,7 @@ public partial class UnitController : MonoBehaviour
     }
 
     // 서포터가 회복할 아군이 있는지 확인하고, 있으면 대상까지 잡아 둔다.
-    // 판단과 대상 선정을 나누면 HealState가 다시 탐색해야 해서 같은 순회를 두 번 돌게 된다.
+    // 판단과 대상 선정을 나누면 HealBehavior가 다시 탐색해야 해서 같은 순회를 두 번 돌게 된다.
     public bool CanHealAlly()
     {
         healTarget = null;
@@ -1188,7 +1171,7 @@ public partial class UnitController : MonoBehaviour
         return true;
     }
 
-    // 방어 중 나를 노리는 적을 향해 돈다. BlockState가 매 프레임 불러 방패 방향을 맞춘다 —
+    // 방어 중 나를 노리는 적을 향해 돈다. BlockBehavior가 매 프레임 불러 방패 방향을 맞춘다 —
     // 그러지 않으면 방어 자세로 굳어 있는 동안 위협이 옆/뒤로 돌아가도 계속 정면으로 오인해서
     // 정면 180도 판정(IsWithinFrontArc)에 실패해 버린다.
     // 방어 중 회전은 평소보다 느리다(blockTurnSpeed < rotationSpeed) — 위협이 등 뒤로 돌아가면
@@ -1197,7 +1180,7 @@ public partial class UnitController : MonoBehaviour
 
     // 방어 중 나를 노리고 휘두르는 적을 다시 찾는다. 진입 시점에 잡아 둔 위협은 금방 낡는다 —
     // 그 적이 스윙을 끝내거나 쓰러져도 계속 그쪽을 보고 방패를 든 채 서 있게 된다.
-    // 돌려주는 값은 "아직 막을 것이 남았는가"이고, BlockState가 이걸로 자세를 풀 시점을 정한다.
+    // 돌려주는 값은 "아직 막을 것이 남았는가"이고, BlockBehavior가 이걸로 자세를 풀 시점을 정한다.
     // (CanBlock을 그대로 쓸 수 없는 이유: 방금 자세를 잡아 blockCooldown에 걸려 있어서
     //  방어 중에는 항상 false가 나온다.)
     public bool RefreshBlockThreat()
@@ -1480,31 +1463,11 @@ public partial class UnitController : MonoBehaviour
         return toAnchor.normalized;
     }
 
-    // 물러나기로 했을 때 실제로 어느 방식으로 물러나는가.
-    //
-    // 부르는 쪽(Chase/Attack/Cast)은 "물러나야 한다"까지만 알면 되고, 뒷걸음인지 도주인지는
-    // 여기 한 곳에서 답한다. 예전에는 이 판단이 EvadeState 안에서 불리언 두 개로 갈렸는데,
-    // 그러면 어느 갈래로 갈지가 상태에 들어가 봐야 알 수 있어서 전이 그래프에 드러나지 않았다.
-    //
-    // 간격을 잃었는가를 먼저 본다. 붙잡힌 상태에서는 그놈을 떼어내는 것이 먼저이고,
-    // 그게 곧 살아남는 길이기도 하다. 여기까지 왔다는 것은 부르는 쪽이 이미 "물러나야 한다"를
-    // 판단했다는 뜻이므로, 간격 문제가 아니면 남는 이유는 HP뿐이다.
-    public UnitBattleState RetreatState
-    {
-        get
-        {
-            // 마법사는 붙잡히면 뒷걸음으로 재지 않고 등을 보이고 달린다(FleeState 주석 참조).
-            if (ShouldKeepDistance()) return stats.fleeByRunning ? (UnitBattleState)FleeState : EvadeState;
-
-            return FleeState;
-        }
-    }
-
     // HP가 위험 수위인데 회복 수단(회복약/치료)이 없거나 이미 바닥났을 때 거리를 벌린다.
     // 적은 CanRecoverHp가 항상 false라 회복약이 없으면 이게 유일한 생존 수단이다.
     // 쿨다운으로 한 번만 물러나게 막으면, 여전히 위험한데도 한 박자 쉬고 다시 근접전으로
     // 걸어 들어가 버린다(맞다가 죽는 원인). HP가 임계치 아래인 동안은 매 프레임 계속 true를 줘서
-    // FleeState가 안전해질 때까지 반복해서 물러나게 한다.
+    // FleeBehavior가 안전해질 때까지 반복해서 물러나게 한다.
     public bool ShouldRetreatForSurvival()
     {
         // 적은 체력이 바닥나도 물러서지 않는다. 회복 수단이 없는 쪽(CanRecoverHp)이 도망까지 다니면
@@ -1519,13 +1482,6 @@ public partial class UnitController : MonoBehaviour
         if (CanUsePotion()) return false;
 
         return true;
-    }
-
-    // 전투 중 거리를 벌려야 하는 모든 상황(원거리 유닛의 근접 회피 + 위기 후퇴)을 한데 묶는다.
-    // 부르는 쪽은 이거 하나만 물어보면 되고, 어느 방식으로 물러날지는 RetreatState가 답한다.
-    public bool ShouldEvade()
-    {
-        return ShouldKeepDistance() || ShouldRetreatForSurvival();
     }
 
     public void TakeDamage(int damage)
@@ -1553,25 +1509,46 @@ public partial class UnitController : MonoBehaviour
     // 넘긴다 — 그 밖의 경로(예: TakeBleedDamage 계열)는 경직을 유발하지 않는다.
     public void TakeDamage(int damage, UnitController attacker, bool applyKnockback, bool fromSkill, float poiseDamage)
     {
+        TakeDamage(damage, attacker,
+            attacker != null ? attacker.transform.position : Vector3.zero, attacker != null,
+            Unity.Entities.Entity.Null, applyKnockback, fromSkill, poiseDamage);
+    }
+
+    // 엔티티가 된 적이 때렸다(EnemyWorldBridge.DrainHitsOnAllies가 부른다).
+    //
+    // 때린 쪽이 UnitController가 아니므로 참조 대신 위치와 Entity만 온다. 방어 각도, 배후 판정,
+    // 강인도, 퍼펙트 가드까지 규칙은 전부 같은 경로를 탄다 — 다른 것은 딱 둘이다:
+    //  - 반격 표적 지정(ForceSetAttackTarget)은 하지 않는다. 아군의 CurrentTarget이 아직
+    //    UnitController 타입이라 엔티티를 담지 못한다(다음 단계에서 손잡이 타입으로 바꾼다).
+    //  - 히트스톱을 때린 쪽에 걸지 않는다. 적에게는 Animator가 없다.
+    public void TakeEnemyDamage(int damage, Vector3 attackerPosition, Unity.Entities.Entity attackerEntity,
+        float poiseDamage = 0f)
+    {
+        TakeDamage(damage, null, attackerPosition, true, attackerEntity, false, false, poiseDamage);
+    }
+
+    private void TakeDamage(int damage, UnitController attacker, Vector3 attackerPosition, bool hasAttackerPosition,
+        Unity.Entities.Entity attackerEntity, bool applyKnockback, bool fromSkill, float poiseDamage)
+    {
         // 이미 죽은 유닛에 피가 튀거나 피격 상태로 되돌아가지 않도록 여기서 끊는다.
         if (IsDead) return;
 
         // 뒤를 잡혔는가(피해 배율)와 받아낼 수 있는가(방어 각도)는 다른 질문이다.
         // 방패는 정면 반구를 통째로 가리지만 패링은 훨씬 좁으므로, 검사에게는 "막지는 못했지만
         // 등 뒤도 아닌" 구간이 생긴다 — 옆에서 들어온 칼은 정직하게 한 대 맞는다.
-        bool inFrontArc = attacker == null || IsWithinFrontArc(attacker.transform.position);
-        bool wantsToBlock = IsBlocking && (attacker == null || IsWithinGuardArc(attacker.transform.position));
+        bool inFrontArc = !hasAttackerPosition || IsWithinFrontArc(attackerPosition);
+        bool wantsToBlock = IsBlocking && (!hasAttackerPosition || IsWithinGuardArc(attackerPosition));
 
         // 방패를 올린 직후에 들어온 공격은 막는 것이 아니라 통째로 흘려낸다.
         // 흘러가면 피해도 강인도 소모도 없으므로 아래 계산 자체를 건너뛴다.
-        if (wantsToBlock && TryPerfectGuard(attacker)) return;
+        if (wantsToBlock && TryPerfectGuard(attacker, attackerEntity)) return;
 
         bool wasBlocking = wantsToBlock;
 
         // 같은 공격이라도 어디서, 어떤 처지에서 맞았느냐로 실제 피해가 갈린다.
         // 이 세 가지가 "위치를 잡는 것"과 "먼저 내지르는 것"에 값을 매긴다.
         float damageMultiplier = 1f;
-        if (attacker != null && !inFrontArc)
+        if (hasAttackerPosition && !inFrontArc)
         {
             damageMultiplier *= stats.backstabDamageMultiplier;
             poiseDamage *= stats.backstabPoiseMultiplier;
@@ -1609,8 +1586,8 @@ public partial class UnitController : MonoBehaviour
         BreakStealth();
 
         RecordDamage(dealt, attacker);
-        RecordHitDirection(attacker);
-        if (!wasBlocking) SpawnBloodEffect(attacker);
+        RecordHitDirection(attackerPosition, hasAttackerPosition);
+        if (!wasBlocking) SpawnBloodEffect(attackerPosition, hasAttackerPosition);
         if (emotion != null) emotion.NotifyDamaged(dealt, fromSkill);
 
         // 때린 쪽의 직군이 남기는 흔적. 막아낸 타격은 살에 닿지 않았으므로 아무것도 남기지 않는다.
@@ -1667,11 +1644,11 @@ public partial class UnitController : MonoBehaviour
             // 가드가 열렸다는 사실은 남는다(모션이 BlockBreak으로 바뀌고, 강인도가 0에서
             // 다시 차오르며, 그 순간의 방어 자세는 InterruptCurrentAction이 내려놓는다).
             //
-            // 진짜 경직(StaggerState)은 이제 두 곳에서만 나온다 — 흘려내기(퍼펙트 가드)에
+            // 진짜 경직(StaggerBehavior)은 이제 두 곳에서만 나온다 — 흘려내기(퍼펙트 가드)에
             // 걸린 공격자와, 붙잡아 무너뜨리는 스킬(TryForceStagger). 둘 다 "읽어냈다"의 보상이다.
             hitFromGuardBreak = wasBlocking;
             InterruptCurrentAction();
-            ChangeState(HitState);
+            RequestHitReaction();
             return;
         }
 
@@ -1681,24 +1658,59 @@ public partial class UnitController : MonoBehaviour
 
         // 영창은 여기서 끊지 않는다.
         //
-        // 아래 두 줄(InterruptCurrentAction + AttackState)은 근접 유닛에게는 무해하다 — 어차피
-        // 공격 상태로 돌아갈 참이었기 때문이다. 그런데 마법사에게는 치명적이다: 상태가 바뀌는
-        // 순간 CastState.Exit이 영창을 통째로 흩어 버린다. 스치는 피해 한 번에 7.8초짜리
+        // 아래 두 줄(InterruptCurrentAction + InterruptBehavior)은 근접 유닛에게는 무해하다 —
+        // 어차피 공격으로 돌아갈 참이었기 때문이다. 그런데 마법사에게는 치명적이다: 동작이
+        // 접히는 순간 CastBehavior가 영창을 통째로 흩어 버린다. 스치는 피해 한 번에 7.8초짜리
         // 영창이 사라지는 셈이라, 실측에서 마법사가 붙잡힌 채 단 한 번도 완주하지 못하고
         // 딜 0으로 끝났다(유성 낙하 3회, 화염구 4회 전부 중단).
         //
         // 규칙은 위 주석 그대로 가져간다: 진짜로 끊는 것은 강인도가 깨졌을 때뿐이다.
-        // 그 판정은 이미 위쪽에서 HitState로 보내며 처리했으므로, 여기까지 내려온 피격은
+        // 그 판정은 이미 위쪽에서 피격 리액션을 요청하며 처리했으므로, 여기까지 내려온 피격은
         // "버텨 낸 것"이다. 영창 중에는 그 사이에도 무방비 배율(castVulnerabilityMultiplier)을
         // 그대로 받으므로 공짜로 버티는 것이 아니다 — 계속 맞으면 강인도가 깨져 결국 끊긴다.
         if (IsCasting) return;
 
         InterruptCurrentAction();
-        ChangeState(AttackState);
+        InterruptBehavior();
     }
 
-    // 강인도가 깨지지 않은 일반 피격의 즉각적인 밀림. HitState의 시간 분산 넉백과 달리 상태를
-    // 바꾸지 않고 그 자리에서 한 번에 살짝 밀어서 애니메이션을 끊지 않고도 타격감을 준다.
+    // ---------------------------------------------------------------- 바깥에서 들어오는 반응 요청
+    //
+    // 피격 리액션과 경직은 조건이 아니라 사건이다. 피해는 바깥에서(공격자의 애니메이션
+    // 이벤트에서) 들어오므로 트리가 매 틱 조건을 물어보는 것으로는 알아챌 수 없다.
+    // 그래서 표시를 세워 두고 트리 위쪽 가지가 그것을 본다 — 예전에 TakeDamage와 Stagger가
+    // ChangeState로 상태를 직접 지목하던 자리다.
+    //
+    // 표시는 동작이 시작할 때 지운다(Consume). 세운 뒤 실제로 그 가지가 잡힐 때까지
+    // 한 틱이 걸리는데, 그 사이는 예전 상태머신의 지연 적용과 정확히 같은 간격이다.
+
+    public bool HasPendingHitReaction { get; private set; }
+    public bool HasPendingStagger { get; private set; }
+
+    public void RequestHitReaction() => HasPendingHitReaction = true;
+
+    // 경직은 피격 리액션보다 무겁다. 같은 프레임에 둘 다 들어오면 경직만 남는다 —
+    // 무너진 유닛이 그 앞에 짧게 움찔하고 시작할 이유가 없다.
+    public void RequestStagger()
+    {
+        HasPendingStagger = true;
+        HasPendingHitReaction = false;
+    }
+
+    public void ConsumeHitReaction() => HasPendingHitReaction = false;
+
+    public void ConsumeStagger() => HasPendingStagger = false;
+
+    // 죽거나 행동불가에 빠지면 밀려 있던 반응은 버린다. 시체나 굳어 버린 유닛이
+    // 뒤늦게 움찔할 이유가 없다.
+    public void ClearPendingReactions()
+    {
+        HasPendingHitReaction = false;
+        HasPendingStagger = false;
+    }
+
+    // 강인도가 깨지지 않은 일반 피격의 즉각적인 밀림. 피격 리액션의 시간 분산 넉백과 달리
+    // 하던 동작을 바꾸지 않고 그 자리에서 한 번에 살짝 밀어서 타격감만 준다.
     private void ApplyMicroPushback(Vector3 attackerPosition)
     {
         if (stats.poiseHitPushback <= 0f) return;
@@ -1711,7 +1723,7 @@ public partial class UnitController : MonoBehaviour
         agent.Move(direction.normalized * stats.poiseHitPushback);
     }
 
-    private void SpawnBloodEffect(UnitController attacker)
+    private void SpawnBloodEffect(Vector3 attackerPosition, bool hasAttacker)
     {
         if (bloodEffectPrefabs == null || bloodEffectPrefabs.Length == 0) return;
 
@@ -1719,22 +1731,22 @@ public partial class UnitController : MonoBehaviour
         if (prefab == null) return;
 
         Vector3 spawnPosition = (bodyCollider != null ? bodyCollider.bounds.center : transform.position) + bloodEffectOffset;
-        Vector3 lookDirection = attacker != null ? transform.position - attacker.transform.position : transform.forward;
+        Vector3 lookDirection = hasAttacker ? transform.position - attackerPosition : transform.forward;
         lookDirection.y = 0f;
         Quaternion rotation = lookDirection.sqrMagnitude > 0.0001f ? Quaternion.LookRotation(lookDirection.normalized) : transform.rotation;
 
         BloodEffectPool.Instance.Spawn(prefab, spawnPosition, rotation, bloodColor);
     }
 
+    // 쓰러졌다. 어디로 갈지 지목할 필요가 없다 — 사망은 트리 맨 위의 조건이라
+    // (UnitBehaviorTree) 다음 틱에 DeadBehavior가 무조건 받는다. 여기서는 하던 동작을
+    // 그 자리에서 접어 뒷정리(방어 자세 내리기, 공중에 뜬 몸 내려놓기)만 앞당긴다.
     public void Die()
     {
-        if (stateMachine != null && stateMachine.CurrentState != DeadState)
-        {
-            ChangeState(DeadState);
-        }
+        InterruptBehavior();
     }
 
-    // 출혈처럼 시간에 따라 들어오는 피해. 피격 리액션(HitState)을 일으키지 않아야
+    // 출혈처럼 시간에 따라 들어오는 피해. 피격 리액션을 일으키지 않아야
     // 출혈이 공격 모션을 매초 끊어먹는 일이 없다.
     public void TakeBleedDamage(int damage)
     {
@@ -1747,7 +1759,7 @@ public partial class UnitController : MonoBehaviour
         if (stats.IsDead) Die();
     }
 
-    // DeadState 진입 시 호출. 같은 팀에 죽음을 알려 공포를 전파하고(원작의 핵심 기믹)
+    // DeadBehavior 진입 시 호출. 같은 팀에 죽음을 알려 공포를 전파하고(원작의 핵심 기믹)
     // 전투 매니저/UI 같은 외부 구독자에게 통지한다.
     public void NotifyDeath()
     {
@@ -2227,7 +2239,7 @@ public partial class UnitController : MonoBehaviour
     //
     // 쫓아가는 유닛이 무리에 막히면 NavMeshAgent는 거의 제자리인데, 요청 속도로 배속을 잡으면
     // 다리만 전속력으로 돌아 땅 위를 미끄러진다 — 몰려간 고블린들이 앞에서 떠는 것처럼 보이던
-    // 그림의 절반이 이것이다. EvadeState가 후퇴 모션에 같은 보정을 이미 쓰고 있다.
+    // 그림의 절반이 이것이다. EvadeBehavior가 후퇴 모션에 같은 보정을 이미 쓰고 있다.
     //
     // 이동 모션을 재생하는 표준 경로. 이동 중인 상태는 전부 이것만 부르면 된다.
     public void SetMoveAnimationFromGroundSpeed(bool isRunning)
@@ -2407,29 +2419,6 @@ public partial class UnitController : MonoBehaviour
         enabled = false;
     }
 
-    private void CreateStates()
-    {
-        IdleState = new IdleState(this);
-        SearchState = new SearchState(this);
-        ChaseState = new ChaseState(this);
-        MoveState = new MoveState(this);
-        AttackState = new AttackState(this);
-        SkillState = new SkillState(this);
-        LeapAttackState = new LeapAttackState(this);
-        EvadeState = new EvadeState(this);
-        FleeState = new FleeState(this);
-        BlockState = new BlockState(this);
-        HitState = new HitState(this);
-        DeadState = new DeadState(this);
-        PanicState = new PanicState(this);
-        PotionState = new PotionState(this);
-        StaggerState = new StaggerState(this);
-        HealState = new HealState(this);
-        ShieldState = new ShieldState(this);
-        StalkState = new StalkState(this);
-        CastState = new CastState(this);
-    }
-
     // 공포 상태에서는 이동속도도 함께 깎인다. 요청 속도를 따로 들고 있는 이유는
     // 감정이 바뀌었을 때 MoveTo를 기다리지 않고 바로 다시 계산하기 위해서다.
     private void ResetCombatRecord()
@@ -2554,11 +2543,12 @@ public partial class UnitController : MonoBehaviour
         hasPendingKnockback = false;
     }
 
-    // 답은 상태가 들고 있다(UnitBattleState.LocksTarget). 어느 상태가 해당하는지는
-    // 그 상태의 파일에 적혀 있다.
+    // 답은 동작이 들고 있다(UnitBehavior.LocksTarget). 어느 동작이 해당하는지는
+    // 그 동작의 파일에 적혀 있다.
     private bool IsTargetChangeLocked()
     {
-        return CurrentBattleState != null && CurrentBattleState.LocksTarget;
+        UnitBehavior current = RunningBehavior;
+        return current != null && current.LocksTarget;
     }
 
     private bool IsNewTargetClearlyBetter(UnitController target)

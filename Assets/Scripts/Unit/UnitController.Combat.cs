@@ -445,7 +445,7 @@ public partial class UnitController
         PlayAnimation(leapAttackAnimationHash, true);
     }
 
-    // LeapAttackState가 매 프레임 부른다. 받는 값은 클립의 진행도(0~1).
+    // LeapAttackBehavior가 매 프레임 부른다. 받는 값은 클립의 진행도(0~1).
     public void UpdateLeap(float normalizedTime)
     {
         float airborne = Mathf.Clamp01(Mathf.InverseLerp(leapLaunchRatio, leapLandRatio, normalizedTime));
@@ -476,7 +476,7 @@ public partial class UnitController
     }
 
     // 도약이 끝났거나 도중에 끊겼다. 위치의 주도권을 반드시 에이전트에게 돌려줘야 한다 —
-    // 공중에서 피격당해 HitState로 빠지면 그대로 떠 있는 채로 싸우게 된다.
+    // 공중에서 피격당해 피격 리액션으로 빠지면 그대로 떠 있는 채로 싸우게 된다.
     public void EndLeap()
     {
         leapDistance = 0f;
@@ -526,7 +526,7 @@ public partial class UnitController
         }
     }
 
-    // SkillState가 매 프레임 부른다. progress는 스킬 모션의 진행도(0~1).
+    // SkillBehavior가 매 프레임 부른다. progress는 스킬 모션의 진행도(0~1).
     public void UpdateCling(float progress)
     {
         if (!clinging) return;
@@ -603,7 +603,7 @@ public partial class UnitController
         //
         // 한때 "마법사는 스윙이 없어 footworkThisGap이 영영 거짓이니 늘 발놀림하게 하자"고
         // 예외를 뒀는데, 그 결과 영창 사이 내내 제자리에서 잔걸음을 치며 발이 미끄러졌다.
-        // 마력을 모으는 유닛은 가만히 서 있는 편이 맞고, 간격이 무너지면 그때 달아난다(FleeState).
+        // 마력을 모으는 유닛은 가만히 서 있는 편이 맞고, 간격이 무너지면 그때 달아난다(FleeBehavior).
         if (!footworkThisGap)
         {
             StopFootwork();
@@ -650,7 +650,7 @@ public partial class UnitController
         // 만들려던 것인데, 실제 화면에서는 "공격하면서 빙글빙글 회전이동하는" 것으로 보였다.
         // 게다가 옆걸음 클립과 실제 이동 속도가 어긋나는 구간마다 발이 눈에 띄게 미끄러졌다.
         //
-        // 자리를 잡는 일은 접근(ChaseState.GetEngageDestination)이 맡는다. 붙고 나서까지
+        // 자리를 잡는 일은 접근(ChaseBehavior가 부르는 GetEngageDestination)이 맡는다. 붙고 나서까지
         // 계속 돌 이유는 없다 — 교전 중 발놀림은 간격만 맞추면 충분하다.
         // 방위 성향(engageAngle) 자체는 접근 쪽에 그대로 살아 있다.
 
@@ -764,7 +764,7 @@ public partial class UnitController
         return hash != 0 ? hash : hitAnimationHash;
     }
 
-    // 마지막으로 맞은 방향. TakeDamage가 기록하고 HitState가 모션을 고를 때 읽는다.
+    // 마지막으로 맞은 방향. TakeDamage가 기록하고 HitBehavior가 모션을 고를 때 읽는다.
     // 상태에 인자를 넘기지 않고 여기 두는 이유는, 상태 객체가 유닛마다 하나씩 재사용되기 때문이다 —
     // Enter에 값을 실어 보낼 통로가 없다.
     private Vector3 lastHitAttackerPosition;
@@ -772,8 +772,14 @@ public partial class UnitController
 
     private void RecordHitDirection(UnitController attacker)
     {
-        hasLastHitAttacker = attacker != null;
-        if (hasLastHitAttacker) lastHitAttackerPosition = attacker.transform.position;
+        RecordHitDirection(attacker != null ? attacker.transform.position : Vector3.zero, attacker != null);
+    }
+
+    // 때린 쪽이 엔티티면 위치만 온다. 피격 모션을 고르는 데 필요한 것은 어차피 방향뿐이다.
+    private void RecordHitDirection(Vector3 attackerPosition, bool hasAttacker)
+    {
+        hasLastHitAttacker = hasAttacker;
+        if (hasAttacker) lastHitAttackerPosition = attackerPosition;
     }
 
     // 어디서 맞았는지 모르는 경우(출혈 등)는 기본 피격 모션으로 친다.
@@ -860,7 +866,7 @@ public partial class UnitController
         // (JobProfile.WeaponGuardFactor) — 막아도 절반 넘게 들어오고 각도도 좁다.
         //
         // 막을 수 있는 공격은 전부 막는다. 재사용 대기가 없고(blockCooldown 0), 휘두르던 것도
-        // 거두고 들어가며(AttackState), 위협이 이어지는 동안은 자세를 유지한다(BlockState).
+        // 거두고 들어가며(AttackBehavior), 위협이 이어지는 동안은 자세를 유지한다(BlockBehavior).
         // 남는 조건은 몸이 정하는 것뿐이다 — 각도, 반응 시간, 그리고 자세가 살아 있는가.
         //
         // 적이 방어하지 않는 성질은 그대로 남는다: 고블린 프리팹의 guardStyle은 None이다.
@@ -889,7 +895,7 @@ public partial class UnitController
     // 준비 동작을 보고 blockReactionTime 뒤에 올라가는데, 그 반응 시간이 준비 동작 길이와
     // 비슷해서(칼 0.34초 vs 반응 0.11~0.25초) 자세를 잡은 시점이 늘 타격 직전이기 때문이다.
     // 그래서 자세를 드는 순간 굴린 "제대로 읽었는가"(perfectGuardArmed)를 함께 본다.
-    private bool TryPerfectGuard(UnitController attacker)
+    private bool TryPerfectGuard(UnitController attacker, Unity.Entities.Entity attackerEntity)
     {
         if (!perfectGuardArmed || stats.perfectGuardWindow <= 0f) return false;
         if (Time.time > guardRaisedTime + stats.perfectGuardWindow) return false;
@@ -904,6 +910,13 @@ public partial class UnitController
         {
             attacker.ApplyHitStop(stats.hitStopDuration * 2f, stats.hitStopScale);
             attacker.Stagger(stats.perfectGuardStaggerDuration);
+        }
+
+        // 흘려낸 상대가 엔티티라면 브리지를 통해 무너뜨린다. 히트스톱은 걸지 않는다 —
+        // 적에게는 Animator가 없어서 눌러 붙일 재생 배속 자체가 없다(EnemyAnimation 주석 참조).
+        if (attackerEntity != Unity.Entities.Entity.Null)
+        {
+            EnemyWorldBridge.StaggerEnemy(attackerEntity, stats.perfectGuardStaggerDuration, transform.position);
         }
 
         // 패링은 여기서 끝나지 않는다. 쳐낸 그 자리에서 되받아치는 것이 패링의 값어치다 —
@@ -965,7 +978,7 @@ public partial class UnitController
 
     // 자세가 완전히 무너진다. 가드 브레이크와, 퍼펙트 가드에 흘려진 공격자가 여기로 들어온다.
     // 대부분 다른 유닛이 이 유닛에게 거는 경로라(막은 쪽이 때린 쪽을 무너뜨린다)
-    // 상태 전환은 상태머신의 지연 적용에 맡긴다.
+    // 실제 동작 전환은 표시만 세워 두고 다음 틱의 트리에 맡긴다.
     public void Stagger(float duration, bool fromGuardBreak = false)
     {
         if (IsDead || duration <= 0f) return;
@@ -973,10 +986,10 @@ public partial class UnitController
         pendingStaggerDuration = duration;
         staggerEndTime = Time.time + duration;
         // InterruptCurrentAction이 IsBlocking을 내려버리므로, 어떤 이유로 무너졌는지는
-        // 미리 여기 남겨 둬야 한다. StaggerState.Enter가 이 값으로 모션을 고른다.
+        // 미리 여기 남겨 둬야 한다. StaggerBehavior가 이 값으로 모션을 고른다.
         staggerFromGuardBreak = fromGuardBreak;
         InterruptCurrentAction();
-        ChangeState(StaggerState);
+        RequestStagger();
     }
 
     // 붙잡아 무너뜨리는 공격이 부른다(고블린의 무는 공격). 강인도를 깎아 놓고 깨지기를
@@ -1188,12 +1201,13 @@ public partial class UnitController
     // 제자리에서 무언가를 하는 중인가. 이 상태들은 위치를 스스로 정하므로
     // NavMesh 쪽에 자리를 맡기지 않는다.
     //
-    // 답은 상태가 들고 있다(UnitBattleState.HoldsGround). 예전에는 여기서 구체 상태를
+    // 답은 동작이 들고 있다(UnitBehavior.HoldsGround). 예전에는 여기서 구체 상태를
     // 일곱 개 늘어놓고 비교했는데, 상태를 추가할 때 이 목록을 뒤져야 한다는 것을 아무것도
     // 알려주지 않았다.
     private bool IsHoldingGround()
     {
-        return CurrentBattleState != null && CurrentBattleState.HoldsGround;
+        UnitBehavior current = RunningBehavior;
+        return current != null && current.HoldsGround;
     }
 
     // 지역 회피(RVO)와 회피 우선순위를 상황에 맞게 켜고 끈다.

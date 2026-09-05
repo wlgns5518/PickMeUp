@@ -39,7 +39,7 @@ public class UnitEmotion : MonoBehaviour
 
     public bool Has(EmotionState flag) => (state & flag) != 0;
 
-    // 패닉/빈사/붕괴는 스스로 행동을 결정할 수 없다. UnitController가 PanicState로 밀어넣는 조건.
+    // 패닉/빈사/붕괴는 스스로 행동을 결정할 수 없다. 행동 트리가 PanicBehavior로 보내는 조건.
     public bool IsActionBlocked => (state & EmotionState.ActionBlocking) != 0;
 
     // Fear일 때 공격력과 이동속도에 곱해지는 배율. 원작 설정은 모든 능력치 30% 감소.

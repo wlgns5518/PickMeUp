@@ -474,7 +474,7 @@ public class CharacterBattleSpawner : MonoBehaviour
                 //  분명히 자세를 잡고 있던 중이었다.) 몸을 돌려 마주 보는 만큼은 쳐낼 수
                 //  있어야 해서 정면 반구의 3분의 1~4분의 3까지 잡는다.
                 stats.guardArcAngle = Mathf.Lerp(70f, 130f, factor);
-                // 위협이 이어지는 동안은 이 시간에 관계없이 계속 든다(BlockState 참조).
+                // 위협이 이어지는 동안은 이 시간에 관계없이 계속 든다(BlockBehavior 참조).
                 // 여기서 정하는 것은 "마지막 칼이 지나간 뒤 얼마나 더 들고 있는가"다.
                 stats.blockDuration = Mathf.Lerp(0.22f, 0.40f, factor);
                 stats.blockCooldown = 0f;

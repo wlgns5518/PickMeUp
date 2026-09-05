@@ -5,7 +5,13 @@
         "Unity.TextMeshPro",
         "UnityEngine.UI",
         "Unity.InputSystem",
-        "KriptoFX.VolumetricBloodFX"
+        "KriptoFX.VolumetricBloodFX",
+        "Unity.Entities",
+        "Unity.Entities.Hybrid",
+        "Unity.Transforms",
+        "Unity.Burst",
+        "Unity.Collections",
+        "Unity.Mathematics"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

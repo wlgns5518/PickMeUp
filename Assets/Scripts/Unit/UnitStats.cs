@@ -61,7 +61,7 @@ public class UnitStats
     public GuardStyle guardStyle = GuardStyle.None;
 
     [Tooltip("탱커 직업이거나 방패를 든 유닛. 스폰 시점의 적 배분(CharacterBattleSpawner)과 " +
-             "공격을 물리고 방패를 드는 판단(AttackState)에 쓴다. 어그로 자체는 threatWeight가 맡는다.")]
+             "공격을 물리고 방패를 드는 판단(UnitBehaviorTree.WantsBlock)에 쓴다. 어그로 자체는 threatWeight가 맡는다.")]
     public bool isTank;
 
     [Tooltip("적이 나를 얼마나 우선해서 노리는가(어그로). 1이 기준이고 탱커가 3.2, 사제가 0.3이다. " +
@@ -237,7 +237,7 @@ public class UnitStats
     // 들어가는 것이고, 이쪽은 아직 닿지 않는 거리에서 아예 몸을 던져 붙는 것이다.
     //
     // 짐승처럼 싸우는 적에게만 준다. 사람 직군은 사거리까지 걸어 들어가 자세를 잡고 겨루는
-    // 쪽이라(ChaseState의 방위 잡기 참조) 덤벼드는 그림이 맞지 않는다 — 기본값 0으로 꺼 둔다.
+    // 쪽이라(ChaseBehavior의 방위 잡기 참조) 덤벼드는 그림이 맞지 않는다 — 기본값 0으로 꺼 둔다.
     [Tooltip("이 거리 안에 들어오면 도약해 덤벼든다(미터). 사거리보다 커야 의미가 있다. " +
              "0이면 도약하지 않는다.")]
     public float leapAttackRange;
