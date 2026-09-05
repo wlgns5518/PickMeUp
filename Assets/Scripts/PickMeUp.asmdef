@@ -8,7 +8,10 @@
         "KriptoFX.VolumetricBloodFX",
         "Unity.Entities",
         "Unity.Entities.Hybrid",
+        "Unity.Entities.Graphics",
         "Unity.Transforms",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.Mathematics.Extensions",
         "Unity.Burst",
         "Unity.Collections",
         "Unity.Mathematics"

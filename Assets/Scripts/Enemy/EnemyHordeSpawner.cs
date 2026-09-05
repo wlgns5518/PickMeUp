@@ -7,6 +7,11 @@ using UnityEngine;
 // 새로 생겼다 — 예전에는 그게 애니메이션 클립 길이에 숨어 있었고, 엔티티에는 클립이 없다.
 public class EnemyHordeSpawner : MonoBehaviour
 {
+    [Header("보이는 것")]
+    [Tooltip("구워 놓은 애니메이션 한 벌. 비워 두면 적은 시뮬레이션만 돌고 화면에 그려지지 않는다.\n" +
+             "만드는 법: 고블린 프리팹을 고르고 메뉴에서 PickMeUp > 적 애니메이션 굽기.")]
+    [SerializeField] private EnemyAnimationLibrary animationLibrary;
+
     [Header("체력과 피해")]
     [SerializeField] private int maxHp = 100;
     [SerializeField] private int attackDamage = 40;
@@ -98,7 +103,15 @@ public class EnemyHordeSpawner : MonoBehaviour
     // 층 하나를 시작할 때 부른다. 돌려주는 값은 실제로 만들어진 마리 수.
     public int SpawnWave(int count, Vector3 center, float spread, int level, uint seed = 1)
     {
+        // 무엇으로 그릴지 먼저 알려 준다. 굽지 않았으면 보이지 않을 뿐 전투는 그대로 돈다.
+        if (animationLibrary != null && animationLibrary.IsBaked)
+        {
+            EnemyHorde.ConfigureVisual(animationLibrary.skinnedMesh, animationLibrary.material, animationLibrary);
+        }
+
         EnemyStats stats = BuildStats(level);
         return EnemyHorde.Spawn(stats, count, center, spread, seed);
     }
+
+    public EnemyAnimationLibrary AnimationLibrary => animationLibrary;
 }
