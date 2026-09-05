@@ -13,6 +13,12 @@ public class CharacterBattleSpawner : MonoBehaviour
     [SerializeField] private Vector3 allySpawnFallbackOffset = new Vector3(-2.5f, 0f, 0f);
 
     [Header("Enemy (Dummy)")]
+    [Tooltip("적을 엔티티(DOTS)로 띄운다. 켜면 게임오브젝트 고블린 대신 EnemyHorde가 만든다.\n\n" +
+             "아직 기본값이 꺼짐인 이유는 렌더링이 없어서다 — 엔티티는 시뮬레이션은 돌지만 " +
+             "화면에 그려지지 않는다(EnemyAnimation 주석 참조). GPU 스키닝이 붙으면 켜면 된다.")]
+    [SerializeField] private bool useEntityEnemies;
+    [Tooltip("엔티티 적의 수치. useEntityEnemies가 켜져 있을 때만 쓴다.")]
+    [SerializeField] private EnemyHordeSpawner entityEnemySettings;
     [SerializeField] private UnitController enemyUnitPrefab;
     [SerializeField] private Transform[] enemySpawnPoints;
     [SerializeField] private Vector3 enemySpawnFallbackOffset = new Vector3(2.5f, 0f, 0f);
@@ -105,11 +111,17 @@ public class CharacterBattleSpawner : MonoBehaviour
 
     private void SpawnEnemies()
     {
-        if (enemyUnitPrefab == null) return;
-
         // 메인 씬에서 고른 층이 난이도를 정한다. 적 수는 층수 + enemyCountOffset로 늘어난다.
         int floor = Mathf.Max(FloorProgress.FirstFloor, FloorProgress.SelectedFloor);
         int count = floor + enemyCountOffset;
+
+        if (useEntityEnemies)
+        {
+            SpawnEnemyEntities(floor, count);
+            return;
+        }
+
+        if (enemyUnitPrefab == null) return;
 
         // TargetScanner의 어그로/뭉침 편향만으로는 스폰 첫 프레임에 전원이 같은 아군을
         // 동시에 고르는 걸 못 막는다 — 그 시점엔 서로 아직 아무도 타깃을 정하지 않아서
@@ -130,6 +142,29 @@ public class CharacterBattleSpawner : MonoBehaviour
                 enemy.SetTarget(targetSlots[i]);
             }
         }
+    }
+
+    // 적을 엔티티로 띄운다.
+    //
+    // 게임오브젝트 경로와 달리 초기 표적을 배정하지 않는다. 저쪽은 스폰 첫 프레임에 전원이
+    // 같은 아군을 고르는 것을 막으려고 슬롯을 손으로 나눠 줬는데, 엔티티 쪽은 표적 선택
+    // 자체가 "이미 붙은 수"를 점수에 넣고 있어(EnemyTargetingSystem) 처음부터 갈라진다.
+    private void SpawnEnemyEntities(int floor, int count)
+    {
+        if (entityEnemySettings == null)
+        {
+            Debug.LogWarning("[CharacterBattleSpawner] 엔티티 적을 켜 두었지만 수치(EnemyHordeSpawner)가 " +
+                             "지정되지 않아 적을 만들지 못했습니다.", this);
+            return;
+        }
+
+        int level = floor + Random.Range(enemyLevelOffsetMin, enemyLevelOffsetMax + 1);
+
+        // 스폰 자리는 게임오브젝트 경로와 같은 기준을 쓴다. 첫 지점을 중심으로 흩뿌린다.
+        Vector3 center = GetEnemySpawnPosition(0);
+        float spread = Mathf.Max(2f, Mathf.Sqrt(count) * 1.2f);
+
+        entityEnemySettings.SpawnWave(count, center, spread, level, (uint)(floor * 7919 + 13));
     }
 
     // 탱커부터 상한까지 채우고, 남는 슬롯은 나머지 아군에게 라운드로빈으로 분배한다.

@@ -236,11 +236,11 @@ public partial class UnitController
     // 헛스윙만 나온다.
     private float SwingReach => stats.attackRange + stats.moveStopDistance + stats.attackHitTolerance;
 
-    private bool IsInsideSwingArc(UnitController candidate, float reach)
+    private bool IsInsideSwingArc(TargetRef candidate, float reach)
     {
-        if (candidate == null) return false;
+        if (!candidate.Exists) return false;
 
-        Vector3 toCandidate = candidate.transform.position - transform.position;
+        Vector3 toCandidate = candidate.Position - transform.position;
         toCandidate.y = 0f;
 
         float sqrDistance = toCandidate.sqrMagnitude;
@@ -258,18 +258,18 @@ public partial class UnitController
     // 타격 이벤트 시점에 "이 스윙이 누구를 맞혔는가"를 정한다.
     // 노리던 상대가 빠져나갔어도 궤적 안에 다른 적이 서 있으면 그쪽이 맞는다 —
     // 휘두른 칼은 눈앞에 있는 놈을 벤다.
-    private UnitController ResolveSwingVictim()
+    private TargetRef ResolveSwingVictim()
     {
         float reach = SwingReach;
 
         if (IsTargetValid() && IsInsideSwingArc(CurrentTarget, reach)) return CurrentTarget;
-        if (!stats.cleaveOffTarget) return null;
+        if (!stats.cleaveOffTarget) return TargetRef.None;
 
         // 원거리 직군은 해당 없다. 활은 겨눈 하나를 쏘는 것이지 앞을 쓸어 베는 것이 아니라,
         // 노리던 상대가 빠졌으면 그냥 빗나가야 한다. 여기서 막지 않으면 사거리 9m짜리가
         // 정면 130도 안의 아무나 자동으로 맞히는, 사실상 공짜 재조준이 된다.
         // 창수는 거리를 두고 싸우지만 근접이라 여기 걸리지 않는다 — 휘두른 창은 앞을 쓴다.
-        if (IsRangedFighter) return null;
+        if (IsRangedFighter) return TargetRef.None;
 
         return UnitRegistry.FindEnemyInArc(this, reach, stats.attackArcAngle);
     }
@@ -306,10 +306,10 @@ public partial class UnitController
     // 그보다 짧은 거리를 목표로 잡으면 "파고든다 → 회피가 밀어낸다"가 매 프레임 반복되어
     // 유닛이 떨리거나 뒤로 밀려나는 것처럼 보인다. 사거리에서 나온 값이든 비율에서 나온
     // 값이든, 전투 중의 목표 거리는 전부 이 값을 하한으로 깔고 계산해야 한다.
-    public float SeparationFrom(UnitController other)
+    public float SeparationFrom(TargetRef other)
     {
         float mine = agent != null ? agent.radius : 0.5f;
-        float theirs = other != null && other.Agent != null ? other.Agent.radius : 0.5f;
+        float theirs = other.IsUnit && other.Unit.Agent != null ? other.Unit.Agent.radius : 0.5f;
         return mine + theirs + Mathf.Max(0f, separationMargin);
     }
 
@@ -352,7 +352,7 @@ public partial class UnitController
         if (!IsTargetValid()) return;
         if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
 
-        Vector3 toTarget = CurrentTarget.transform.position - transform.position;
+        Vector3 toTarget = CurrentTarget.Position - transform.position;
         toTarget.y = 0f;
 
         float distance = toTarget.magnitude;
@@ -397,7 +397,7 @@ public partial class UnitController
 
         float distance = Vector3.Distance(
             new Vector3(transform.position.x, 0f, transform.position.z),
-            new Vector3(CurrentTarget.transform.position.x, 0f, CurrentTarget.transform.position.z));
+            new Vector3(CurrentTarget.Position.x, 0f, CurrentTarget.Position.z));
         return distance <= stats.leapAttackRange;
     }
 
@@ -430,7 +430,7 @@ public partial class UnitController
 
         if (IsTargetValid())
         {
-            Vector3 toTarget = CurrentTarget.transform.position - transform.position;
+            Vector3 toTarget = CurrentTarget.Position - transform.position;
             toTarget.y = 0f;
             float distance = toTarget.magnitude;
             if (distance > 0.0001f)
@@ -512,7 +512,7 @@ public partial class UnitController
         if (!IsTargetValid()) return;
         if (clinging) return;
 
-        clingVictim = CurrentTarget;
+        clingVictim = CurrentTarget.Unit;
         clinging = true;
         // 달라붙는 동안은 이쪽이 위치를 정한다. 되돌릴 좌표는 지금 서 있는 자리다 —
         // 여기는 방금까지 걸어온 곳이라 반드시 NavMesh 위다.
@@ -617,7 +617,7 @@ public partial class UnitController
             return;
         }
 
-        Vector3 toTarget = CurrentTarget.transform.position - transform.position;
+        Vector3 toTarget = CurrentTarget.Position - transform.position;
         toTarget.y = 0f;
 
         float distance = toTarget.magnitude;
@@ -1138,7 +1138,7 @@ public partial class UnitController
     // 순간 측면으로 미끄러진다. 그 공수 전환이 이 한 줄에서 나온다.
     public bool HasEngagePreference =>
         stats.engageAngle > 0.01f &&
-        (CurrentTarget == null || CurrentTarget.CurrentTarget != this);
+        (!CurrentTarget.Exists || !CurrentTarget.IsTargeting(this));
 
     // 접근 중에 실제로 향할 지점. 타깃 위치가 아니라 "타깃 주위에서 내가 서고 싶은 자리"다.
     //
@@ -1149,9 +1149,9 @@ public partial class UnitController
     public Vector3 GetEngageDestination(float standoffDistance)
     {
         Vector3 predicted = GetPredictedTargetPosition();
-        if (CurrentTarget == null || !HasEngagePreference) return predicted;
+        if (!CurrentTarget.Exists || !HasEngagePreference) return predicted;
 
-        Vector3 theirForward = CurrentTarget.transform.forward;
+        Vector3 theirForward = CurrentTarget.Forward;
         theirForward.y = 0f;
         if (theirForward.sqrMagnitude <= 0.0001f) return predicted;
 
@@ -1295,7 +1295,7 @@ public partial class UnitController
         }
 
         Vector3 origin = transform.position;
-        Vector3 targetPos = CurrentTarget.transform.position;
+        Vector3 targetPos = CurrentTarget.Position;
         float searchRadius = Mathf.Max(2f, stats.attackRange * 0.5f);
         float maxRangeSqr = stats.attackRange * stats.attackRange;
 
@@ -1400,7 +1400,7 @@ public partial class UnitController
         // 옆으로 타깃을 옮기는 것만으로 조건이 채워진다.
         if (!IsTargetValid() || CurrentTarget != engagedDwellTarget)
         {
-            engagedDwellTarget = IsTargetValid() ? CurrentTarget : null;
+            engagedDwellTarget = IsTargetValid() ? CurrentTarget : TargetRef.None;
             engagedDwell = 0f;
             return;
         }
@@ -1444,7 +1444,7 @@ public partial class UnitController
         nextSkillTime = 0f;
         skillVictimImmuneUntil = 0f;
         engagedDwell = 0f;
-        engagedDwellTarget = null;
+        engagedDwellTarget = TargetRef.None;
         slowUntil = 0f;
         slowMultiplier = 1f;
         slowWasActive = false;

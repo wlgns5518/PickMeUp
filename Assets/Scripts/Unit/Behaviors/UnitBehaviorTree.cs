@@ -140,12 +140,17 @@ public static class UnitBehaviorTree
 
         if (unit.HasUsableTarget()) return true;
 
-        if (unit.Scanner == null) return false;
+        if (unit.Scanner != null)
+        {
+            UnitController target = unit.Scanner.Target;
+            if (target == null && engage.IsRunning) target = unit.Scanner.FindTargetNow();
 
-        UnitController target = unit.Scanner.Target;
-        if (target == null && engage.IsRunning) target = unit.Scanner.FindTargetNow();
+            if (target != null && unit.TrySetTarget(target)) return true;
+        }
 
-        return target != null && unit.TrySetTarget(target);
+        // 게임오브젝트 적을 못 찾았으면 엔티티 쪽에서 고른다. 스캐너가 훑지 않는 세계라
+        // 여기서 따로 물어봐야 한다(UnitController.TryAcquireEntityTarget 주석 참조).
+        return unit.TryAcquireEntityTarget();
     }
 
     // 물러날 것인가.

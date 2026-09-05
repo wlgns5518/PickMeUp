@@ -62,14 +62,22 @@ public partial class EnemyBridgeOutputSystem : SystemBase
                 radius = stats.ValueRO.radius,
                 hp = health.ValueRO.current,
                 maxHp = stats.ValueRO.maxHp,
+                poise = health.ValueRO.poise,
                 threatWeight = stats.ValueRO.threatWeight,
                 targetAllyIndex = target.ValueRO.allyIndex,
                 action = action.ValueRO.kind,
             });
         }
 
+        // 손잡이로 찾을 수 있게 표를 다시 세운다. 아군이 표적으로 들고 있는 Entity를
+        // 이번 프레임의 값으로 푸는 자리다(TargetRef).
+        EnemyWorldBridge.RebuildEnemyIndex();
+
         // 적이 아군을 때린 것을 실제 UnitController로 흘려보낸다.
         EnemyWorldBridge.DrainHitsOnAllies();
+
+        // 쓰러진 적을 때린 아군의 처치로 얹고, 전투 매니저에게 알린다.
+        EnemyWorldBridge.DrainKills();
     }
 }
 
@@ -125,10 +133,20 @@ public partial struct EnemyDamageSystem : ISystem
 
             health.current -= damage;
 
+            // 마지막으로 때린 쪽을 남긴다. 이 적이 쓰러지면 그 아군의 처치가 된다.
+            // 흘려내기(피해 0)로는 갱신하지 않는다 — 쳐낸 것이 처치의 공은 아니다.
+            if (damage > 0) health.lastAttackerAllyIndex = hit.attackerAllyIndex;
+
             if (health.current <= 0)
             {
                 health.current = 0;
                 action.kind = EnemyActionKind.Dead;
+
+                // 처치를 알린다. 실제 귀속은 메인 스레드가 큐를 비우며 한다(DrainKills).
+                bridge.kills.Enqueue(new EnemyWorldBridge.EnemyKill
+                {
+                    allyIndex = health.lastAttackerAllyIndex,
+                });
                 // 쓰러지는 모션이 끝나면 엔티티를 지운다(EnemyCleanupSystem).
                 action.timer = 1.2f;
                 animation.clip = EnemyClip.Death;

@@ -145,7 +145,7 @@ public class FleeBehavior : UnitBehavior
 
     private Vector3 AwayFromTarget()
     {
-        Vector3 away = unit.transform.position - unit.CurrentTarget.transform.position;
+        Vector3 away = unit.transform.position - unit.CurrentTarget.Position;
         away.y = 0f;
         if (away.sqrMagnitude <= 0.0001f) return -unit.transform.forward;
         return away.normalized;

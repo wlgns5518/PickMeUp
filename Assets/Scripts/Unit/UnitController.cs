@@ -164,7 +164,7 @@ public partial class UnitController : MonoBehaviour
     public NavMeshAgent Agent => agent;
     public Animator Animator => animator;
     public TargetScanner Scanner => scanner;
-    public UnitController CurrentTarget { get; private set; }
+    public TargetRef CurrentTarget { get; private set; }
     public bool IsDead => stats.IsDead;
     public bool IsBlocking { get; private set; }
     public bool HasMoveDestination { get; private set; }
@@ -179,7 +179,7 @@ public partial class UnitController : MonoBehaviour
     // 지금 타깃과 공격 거리 안에서 맞붙어 있은 시간(초). 사거리 밖으로 떨어지거나 상대가
     // 바뀌면 0으로 돌아간다. stats.skillEngageDelay가 이 값을 본다.
     private float engagedDwell;
-    private UnitController engagedDwellTarget;
+    private TargetRef engagedDwellTarget;
     private float lastBlockTime = -999f;
     private float lastPotionTime = -999f;
     private float lastHealTime = -999f;
@@ -543,7 +543,7 @@ public partial class UnitController : MonoBehaviour
         if (!HasUsableTarget()) return false;
 
         // 다 잡아 가는 상대는 놓지 않는다. 급소를 문 채 물러나는 것은 게릴라가 아니라 그냥 도망이다.
-        if (CurrentTarget.Stats.HpRatio <= stats.stalkSkipHpRatio) return false;
+        if (CurrentTarget.HpRatio <= stats.stalkSkipHpRatio) return false;
 
         // 이미 아무도 안 붙어 있으면 빠질 것도 없다 — 그대로 다음 표적으로 간다.
         float contact = Mathf.Max(1f, stats.attackRange * 1.2f);
@@ -694,7 +694,7 @@ public partial class UnitController : MonoBehaviour
     public void ClearTarget()
     {
         ReleaseTargetCount();
-        CurrentTarget = null;
+        CurrentTarget = TargetRef.None;
 #if UNITY_EDITOR
         currentTargetName = "";
 #endif
@@ -718,7 +718,7 @@ public partial class UnitController : MonoBehaviour
     // 지금 이 유닛을 노리고 있는 team 소속 유닛 수.
     public int AttackersFrom(UnitTeam team) => attackersByTeam[(int)team];
 
-    private void AddAttacker(UnitTeam team, int delta)
+    internal void AddAttacker(UnitTeam team, int delta)
     {
         int index = (int)team;
         attackersByTeam[index] = Mathf.Max(0, attackersByTeam[index] + delta);
@@ -727,7 +727,7 @@ public partial class UnitController : MonoBehaviour
     // 레지스트리에 들고 날 때 호출된다. 죽은 유닛은 레지스트리에서 빠지므로 자연히 숫자에서도 빠진다.
     internal void HoldTargetCount()
     {
-        if (countedOnTarget || CurrentTarget == null) return;
+        if (countedOnTarget || !CurrentTarget.Exists) return;
 
         countedOnTarget = true;
         CurrentTarget.AddAttacker(team, 1);
@@ -739,13 +739,13 @@ public partial class UnitController : MonoBehaviour
 
         countedOnTarget = false;
         // 대상이 이미 파괴됐으면 숫자도 그와 함께 사라진 것이라 뺄 곳이 없다.
-        if (CurrentTarget != null) CurrentTarget.AddAttacker(team, -1);
+        if (CurrentTarget.Exists) CurrentTarget.AddAttacker(team, -1);
     }
 
-    public bool TrySetTarget(UnitController target)
+    public bool TrySetTarget(TargetRef target)
     {
         if (target == CurrentTarget && IsTargetValid()) return true;
-        if (target == null || target.IsDead || !target.isActiveAndEnabled || !UnitRegistry.AreEnemies(this, target)) return false;
+        if (!target.IsAlive || !IsHostileTo(target)) return false;
         if (IsTargetChangeLocked()) return false;
 
         if (IsTargetValid())
@@ -788,10 +788,28 @@ public partial class UnitController : MonoBehaviour
         return true;
     }
 
+    // 엔티티가 된 적 중에서 겨눌 상대를 찾는다.
+    //
+    // 스캐너(TargetScanner)는 게임오브젝트만 훑는다. 시야 레이캐스트와 팀 리스트 순회를
+    // 전제로 만들어진 것이라 1000마리에 그대로 걸면 그것만으로 프레임이 끝나기 때문이다.
+    // 그래서 엔티티 쪽은 브리지의 값 배열에서 고른다 — 거리와 이미 붙은 아군 수만 본다.
+    public bool TryAcquireEntityTarget()
+    {
+        if (team == UnitTeam.Enemy) return false;
+        if (EnemyWorldBridge.EnemyCount == 0) return false;
+
+        if (!EnemyWorldBridge.TryFindBestEnemy(transform.position, stats.detectRange, out Unity.Entities.Entity enemy))
+        {
+            return false;
+        }
+
+        return TrySetTarget(new TargetRef(enemy));
+    }
+
     public bool ShouldReleaseCurrentTarget()
     {
-        if (CurrentTarget == null) return true;
-        if (CurrentTarget.IsDead || !CurrentTarget.isActiveAndEnabled) return true;
+        if (!CurrentTarget.Exists) return true;
+        if (!CurrentTarget.IsAlive) return true;
         return false;
     }
 
@@ -878,18 +896,22 @@ public partial class UnitController : MonoBehaviour
 
     public bool IsTargetValid()
     {
-        return CurrentTarget != null && !CurrentTarget.IsDead && CurrentTarget.isActiveAndEnabled;
+        return CurrentTarget.IsAlive;
     }
 
     public bool IsTargetVisible()
     {
-        return scanner != null && CurrentTarget != null && scanner.IsVisible(CurrentTarget);
+        // 엔티티 표적은 시야 판정을 하지 않는다. 레이캐스트를 1000마리분 쏘면 그것만으로
+        // 프레임이 끝나서, 적 쪽 탐지도 같은 이유로 시야각까지만 본다(EnemyTargetingSystem).
+        if (CurrentTarget.IsEntity) return true;
+
+        return scanner != null && CurrentTarget.IsUnit && scanner.IsVisible(CurrentTarget.Unit);
     }
 
     public float SqrDistanceToTarget()
     {
-        if (CurrentTarget == null) return float.MaxValue;
-        return (CurrentTarget.transform.position - transform.position).sqrMagnitude;
+        if (!CurrentTarget.Exists) return float.MaxValue;
+        return (CurrentTarget.Position - transform.position).sqrMagnitude;
     }
 
     public bool IsTargetInAttackRange()
@@ -900,14 +922,10 @@ public partial class UnitController : MonoBehaviour
 
     public Vector3 GetPredictedTargetPosition()
     {
-        if (CurrentTarget == null) return transform.position;
+        if (!CurrentTarget.Exists) return transform.position;
 
-        Vector3 targetPosition = CurrentTarget.transform.position;
-        NavMeshAgent targetAgent = CurrentTarget.Agent;
-        if (targetAgent != null && targetAgent.enabled)
-        {
-            targetPosition += targetAgent.velocity * chasePredictionTime;
-        }
+        Vector3 targetPosition = CurrentTarget.Position;
+        targetPosition += CurrentTarget.Velocity * chasePredictionTime;
 
         return targetPosition;
     }
@@ -1439,8 +1457,8 @@ public partial class UnitController : MonoBehaviour
         if (!hasThreat)
         {
             // 품 안에는 아무도 없다. 그러면 겨누는 상대가 유일한 근거다(예전 동작).
-            threatCenter = CurrentTarget != null
-                ? CurrentTarget.transform.position
+            threatCenter = CurrentTarget.Exists
+                ? CurrentTarget.Position
                 : transform.position + transform.forward;
         }
 
@@ -1784,7 +1802,7 @@ public partial class UnitController : MonoBehaviour
         // 여기를 지나면 준비 동작이 끝나고 회수 동작이 시작된다.
         hasStruckThisSwing = true;
 
-        UnitController victim = ResolveSwingVictim();
+        TargetRef victim = ResolveSwingVictim();
         // 발차기는 베는 대신 무너뜨린다 — 피해는 낮고 강인도 피해는 크다.
         float poiseDamage = pendingIsKick
             ? stats.poiseDamageKick
@@ -1797,7 +1815,7 @@ public partial class UnitController : MonoBehaviour
         // 빗나간 스윙도 화살은 떠난다 — 허공으로 날아가는 화살이 곧 빗나갔다는 표시다.
         bool fired = TryFireProjectile(victim, damage, poiseDamage, false);
 
-        if (victim == null)
+        if (!victim.Exists)
         {
             OnSwingMissed();
             return;
@@ -1814,7 +1832,7 @@ public partial class UnitController : MonoBehaviour
     }
 
     // 주무기가 투사체를 들고 있으면 쏘고 true. 근접 무기는 false를 돌려주고 그 자리에서 때린다.
-    private bool TryFireProjectile(UnitController victim, int damage, float poiseDamage, bool fromSkill)
+    private bool TryFireProjectile(TargetRef victim, int damage, float poiseDamage, bool fromSkill)
     {
         if (equipment == null) return false;
 
@@ -1825,7 +1843,7 @@ public partial class UnitController : MonoBehaviour
         if (origin == null) return false;
 
         // 겨눈 상대가 있으면 그쪽으로, 없으면 화살이 향한 쪽으로 그대로 날린다 — 그 방향이 곧 활이 겨눈 방향이다.
-        Vector3 direction = victim != null ? victim.AimPoint - origin.position : origin.forward;
+        Vector3 direction = victim.Exists ? victim.AimPoint - origin.position : origin.forward;
         WeaponProjectile.Fire(weapon.projectile, origin.position, direction, this, victim, damage, poiseDamage, fromSkill);
 
         equipment.ReleaseArrow();
@@ -1838,7 +1856,7 @@ public partial class UnitController : MonoBehaviour
 
         hasStruckThisSwing = true;
 
-        UnitController victim = ResolveSwingVictim();
+        TargetRef victim = ResolveSwingVictim();
         int damage = ScaleDamage(stats.skillDamage);
 
         // 붙잡아 무너뜨리는 스킬(고블린의 무는 공격)인가.
@@ -1856,7 +1874,7 @@ public partial class UnitController : MonoBehaviour
         //  같은 성질을 주려면 무너뜨리는 시점이 투사체가 닿는 순간이어야 한다.)
         bool fired = TryFireProjectile(victim, damage, poiseDamage, true);
 
-        if (victim == null)
+        if (!victim.Exists)
         {
             OnSwingMissed();
             return;
@@ -2009,7 +2027,7 @@ public partial class UnitController : MonoBehaviour
         if (!IsTargetValid()) return false;
         if (stats.poiseDamageKick <= stats.poiseDamagePerHit) return false;
 
-        float poise = CurrentTarget.Stats.currentPoise;
+        float poise = CurrentTarget.CurrentPoise;
         return poise > stats.poiseDamagePerHit && poise <= stats.poiseDamageKick;
     }
 
@@ -2282,7 +2300,20 @@ public partial class UnitController : MonoBehaviour
     {
         if (facingTarget == null) return;
 
-        Vector3 direction = facingTarget.transform.position - transform.position;
+        FaceDirection(facingTarget.transform.position, turnSpeed);
+    }
+
+    // 겨누는 상대가 엔티티일 수도 있으므로 손잡이로도 받는다.
+    private void FaceDirection(TargetRef facingTarget, float turnSpeed)
+    {
+        if (!facingTarget.Exists) return;
+
+        FaceDirection(facingTarget.Position, turnSpeed);
+    }
+
+    private void FaceDirection(Vector3 facingPosition, float turnSpeed)
+    {
+        Vector3 direction = facingPosition - transform.position;
         direction.y = 0f;
         if (direction.sqrMagnitude <= 0.0001f) return;
 
@@ -2306,9 +2337,9 @@ public partial class UnitController : MonoBehaviour
     // 상대를 충분히 마주 보고 있는가. 타깃이 없으면 판단할 근거가 없으니 true로 둔다.
     public bool IsFacingTarget(float toleranceDegrees)
     {
-        if (CurrentTarget == null) return true;
+        if (!CurrentTarget.Exists) return true;
 
-        Vector3 direction = CurrentTarget.transform.position - transform.position;
+        Vector3 direction = CurrentTarget.Position - transform.position;
         direction.y = 0f;
         if (direction.sqrMagnitude <= 0.0001f) return true;
 
@@ -2429,6 +2460,22 @@ public partial class UnitController : MonoBehaviour
         lastAttacker = null;
     }
 
+    // 엔티티를 때렸을 때 기여도를 세는 자리(TargetRef.TakeDamage가 부른다).
+    //
+    // 게임오브젝트끼리는 맞은 쪽이 RecordDamage로 "실제로 깎인 만큼"을 때린 쪽에 얹는다.
+    // 엔티티는 피해가 큐를 건너 ECS에서 배율까지 적용되므로 그 값이 여기로 돌아오지 않는다.
+    // 그래서 휘두른 값을 그대로 센다 — MVP 선정에 쓰는 순위용 숫자라 배후 배율만큼의
+    // 차이로 순서가 뒤집히지는 않는다.
+    public void CreditDamageDealt(int damage)
+    {
+        if (damage <= 0) return;
+        DamageDealt += damage;
+    }
+
+    // 엔티티를 쓰러뜨렸다(EnemyWorldBridge.DrainKills가 부른다).
+    // 게임오브젝트 쪽에서는 NotifyDeath가 lastAttacker.Kills를 올리는 자리와 같다.
+    public void CreditKill() => Kills++;
+
     private void RecordDamage(int dealt, UnitController attacker)
     {
         if (dealt <= 0) return;
@@ -2462,23 +2509,33 @@ public partial class UnitController : MonoBehaviour
     }
 
     // CurrentTarget에 값을 넣는 유일한 자리. 여기서만 넣어야 "붙어 있는 적 수"가 어긋나지 않는다.
-    private void AssignTarget(UnitController target)
+    private void AssignTarget(TargetRef target)
     {
         ReleaseTargetCount();
         CurrentTarget = target;
         HoldTargetCount();
         lastTargetChangeTime = Time.time;
 #if UNITY_EDITOR
-        currentTargetName = CurrentTarget != null ? CurrentTarget.name : "";
+        currentTargetName = CurrentTarget.Exists ? CurrentTarget.DebugName : "";
 #endif
     }
 
-    private bool ForceSetSharedTarget(UnitController target)
+    private bool ForceSetSharedTarget(TargetRef target)
     {
-        if (target == null || target.IsDead || !target.isActiveAndEnabled || !UnitRegistry.AreEnemies(this, target)) return false;
+        if (!target.IsAlive || !IsHostileTo(target)) return false;
 
         AssignTarget(target);
         return true;
+    }
+
+    // 저쪽이 때려도 되는 상대인가.
+    //
+    // 게임오브젝트끼리는 예전처럼 팀으로 가른다. 엔티티는 적 팀 전용이라 팀을 물어볼 것도 없이
+    // "내가 적이 아니면 적"이다 — 고블린이 고블린을 때리는 경우는 만들지 않았다.
+    private bool IsHostileTo(TargetRef target)
+    {
+        if (target.IsUnit) return UnitRegistry.AreEnemies(this, target.Unit);
+        return target.IsEntity && team != UnitTeam.Enemy;
     }
 
     // 맞았을 때 때린 쪽으로 돌아설지 정한다.
@@ -2522,7 +2579,7 @@ public partial class UnitController : MonoBehaviour
             return false;
         }
 
-        return attacker.Stats.threatWeight >= CurrentTarget.Stats.threatWeight;
+        return attacker.Stats.threatWeight >= CurrentTarget.ThreatWeight;
     }
 
     private void SetKnockbackDirection(Vector3 attackerPosition)
@@ -2551,12 +2608,12 @@ public partial class UnitController : MonoBehaviour
         return current != null && current.LocksTarget;
     }
 
-    private bool IsNewTargetClearlyBetter(UnitController target)
+    private bool IsNewTargetClearlyBetter(TargetRef target)
     {
-        if (CurrentTarget == null || target == null) return true;
+        if (!CurrentTarget.Exists || !target.Exists) return true;
 
         float currentSqrDistance = SqrDistanceToTarget();
-        float newSqrDistance = (target.transform.position - transform.position).sqrMagnitude;
+        float newSqrDistance = (target.Position - transform.position).sqrMagnitude;
         float requiredSqrDistance = currentSqrDistance * targetSwitchDistanceRatio * targetSwitchDistanceRatio;
 
         return newSqrDistance < requiredSqrDistance;

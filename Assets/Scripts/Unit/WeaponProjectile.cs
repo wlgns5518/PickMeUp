@@ -22,7 +22,7 @@ public class WeaponProjectile : MonoBehaviour
     [SerializeField] private float maxLifetime = 2f;
 
     private UnitController attacker;
-    private UnitController victim;
+    private TargetRef victim;
     private int damage;
     private float poiseDamage;
     // 스킬로 나간 투사체인가. 평타와 달리 밀쳐내고, 피격 쪽도 스킬로 취급한다.
@@ -49,7 +49,7 @@ public class WeaponProjectile : MonoBehaviour
 
     /// 화살을 쏜다. victim이 null이면 맞힐 상대 없이 허공으로 날아간다(빗나간 스윙).
     public static void Fire(GameObject prefab, Vector3 origin, Vector3 aimDirection,
-                            UnitController attacker, UnitController victim, int damage, float poiseDamage, bool fromSkill)
+                            UnitController attacker, TargetRef victim, int damage, float poiseDamage, bool fromSkill)
     {
         if (prefab == null) return;
 
@@ -88,11 +88,11 @@ public class WeaponProjectile : MonoBehaviour
 
         // 표적이 화살보다 먼저 쓰러지면 실려 있던 한 방은 사라진다.
         // 시체에 꽂아도 의미가 없고, 그 자리에 온 다른 적이 대신 맞는 것도 활의 규칙이 아니다.
-        if (victim != null && (victim.IsDead || !victim.isActiveAndEnabled)) victim = null;
+        if (victim.Exists && !victim.IsAlive) victim = TargetRef.None;
 
         float step = speed * Time.deltaTime;
 
-        if (victim != null)
+        if (victim.Exists)
         {
             // 표적은 계속 움직인다. 명중은 이미 정해진 사실이므로 화살이 따라간다 —
             // 여기서 빗나가게 두면 스윙 판정과 실제 결과가 어긋나 "맞았는데 안 맞았다"가 된다.
@@ -115,7 +115,7 @@ public class WeaponProjectile : MonoBehaviour
 
     private void Hit()
     {
-        if (victim != null && !victim.IsDead)
+        if (victim.IsAlive)
             victim.TakeDamage(damage, attacker, fromSkill, fromSkill, poiseDamage);
 
         Release();
@@ -129,7 +129,7 @@ public class WeaponProjectile : MonoBehaviour
     private void Release()
     {
         // 참조를 붙들고 있으면 회수된 화살이 죽은 유닛을 계속 살려 둔다.
-        victim = null;
+        victim = TargetRef.None;
         attacker = null;
         gameObject.SetActive(false);
     }

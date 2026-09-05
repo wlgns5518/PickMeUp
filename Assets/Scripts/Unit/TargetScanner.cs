@@ -164,14 +164,14 @@ public class TargetScanner : MonoBehaviour
         {
             // 다시 굴렸더니 아무것도 안 잡혔다면 원래 타깃을 그대로 들고 간다 —
             // 시야가 잠깐 끊긴 것뿐일 수 있고, 여기서 놓으면 교전이 통째로 끊긴다.
-            target = owner.CurrentTarget;
+            target = owner.CurrentTarget.Unit;
             return;
         }
 
-        if (candidate == owner.CurrentTarget) return;
+        if (owner.CurrentTarget.Unit == candidate) return;
 
         // 편향이 이미 반영된 결과이므로 거리 기반 재검사를 다시 걸지 않는다(TryRetarget 주석 참조).
-        if (!owner.TryRetarget(candidate)) target = owner.CurrentTarget;
+        if (!owner.TryRetarget(candidate)) target = owner.CurrentTarget.Unit;
     }
 
     public UnitController FindTargetNow()

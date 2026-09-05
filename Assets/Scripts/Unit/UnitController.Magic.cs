@@ -137,7 +137,7 @@ public partial class UnitController
     // 실제 난전에서는 "가장 뭉친 놈 발밑"이 거의 언제나 답이다.
     private bool TryFindAimPoint(in SpellSpec spell, out Vector3 aimPoint)
     {
-        aimPoint = CurrentTarget.transform.position;
+        aimPoint = CurrentTarget.Position;
 
         // 반경이 없는 마법은 노리는 상대에게 그대로 간다.
         if (spell.Radius <= 0.01f) return spell.MinTargets <= 1;

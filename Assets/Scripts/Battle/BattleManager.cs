@@ -87,12 +87,21 @@ public class BattleManager : MonoBehaviour
         Instance = this;
         result.Reset();
         UnitController.OnAnyUnitDied += HandleUnitDied;
+        // 엔티티가 된 적은 게임오브젝트가 아니라 브리지가 죽음을 알린다.
+        EnemyWorldBridge.OnEnemyKilled += HandleEnemyEntityKilled;
     }
 
     private void OnDisable()
     {
         UnitController.OnAnyUnitDied -= HandleUnitDied;
+        EnemyWorldBridge.OnEnemyKilled -= HandleEnemyEntityKilled;
         if (Instance == this) Instance = null;
+    }
+
+    private void HandleEnemyEntityKilled()
+    {
+        if (!started || ended) return;
+        result.EnemyDeaths++;
     }
 
     private void Update()
@@ -133,9 +142,15 @@ public class BattleManager : MonoBehaviour
 
     // 스포너가 Start에서 유닛을 만들기 때문에 첫 프레임에는 레지스트리가 비어 있을 수 있다.
     // 양 팀이 모두 등장한 시점을 전투 시작으로 본다.
+    // 살아 있는 적의 수. 게임오브젝트로 남은 적과 엔티티가 된 적을 함께 센다.
+    //
+    // 두 세계를 한 곳에서 세는 것이 중요하다. 예전처럼 UnitRegistry.Enemies만 보면,
+    // 엔티티 1000마리가 멀쩡히 달려오는데도 게임오브젝트 적이 전멸한 순간 승리로 끝난다.
+    private static int LivingEnemyCount => UnitRegistry.Enemies.Count + EnemyWorldBridge.EnemyCount;
+
     private void TryStart()
     {
-        bool bothSidesPresent = UnitRegistry.Allies.Count > 0 && UnitRegistry.Enemies.Count > 0;
+        bool bothSidesPresent = UnitRegistry.Allies.Count > 0 && LivingEnemyCount > 0;
         if (!bothSidesPresent)
         {
             if (elapsed < startTimeout) return;
@@ -160,7 +175,7 @@ public class BattleManager : MonoBehaviour
     private BattleOutcome EvaluateOutcome()
     {
         bool alliesGone = UnitRegistry.Allies.Count == 0;
-        bool enemiesGone = UnitRegistry.Enemies.Count == 0;
+        bool enemiesGone = LivingEnemyCount == 0;
 
         if (alliesGone && enemiesGone) return BattleOutcome.Draw;
         if (enemiesGone) return BattleOutcome.Victory;
@@ -212,6 +227,12 @@ public class BattleManager : MonoBehaviour
 
         CaptureStress();
         SaveRoster();
+
+        // 남은 적 엔티티를 치운다. 엔티티는 씬에 속하지 않아서 씬을 갈아도 그대로 살아남는다 —
+        // 지우지 않으면 마을로 돌아간 뒤에도 표적 없는 고블린 무리가 계속 돌고, 다음 전투에
+        // 지난 층의 잔당이 섞여 들어간다.
+        EnemyHorde.Clear();
+
         OnBattleEnded?.Invoke(result);
 
         returnTimer = returnDelay;

@@ -47,7 +47,7 @@ public class StalkBehavior : UnitBehavior
         // 가는 쪽을 보고 달린다. 등을 보이기로 한 참이라 회전은 에이전트에게 맡긴다.
         unit.SetCodeDrivenFacing(false);
 
-        Vector3 away = unit.transform.position - unit.CurrentTarget.transform.position;
+        Vector3 away = unit.transform.position - unit.CurrentTarget.Position;
         away.y = 0f;
         if (away.sqrMagnitude <= 0.0001f) away = -unit.transform.forward;
         away.Normalize();

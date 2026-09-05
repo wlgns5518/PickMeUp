@@ -752,11 +752,13 @@ public static class UnitRegistry
     {
         if (requester == null) return false;
 
+        // 엔티티가 된 적도 함께 본다. 이게 없으면 게임오브젝트 적이 전멸한 순간
+        // 아군이 대기로 떨어져, 눈앞에 고블린 1000마리를 두고 가만히 서 있게 된다.
         switch (requester.Team)
         {
-            case UnitTeam.Ally: return enemies.Count > 0;
+            case UnitTeam.Ally: return enemies.Count > 0 || EnemyWorldBridge.HasLivingEnemy();
             case UnitTeam.Enemy: return allies.Count > 0;
-            default: return allies.Count > 0 || enemies.Count > 0; // Neutral의 적은 비-중립 전체
+            default: return allies.Count > 0 || enemies.Count > 0 || EnemyWorldBridge.HasLivingEnemy();
         }
     }
 
@@ -931,7 +933,7 @@ public static class UnitRegistry
         float best = 0f;
 
         // 1·2) 무언가를 물고 있는 경우.
-        UnitController victim = candidate.CurrentTarget;
+        UnitController victim = candidate.CurrentTarget.Unit;
         if (IsWorthGuarding(requester, victim))
         {
             best = victim.IsCasting ? peelBonus * CastingGuardScale : peelBonus;

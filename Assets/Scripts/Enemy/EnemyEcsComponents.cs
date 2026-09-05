@@ -81,6 +81,10 @@ public struct EnemyHealth : IComponentData
     // 강인도가 깨진 뒤의 면역 시간. 이게 없으면 여럿에게 둘러싸인 순간 무한 경직에 빠진다 —
     // 아군 쪽 poiseImmuneUntil과 같은 규칙이다.
     public double poiseImmuneUntil;
+
+    // 마지막으로 이 적을 때린 아군(스냅샷 인덱스). 처치를 누구에게 귀속시킬지 정한다.
+    // 아군 쪽 UnitController.lastAttacker와 같은 자리인데, 참조를 담을 수 없으므로 인덱스다.
+    public int lastAttackerAllyIndex;
 }
 
 public struct EnemyMotion : IComponentData

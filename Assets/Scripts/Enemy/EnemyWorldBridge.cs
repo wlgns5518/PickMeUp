@@ -51,6 +51,11 @@ public static class EnemyWorldBridge
         public float radius;
         public int hp;
         public int maxHp;
+
+        // 남은 강인도. 아군이 "발차기 한 번이면 무너지는 구간인가"를 재는 데 쓴다
+        // (UnitController.IsTargetPoiseRipe).
+        public float poise;
+
         public float threatWeight;
 
         // 지금 노리고 있는 아군. 아군 쪽 "나를 쫓아오는 적이 있는가" 판단이 이걸 읽는다.
@@ -77,6 +82,12 @@ public static class EnemyWorldBridge
         public Entity source;
     }
 
+    // 적 하나가 쓰러졌다. 누구에게 귀속시킬지만 담는다.
+    public struct EnemyKill
+    {
+        public int allyIndex;
+    }
+
     // 아군이 적을 때렸다. 메인 스레드에서 쌓고 ECS 쪽에서 꺼내 적용한다.
     public struct HitOnEnemy
     {
@@ -84,6 +95,9 @@ public static class EnemyWorldBridge
         public int damage;
         public float poiseDamage;
         public float3 fromPosition;
+
+        // 때린 아군(스냅샷 인덱스). 이 적이 쓰러지면 이 아군의 처치로 센다.
+        public int attackerAllyIndex;
 
         // 퍼펙트 가드로 흘려낸 경우. 강인도와 무관하게 그 자리에서 무너뜨린다.
         public bool forceStagger;
@@ -101,6 +115,7 @@ public static class EnemyWorldBridge
         public NativeList<EnemyState> enemies;
         public NativeQueue<HitOnAlly> hitsOnAllies;
         public NativeQueue<HitOnEnemy> hitsOnEnemies;
+        public NativeQueue<EnemyKill> kills;
     }
 
     public static BridgeData AsComponent() => new BridgeData
@@ -109,6 +124,7 @@ public static class EnemyWorldBridge
         enemies = EnemyStates,
         hitsOnAllies = HitsOnAllies,
         hitsOnEnemies = HitsOnEnemies,
+        kills = Kills,
     };
 
     // ---------------------------------------------------------------- 컨테이너
@@ -117,12 +133,28 @@ public static class EnemyWorldBridge
     public static NativeList<EnemyState> EnemyStates;
     public static NativeQueue<HitOnAlly> HitsOnAllies;
     public static NativeQueue<HitOnEnemy> HitsOnEnemies;
+    public static NativeQueue<EnemyKill> Kills;
+
+    // 적 하나가 쓰러졌다. BattleManager가 이걸 듣고 처치 수를 센다 —
+    // 게임오브젝트 쪽 UnitController.OnAnyUnitDied와 같은 자리다.
+    public static event System.Action OnEnemyKilled;
 
     public static bool IsReady { get; private set; }
 
     // 인덱스 ↔ UnitController. 관리 쪽에만 있고 잡에는 넘어가지 않는다.
     private static readonly List<UnitController> AllyByIndex = new List<UnitController>(32);
     private static readonly Dictionary<UnitController, int> IndexByAlly = new Dictionary<UnitController, int>(32);
+
+    // Entity → 스냅샷 인덱스. 아군이 들고 있는 표적 손잡이를 이번 프레임의 값으로 푸는 자리다.
+    // 스냅샷은 매 프레임 다시 만들어지므로 이 표도 함께 다시 만든다.
+    private static readonly Dictionary<Entity, int> IndexByEntity = new Dictionary<Entity, int>(1024);
+
+    // 이 적을 이미 노리고 있는 아군 수. 표적을 고를 때 한 명에게 몰리지 않게 하는 데 쓴다.
+    //
+    // 엔티티에 세어 두지 않고 여기서 집계하는 이유는, 그 숫자를 쓰는 쪽이 아군(메인 스레드)뿐이라
+    // 청크에 필드를 하나 더 얹어 1000마리분을 늘릴 이유가 없기 때문이다. 한 프레임 늦은 값이지만
+    // 표적 선택은 원래 프레임 단위로 흔들리면 안 되는 판단이라(targetChangeInterval) 문제가 없다.
+    private static readonly Dictionary<Entity, int> AllyAttackersByEntity = new Dictionary<Entity, int>(256);
 
     public static void Initialize()
     {
@@ -132,6 +164,7 @@ public static class EnemyWorldBridge
         EnemyStates = new NativeList<EnemyState>(1024, Allocator.Persistent);
         HitsOnAllies = new NativeQueue<HitOnAlly>(Allocator.Persistent);
         HitsOnEnemies = new NativeQueue<HitOnEnemy>(Allocator.Persistent);
+        Kills = new NativeQueue<EnemyKill>(Allocator.Persistent);
         IsReady = true;
     }
 
@@ -143,6 +176,7 @@ public static class EnemyWorldBridge
         if (EnemyStates.IsCreated) EnemyStates.Dispose();
         if (HitsOnAllies.IsCreated) HitsOnAllies.Dispose();
         if (HitsOnEnemies.IsCreated) HitsOnEnemies.Dispose();
+        if (Kills.IsCreated) Kills.Dispose();
 
         AllyByIndex.Clear();
         IndexByAlly.Clear();
@@ -155,6 +189,9 @@ public static class EnemyWorldBridge
     public static void PublishAllies(IReadOnlyList<UnitController> allies)
     {
         if (!IsReady) return;
+
+        // 아군이 들고 있는 표적을 먼저 센다. 이 값은 아군이 다음 표적을 고를 때 쓰인다.
+        CountAllyAttackers(allies);
 
         AllyStates.Clear();
         AllyByIndex.Clear();
@@ -206,6 +243,40 @@ public static class EnemyWorldBridge
 
     public static EnemyState GetEnemy(int index) => EnemyStates[index];
 
+    // 적 스냅샷을 다 채운 뒤 부른다. 손잡이로 찾을 수 있게 표를 다시 세운다.
+    public static void RebuildEnemyIndex()
+    {
+        IndexByEntity.Clear();
+        if (!IsReady) return;
+
+        for (int i = 0; i < EnemyStates.Length; i++) IndexByEntity[EnemyStates[i].entity] = i;
+    }
+
+    // 손잡이로 이번 프레임의 상태를 푼다. 이미 지워진 엔티티면 거짓.
+    public static bool TryGetEnemy(Entity entity, out EnemyState state)
+    {
+        if (IsReady && entity != Entity.Null && IndexByEntity.TryGetValue(entity, out int index))
+        {
+            state = EnemyStates[index];
+            return true;
+        }
+
+        state = default;
+        return false;
+    }
+
+    public static bool IsEnemyAlive(Entity entity)
+    {
+        return TryGetEnemy(entity, out EnemyState state) && state.IsAlive;
+    }
+
+    // 이 적에게 이미 붙어 있는 아군 수(지난 프레임 집계).
+    public static int AllyAttackersOn(Entity entity)
+    {
+        if (entity == Entity.Null) return 0;
+        return AllyAttackersByEntity.TryGetValue(entity, out int count) ? count : 0;
+    }
+
     public static bool HasLivingEnemy()
     {
         if (!IsReady) return false;
@@ -239,6 +310,53 @@ public static class EnemyWorldBridge
         }
 
         return index >= 0;
+    }
+
+    // 아군이 겨눌 적을 고른다. 거리만 보지 않고 이미 붙은 아군 수도 함께 본다 —
+    // 그러지 않으면 파티 전원이 같은 한 마리에 달라붙고 나머지는 그 뒤에서 겉돈다.
+    // 적 쪽 표적 선택(EnemyTargetingSystem.PickTargetJob)과 같은 모양의 점수다.
+    public static bool TryFindBestEnemy(float3 from, float range, out Entity enemy)
+    {
+        enemy = Entity.Null;
+        if (!IsReady) return false;
+
+        float bestScore = float.MaxValue;
+        float sqrRange = range * range;
+
+        for (int i = 0; i < EnemyStates.Length; i++)
+        {
+            EnemyState state = EnemyStates[i];
+            if (!state.IsAlive) continue;
+
+            float sqr = math.distancesq(state.position, from);
+            if (sqr > sqrRange) continue;
+
+            float score = math.sqrt(sqr) + AllyAttackersOn(state.entity) * 1.5f;
+            if (score >= bestScore) continue;
+
+            bestScore = score;
+            enemy = state.entity;
+        }
+
+        return enemy != Entity.Null;
+    }
+
+    // 아군이 지금 어느 적을 겨누고 있는지 세어 둔다. PublishAllies가 매 프레임 부른다.
+    private static void CountAllyAttackers(IReadOnlyList<UnitController> allies)
+    {
+        AllyAttackersByEntity.Clear();
+
+        for (int i = 0; i < allies.Count; i++)
+        {
+            UnitController ally = allies[i];
+            if (ally == null || ally.IsDead) continue;
+
+            Entity target = ally.CurrentTarget.Entity;
+            if (target == Entity.Null) continue;
+
+            AllyAttackersByEntity.TryGetValue(target, out int count);
+            AllyAttackersByEntity[target] = count + 1;
+        }
     }
 
     public static int CountEnemiesAround(float3 center, float radius)
@@ -323,7 +441,8 @@ public static class EnemyWorldBridge
     // ---------------------------------------------------------------- 피해 전달
 
     // 아군이 적을 때렸다. 실제 적용은 ECS 쪽 시스템이 한다.
-    public static void DamageEnemy(Entity enemy, int damage, float poiseDamage, float3 fromPosition)
+    public static void DamageEnemy(Entity enemy, int damage, float poiseDamage, float3 fromPosition,
+        UnitController attacker = null)
     {
         if (!IsReady || enemy == Entity.Null) return;
 
@@ -333,7 +452,25 @@ public static class EnemyWorldBridge
             damage = damage,
             poiseDamage = poiseDamage,
             fromPosition = fromPosition,
+            attackerAllyIndex = IndexOfAlly(attacker),
         });
+    }
+
+    // 쓰러진 적을 때린 아군에게 처치로 얹는다. 메인 스레드에서만 부른다.
+    //
+    // 게임오브젝트 쪽 NotifyDeath가 하던 일과 같다 — 마지막으로 피해를 준 쪽에게 귀속시키고,
+    // 전투 매니저가 들을 수 있게 알린다.
+    public static void DrainKills()
+    {
+        if (!IsReady) return;
+
+        while (Kills.TryDequeue(out EnemyKill kill))
+        {
+            UnitController killer = GetAlly(kill.allyIndex);
+            if (killer != null) killer.CreditKill();
+
+            OnEnemyKilled?.Invoke();
+        }
     }
 
     // 아군이 흘려냈다(퍼펙트 가드). 피해 없이 그 자리에서 무너뜨린다 —
