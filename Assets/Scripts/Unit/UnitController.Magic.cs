@@ -60,7 +60,7 @@ public partial class UnitController
     private bool hasCastingSpell;
 
     // 광역 판정에 쓰는 공용 버퍼. 마법 한 번에 리스트를 새로 만들지 않는다.
-    private static readonly List<UnitController> SpellVictims = new List<UnitController>(16);
+    private static readonly List<TargetRef> SpellVictims = new List<TargetRef>(16);
 
     public bool HasCastAnimation => castAnimationHash != 0;
 
@@ -148,10 +148,10 @@ public partial class UnitController
         int sampled = 0;
         for (int i = 0; i < SpellVictims.Count && sampled < spellAimSampleLimit; i++, sampled++)
         {
-            UnitController candidate = SpellVictims[i];
-            if (candidate == null) continue;
+            TargetRef candidate = SpellVictims[i];
+            if (!candidate.Exists) continue;
 
-            Vector3 point = candidate.transform.position;
+            Vector3 point = candidate.Position;
             int count = UnitRegistry.CountEnemiesAround(this, point, spell.Radius);
             if (count <= bestCount) continue;
 
@@ -298,9 +298,9 @@ public partial class UnitController
         if (debugLogs) Debug.Log($"[UnitController] {name} {spell.Name} 발동 — {hitCount}명 적중 (피해 {damage})");
     }
 
-    private void ApplySpellTo(UnitController victim, in SpellSpec spell, int damage)
+    private void ApplySpellTo(TargetRef victim, in SpellSpec spell, int damage)
     {
-        if (victim == null || victim.IsDead) return;
+        if (!victim.IsAlive) return;
 
         // 마법은 밀쳐낸다. fromSkill로 넘겨 평타와 다른 취급을 받게 한다(출혈 판정 등).
         victim.TakeDamage(damage, this, true, true, spell.PoiseDamage);

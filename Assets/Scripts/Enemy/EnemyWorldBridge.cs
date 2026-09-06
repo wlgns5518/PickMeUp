@@ -382,6 +382,28 @@ public static class EnemyWorldBridge
     // 때문이다 — 무게중심은 마리 수가 적은 쪽이 과대평가되고, "가장 가까운 하나"는 세계마다
     // 하나씩 둘이 나온다. 그래서 UnitRegistry가 같은 누적값을 들고 양쪽을 이어서 훑는다.
 
+    // 어느 지점 둘레에 있는 적을 목록에 더한다(UnitRegistry.FindEnemiesAround).
+    //
+    // 광역 마법이 실제로 때릴 상대를 고르는 자리다. 이게 없으면 마법사의 광역기가
+    // 엔티티에게는 아무것도 하지 않는다 — 착탄은 하는데 맞는 놈이 하나도 없다.
+    public static void AppendEnemiesAround(Vector3 center, float radius, List<Entity> results)
+    {
+        if (!IsReady || results == null) return;
+
+        float sqrRadius = radius * radius;
+        for (int i = 0; i < EnemyStates.Length; i++)
+        {
+            EnemyState enemy = EnemyStates[i];
+            if (!enemy.IsAlive) continue;
+
+            float3 offset = enemy.position - (float3)center;
+            offset.y = 0f;
+            if (math.lengthsq(offset) > sqrRadius) continue;
+
+            results.Add(enemy.entity);
+        }
+    }
+
     // 어느 지점 둘레에 있는 적들의 자리를 합에 더한다(UnitRegistry.TryGetEnemyCentroidAround).
     public static void AccumulateCentroidAround(Vector3 center, float radius, ref Vector3 sum, ref int count)
     {

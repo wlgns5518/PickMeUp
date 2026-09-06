@@ -691,12 +691,81 @@ public static class UnitRegistry
         if (requester == null) return 0;
 
         GetHostileLists(requester.Team, out List<UnitController> first, out List<UnitController> second);
-        return CountEnemiesAroundInList(requester, first, center, radius)
-             + CountEnemiesAroundInList(requester, second, center, radius);
+        int count = CountEnemiesAroundInList(requester, first, center, radius)
+                  + CountEnemiesAroundInList(requester, second, center, radius);
+
+        // 엔티티가 된 적도 센다. 이 한 줄에 걸려 있는 것이 많다 — 마법사의 "붙잡혔는가"
+        // (ShouldKeepDistance), 암살자의 빠지기 조건과 은신, 광역 마법의 착탄 지점,
+        // 발놀림이 파고들지 말지까지 전부 이 값을 읽는다.
+        //
+        // 은신이 특히 위험했다. IsStealthed가 "둘레에 적이 없는가"인데 엔티티를 세지 않으면
+        // 언제나 참이 되어, 고블린 무리 한복판에서도 암살자가 계속 그림자에 들어 있었다.
+        if (SeesEnemyEntities(requester)) count += EnemyWorldBridge.CountEnemiesAround(center, radius);
+
+        return count;
+    }
+
+    // 어느 지점 둘레에 있는 적을 모은다. 손잡이로 받으므로 엔티티도 함께 담긴다 —
+    // 광역 마법이 실제로 때릴 상대를 고르는 자리다(UnitController.Magic).
+    public static void FindEnemiesAround(UnitController requester, Vector3 center, float radius,
+        List<TargetRef> results)
+    {
+        if (results == null) return;
+        results.Clear();
+
+        if (requester == null) return;
+
+        GetHostileLists(requester.Team, out List<UnitController> first, out List<UnitController> second);
+        AddEnemiesAround(requester, first, center, radius, results);
+        AddEnemiesAround(requester, second, center, radius, results);
+        AppendEnemyEntities(requester, center, radius, results);
+    }
+
+    // 사거리 안의 적을 모은다. 위와 같은 이유로 손잡이로 받는다.
+    public static void FindEnemiesInRange(UnitController requester, float range, List<TargetRef> results)
+    {
+        if (results == null) return;
+        results.Clear();
+
+        if (requester == null) return;
+
+        FindEnemiesAround(requester, requester.transform.position, range, results);
+    }
+
+    // 엔티티를 손잡이로 감싸 목록에 더한다. 브리지는 ECS 용어(Entity)로만 답하므로
+    // 여기서 한 번 갈아 끼운다. 버퍼를 정적으로 두는 것은 매 호출 할당을 피하려는 것이고,
+    // 이 경로는 전부 메인 스레드에서만 불린다.
+    private static readonly List<Unity.Entities.Entity> entityBuffer = new List<Unity.Entities.Entity>(64);
+
+    private static void AppendEnemyEntities(UnitController requester, Vector3 center, float radius,
+        List<TargetRef> results)
+    {
+        if (!SeesEnemyEntities(requester)) return;
+
+        entityBuffer.Clear();
+        EnemyWorldBridge.AppendEnemiesAround(center, radius, entityBuffer);
+        for (int i = 0; i < entityBuffer.Count; i++) results.Add(new TargetRef(entityBuffer[i]));
+        entityBuffer.Clear();
     }
 
     private static void AddEnemiesAround(UnitController requester, List<UnitController> list,
         Vector3 center, float radius, List<UnitController> results)
+    {
+        float radiusSqr = radius * radius;
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            UnitController candidate = list[i];
+            if (!IsValidTarget(requester, candidate)) continue;
+            if (!AreEnemies(requester, candidate)) continue;
+
+            Vector3 offset = candidate.transform.position - center;
+            offset.y = 0f;
+            if (offset.sqrMagnitude <= radiusSqr) results.Add(candidate);
+        }
+    }
+
+    private static void AddEnemiesAround(UnitController requester, List<UnitController> list,
+        Vector3 center, float radius, List<TargetRef> results)
     {
         float radiusSqr = radius * radius;
         for (int i = list.Count - 1; i >= 0; i--)

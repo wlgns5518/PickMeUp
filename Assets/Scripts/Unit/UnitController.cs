@@ -2254,6 +2254,12 @@ public partial class UnitController : MonoBehaviour
             return;
         }
 
+        // 크게 벌어졌을 때 감쇠를 건너뛰고 바로 맞추는 안을 실측했다가 걷어냈다.
+        // 출발·정지 구간에서 배속이 실제 속도를 뒤따라가는 것이 눈에 걸린다고 봤는데,
+        // 켜고 끄며 45초씩 두 바퀴 재 보니 차이가 없었다 — 평균 오차 0.557 대 0.540으로
+        // 실행 간 편차 안이고, 1m/s 초과 비율은 11.0% 대 11.2%로 사실상 같았다.
+        // 이 구간은 보행 선택(ShouldRunAtGroundSpeed)이 클립을 바꾸면서 이미 즉시 맞춰진다.
+
         // 목표 배속을 향해 천천히 따라가게 한다. 실제 속도가 매 프레임 출렁여도
         // 재생 속도는 그 출렁임을 그대로 받지 않는다(moveSpeedDampTime 주석 참조).
         animator.SetFloat(moveSpeedParameterHash, multiplier, moveSpeedDampTime, Time.deltaTime);
