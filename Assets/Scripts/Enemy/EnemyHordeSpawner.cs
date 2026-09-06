@@ -45,6 +45,15 @@ public class EnemyHordeSpawner : MonoBehaviour
     [Tooltip("멈춰 설 거리. 사거리보다 조금 안쪽이라 도착하자마자 휘두를 수 있다.")]
     [SerializeField] private float standoffDistance = 1.0f;
 
+    [Header("도약 (덤벼들기)")]
+    [Tooltip("사거리 밖이면서 이 거리 안일 때 뛰어서 덤벼든다. 0이면 뛰지 않는다.\n" +
+             "게임오브젝트 고블린의 leapAttackRange가 3이라 같은 값으로 둔다.")]
+    [SerializeField] private float leapRange = 3f;
+    [Tooltip("도약 한 번에 걸리는 시간(초). 구운 LeapAttack 클립이 1.1초다 — " +
+             "이 값과 클립 길이가 어긋나면 뛰는 도중에 발이 미끄러진다.")]
+    [SerializeField] private float leapDuration = 1.1f;
+    [SerializeField] private float leapCooldown = 6f;
+
     [Header("강인도와 무너짐")]
     [Tooltip("이 적의 한 대가 아군의 강인도를 얼마나 깎는가. 아군의 maxPoise가 100이므로 " +
              "이 값이 클수록 아군이 빨리 무너진다.")]
@@ -75,6 +84,10 @@ public class EnemyHordeSpawner : MonoBehaviour
             attackRange = attackRange,
             attackArcAngle = attackArcAngle,
             attackHitTolerance = attackHitTolerance,
+
+            leapRange = leapRange,
+            leapDuration = leapDuration,
+            leapCooldown = leapCooldown,
 
             attackWindup = attackWindup,
             attackRecovery = attackRecovery,

@@ -71,6 +71,14 @@ public struct EnemyStats : IComponentData
     // 아군이 표적을 고를 때 쓰는 가중치. 아군 쪽 UnitStats.threatWeight와 같은 뜻이다.
     public float threatWeight;
 
+    // 도약. 0이면 뛰지 않는다.
+    //
+    // 사거리 밖이면서 이 거리 안일 때만 뛴다 — 이미 닿는 상대에게 뛰면 뒤로 물러났다
+    // 덤비는 꼴이 된다. 아군 쪽 CanLeapAttack과 같은 규칙이다.
+    public float leapRange;
+    public float leapDuration;
+    public float leapCooldown;
+
     // 이 리그가 가진 콤보 단수. 굽힌 클립 수에서 나오므로 스포너가 아니라 EnemyHorde가 채운다 —
     // 리그마다 단수가 다르고, 없는 클립을 가리키면 그 스윙만 서 있는 그림이 된다.
     // 0이나 1이면 콤보 없이 1단만 반복한다.
@@ -141,6 +149,13 @@ public enum EnemyActionKind : byte
     // 표적에게 붙는 중.
     Approach,
 
+    // 덤벼드는 중. 사거리 밖이지만 한 번에 붙을 수 있는 거리에서 뛴다.
+    //
+    // 이 구간에는 이동을 전투 시스템이 통째로 가져간다(스티어링이 아니라 클립 진행도에 맞춰
+    // 민다). 아군 쪽 LeapAttackBehavior와 같은 이유다 — 뛰는 궤적을 지역 회피가 옆에서
+    // 밀면 "뛰는데 옆으로 흐르는" 그림이 된다.
+    Leap,
+
     // 칼을 들어올렸다. 이 구간이 아군에게 열리는 방어 창이다.
     Windup,
 
@@ -166,6 +181,15 @@ public struct EnemyAction : IComponentData
 
     // 다음 스윙이 가능해지는 시각.
     public double nextAttackTime;
+
+    // 다음 도약이 가능해지는 시각.
+    public double nextLeapTime;
+
+    // 이번 도약에서 가야 할 곳과 남은 거리. 클립 진행도에 비례해 밀기 위해 출발할 때 잡는다 —
+    // 매 프레임 표적을 다시 보면 상대가 움직일 때마다 궤적이 휘어 뛰는 것으로 보이지 않는다.
+    public float3 leapDirection;
+    public float leapDistance;
+    public float leapTravelled;
 
     // 이번 스윙의 타격을 이미 넣었는가. windup이 끝나는 프레임에 한 번만 넣기 위한 것.
     public bool struckThisSwing;

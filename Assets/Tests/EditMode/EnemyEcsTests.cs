@@ -344,6 +344,76 @@ public class EnemyEcsTests
     }
 
     [Test]
+    public void 사거리_밖_한_번에_붙을_거리면_덤벼든다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.leapRange = 3f;
+        stats.leapDuration = 1.1f;
+        stats.leapCooldown = 6f;
+
+        // 사거리(1.2)는 넘고 도약 거리(3.0) 안이다.
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        AddAlly(new float3(0f, 0f, 2.5f));
+
+        Tick(0.05f, 4);
+
+        Assert.AreEqual(EnemyActionKind.Leap, manager.GetComponentData<EnemyAction>(enemy).kind);
+        Assert.AreEqual(EnemyClip.LeapAttack, manager.GetComponentData<EnemyAnimation>(enemy).clip);
+    }
+
+    [Test]
+    public void 이미_닿는_상대에게는_뛰지_않는다()
+    {
+        // 뛰면 뒤로 물러났다 덤비는 꼴이 된다. 사거리 안이면 그냥 휘두른다.
+        EnemyStats stats = DefaultStats();
+        stats.leapRange = 3f;
+        stats.leapDuration = 1.1f;
+
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        AddAlly(new float3(0f, 0f, 1f));
+
+        Tick(0.05f, 4);
+
+        Assert.AreEqual(EnemyActionKind.Windup, manager.GetComponentData<EnemyAction>(enemy).kind);
+    }
+
+    [Test]
+    public void 도약은_상대_쪽으로_실제로_나아간다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.leapRange = 3f;
+        stats.leapDuration = 1.1f;
+
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        AddAlly(new float3(0f, 0f, 2.5f));
+
+        Tick(0.05f, 4);
+        float before = manager.GetComponentData<LocalTransform>(enemy).Position.z;
+        Tick(0.05f, 12);   // 도약 도중
+        float after = manager.GetComponentData<LocalTransform>(enemy).Position.z;
+
+        Assert.Greater(after, before + 0.3f, "클립 진행도에 맞춰 상대 쪽으로 밀려야 한다");
+    }
+
+    [Test]
+    public void 도약이_끝나면_회수_구간으로_간다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.leapRange = 3f;
+        stats.leapDuration = 0.3f;
+
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        AddAlly(new float3(0f, 0f, 2.5f));
+
+        Tick(0.05f, 4);
+        Assert.AreEqual(EnemyActionKind.Leap, manager.GetComponentData<EnemyAction>(enemy).kind);
+
+        Tick(0.05f, 8);   // 0.3초를 넘긴다
+        Assert.AreNotEqual(EnemyActionKind.Leap, manager.GetComponentData<EnemyAction>(enemy).kind,
+            "도약이 영영 끝나지 않으면 그 자리에 떠 있게 된다");
+    }
+
+    [Test]
     public void 콤보는_단마다_다른_클립을_쓴다()
     {
         // 같은 클립만 반복하면 마리 수가 많을수록 "복사본이 같은 동작을 하는" 것이 눈에 띈다.

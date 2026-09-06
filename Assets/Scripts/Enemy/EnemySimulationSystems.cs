@@ -247,7 +247,7 @@ public partial struct EnemyCombatSystem : ISystem
         public double now;
 
         private void Execute(Entity entity, ref EnemyAction action, ref EnemyAnimation animation,
-            in EnemyTarget target, in EnemyStats stats, in LocalTransform transform)
+            in EnemyTarget target, in EnemyStats stats, ref LocalTransform transform)
         {
             if (action.kind == EnemyActionKind.Dead) return;
 
@@ -255,6 +255,10 @@ public partial struct EnemyCombatSystem : ISystem
 
             switch (action.kind)
             {
+                case EnemyActionKind.Leap:
+                    TickLeap(entity, ref action, ref animation, ref transform, target, stats);
+                    return;
+
                 case EnemyActionKind.HitReact:
                 case EnemyActionKind.Stagger:
                     // 스스로 아무것도 못 한다. 시간이 다하면 교전으로 돌아간다.
@@ -297,9 +301,79 @@ public partial struct EnemyCombatSystem : ISystem
                 return;
             }
 
+            // 아직 닿지 않지만 한 번에 붙을 수 있는 거리다 — 걸어 들어가는 대신 덤벼든다.
+            // 이미 닿는 상대에게는 뛰지 않는다(위 inRange가 먼저 걸린다).
+            if (!inRange && stats.leapRange > 0f && stats.leapDuration > 0f &&
+                distance <= stats.leapRange && now >= action.nextLeapTime)
+            {
+                float3 toAlly = Flat(ally.position - transform.Position);
+                float flat = math.length(toAlly);
+                if (flat > 0.001f)
+                {
+                    action.kind = EnemyActionKind.Leap;
+                    action.timer = stats.leapDuration;
+                    action.struckThisSwing = false;
+                    action.leapDirection = toAlly / flat;
+                    // 멈춰 설 거리만큼 남기고 뛴다. 상대에게 그대로 파고들면 겹쳐 선다.
+                    action.leapDistance = math.max(0f, flat - stats.standoffDistance);
+                    action.leapTravelled = 0f;
+                    action.nextLeapTime = now + stats.leapCooldown;
+                    animation.clip = EnemyClip.LeapAttack;
+                    animation.normalizedTime = 0f;
+                    return;
+                }
+            }
+
             action.kind = EnemyActionKind.Approach;
             animation.clip = inRange ? EnemyClip.Idle : EnemyClip.Run;
             animation.normalizedTime = math.frac(animation.normalizedTime + deltaTime * 1.4f);
+        }
+
+        // 덤벼드는 구간. 클립 진행도에 맞춰 밀고, 착지하는 프레임에 한 번 때린다.
+        //
+        // 이동을 여기서 통째로 가져가는 것이 요점이다. 스티어링에 맡기면 뛰는 궤적을 지역
+        // 회피가 옆에서 밀어 "뛰는데 옆으로 흐르는" 그림이 된다(아군 쪽 UpdateLeap과 같은 이유).
+        // 남은 거리를 진행도에 맞춰 따라가게 두므로, 클립이 눌려도 몸과 모션이 어긋나지 않는다.
+        private void TickLeap(Entity self, ref EnemyAction action, ref EnemyAnimation animation,
+            ref LocalTransform transform, in EnemyTarget target, in EnemyStats stats)
+        {
+            float length = math.max(0.01f, stats.leapDuration);
+            float progress = math.saturate(1f - action.timer / length);
+            animation.normalizedTime = progress;
+
+            float wanted = action.leapDistance * progress;
+            float step = wanted - action.leapTravelled;
+            if (step > 0f)
+            {
+                action.leapTravelled = wanted;
+                transform.Position += action.leapDirection * step;
+            }
+
+            if (action.timer > 0f) return;
+
+            // 착지. 닿았으면 한 대 넣고, 아니면 헛뛴 것으로 끝난다 — 스윙과 같은 규칙이다.
+            if (!action.struckThisSwing)
+            {
+                action.struckThisSwing = true;
+                if (TryGetAlly(target.allyIndex, out EnemyWorldBridge.AllyState ally))
+                {
+                    float3 toAlly = Flat(ally.position - transform.Position);
+                    float distance = math.length(toAlly);
+                    if (distance <= stats.attackRange + stats.attackHitTolerance)
+                    {
+                        hits.Enqueue(new EnemyWorldBridge.HitOnAlly
+                        {
+                            allyIndex = target.allyIndex,
+                            damage = stats.attackDamage,
+                            poiseDamage = stats.poiseDamagePerHit,
+                            fromPosition = transform.Position,
+                            source = self,
+                        });
+                    }
+                }
+            }
+
+            EnterRecover(ref action, ref animation, stats);
         }
 
         // 칼을 들어올린 구간. 끝나는 프레임에 딱 한 번 판정한다.
@@ -455,10 +529,13 @@ public partial struct EnemyMovementSystem : ISystem
         {
             // 제자리에서 무언가를 하는 중에는 발을 떼지 않는다.
             // 아군 쪽 UnitBehavior.HoldsGround와 같은 자리다.
+            // 도약도 여기 든다. 그쪽은 이동을 전투 시스템이 통째로 가져가므로, 스티어링이
+            // 옆에서 밀면 뛰는 궤적이 그만큼 휘어 "뛰는데 옆으로 흐르는" 그림이 된다.
             bool holdsGround = action.kind == EnemyActionKind.Windup ||
                                action.kind == EnemyActionKind.Recover ||
                                action.kind == EnemyActionKind.Stagger ||
                                action.kind == EnemyActionKind.HitReact ||
+                               action.kind == EnemyActionKind.Leap ||
                                action.kind == EnemyActionKind.Dead;
 
             float3 desired = float3.zero;
