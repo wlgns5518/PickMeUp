@@ -32,6 +32,7 @@ public static class EnemyAnimationBaker
 
         (EnemyClip.Kick, "Kick"),
         (EnemyClip.LeapAttack, "LeapAttack"),
+        (EnemyClip.Bite, "Bite"),
 
         (EnemyClip.HitFront, "HitFront"),
         (EnemyClip.HitBack, "HitBack"),

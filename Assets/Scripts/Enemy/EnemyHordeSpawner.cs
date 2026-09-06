@@ -54,6 +54,16 @@ public class EnemyHordeSpawner : MonoBehaviour
     [SerializeField] private float leapDuration = 1.1f;
     [SerializeField] private float leapCooldown = 6f;
 
+    [Header("물어뜯기 (붙잡는 한 방)")]
+    [Tooltip("붙잡고 늘어져 무는 피해. 0이면 물지 않는다.\n" +
+             "게임오브젝트 고블린의 skillDamage가 24라 같은 값으로 둔다.")]
+    [SerializeField] private int biteDamage = 24;
+    [Tooltip("무는 데 걸리는 시간(초). 구운 Bite 클립이 2.08초다.")]
+    [SerializeField] private float biteDuration = 2.08f;
+    [Tooltip("재사용 대기(초). 물린 아군이 다시 물리지 않는 시간이기도 하다 — " +
+             "그러지 않으면 한 명에게 여럿이 동시에 물고 늘어져 그 자리에서 녹는다.")]
+    [SerializeField] private float biteCooldown = 5f;
+
     [Header("강인도와 무너짐")]
     [Tooltip("이 적의 한 대가 아군의 강인도를 얼마나 깎는가. 아군의 maxPoise가 100이므로 " +
              "이 값이 클수록 아군이 빨리 무너진다.")]
@@ -88,6 +98,10 @@ public class EnemyHordeSpawner : MonoBehaviour
             leapRange = leapRange,
             leapDuration = leapDuration,
             leapCooldown = leapCooldown,
+
+            biteDamage = Mathf.Max(0, Mathf.RoundToInt(biteDamage * (1f + damagePerLevel * steps))),
+            biteDuration = biteDuration,
+            biteCooldown = biteCooldown,
 
             attackWindup = attackWindup,
             attackRecovery = attackRecovery,

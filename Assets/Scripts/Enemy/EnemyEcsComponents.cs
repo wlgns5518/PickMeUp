@@ -79,6 +79,11 @@ public struct EnemyStats : IComponentData
     public float leapDuration;
     public float leapCooldown;
 
+    // 물어뜯기. 0이면 물지 않는다. 붙어 있는 동안 상대를 따라다니다가 끝에 한 번 문다.
+    public int biteDamage;
+    public float biteDuration;
+    public float biteCooldown;
+
     // 이 리그가 가진 콤보 단수. 굽힌 클립 수에서 나오므로 스포너가 아니라 EnemyHorde가 채운다 —
     // 리그마다 단수가 다르고, 없는 클립을 가리키면 그 스윙만 서 있는 그림이 된다.
     // 0이나 1이면 콤보 없이 1단만 반복한다.
@@ -156,6 +161,13 @@ public enum EnemyActionKind : byte
     // 밀면 "뛰는데 옆으로 흐르는" 그림이 된다.
     Leap,
 
+    // 물고 늘어지는 중. 붙잡은 아군을 따라다니며 버티다가 끝에 한 번 크게 문다.
+    //
+    // 게임오브젝트 고블린은 상대의 목에 매달렸다(UnitController.UpdateCling). 여기서는
+    // 목 좌표까지 스냅샷에 싣지 않고 발치에 붙어 따라가는 것으로 대신한다 — 스냅샷을
+    // 키우는 비용이 1000마리에 그대로 곱해지는데, 그 차이는 잡몹 거리에서 보이지 않는다.
+    Bite,
+
     // 칼을 들어올렸다. 이 구간이 아군에게 열리는 방어 창이다.
     Windup,
 
@@ -184,6 +196,9 @@ public struct EnemyAction : IComponentData
 
     // 다음 도약이 가능해지는 시각.
     public double nextLeapTime;
+
+    // 다음 물어뜯기가 가능해지는 시각.
+    public double nextBiteTime;
 
     // 이번 도약에서 가야 할 곳과 남은 거리. 클립 진행도에 비례해 밀기 위해 출발할 때 잡는다 —
     // 매 프레임 표적을 다시 보면 상대가 움직일 때마다 궤적이 휘어 뛰는 것으로 보이지 않는다.
@@ -230,6 +245,9 @@ public enum EnemyClip : byte
     // 발차기와 도약. 붙어서 밀어내는 한 방과, 거리를 한 번에 좁히는 덤벼들기다.
     Kick,
     LeapAttack,
+
+    // 물어뜯기. 붙잡고 늘어지는 한 방이라 다른 것들보다 길다(2.08초).
+    Bite,
 
     // 방향별 피격. 어디서 맞았는지가 보이면 난전의 그림이 통째로 달라진다.
     HitFront,

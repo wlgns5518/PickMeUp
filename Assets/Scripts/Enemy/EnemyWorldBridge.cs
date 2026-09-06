@@ -38,6 +38,10 @@ public static class EnemyWorldBridge
         public int attackerCount;
 
         public byte alive;
+
+        // 붙잡는 스킬(물어뜯기)에 다시 당할 수 있는가. 아군 쪽 CanBeSkillVictim을 그대로 옮긴다 —
+        // 이게 없으면 한 명에게 여럿이 동시에 물고 늘어져 그 자리에서 녹는다.
+        public byte canBeBitten;
     }
 
     public struct EnemyState
@@ -80,6 +84,10 @@ public static class EnemyWorldBridge
 
         // 때린 적. 아군이 흘려냈을 때(퍼펙트 가드) 그 자리에서 무너뜨리려면 손잡이가 필요하다.
         public Entity source;
+
+        // 붙잡는 스킬로 문 경우. 물린 아군은 이 시간 동안 다시 물리지 않는다 —
+        // 아군 쪽 MarkSkillVictim과 같은 규칙이고, 시간은 무는 쪽이 정한다.
+        public float skillVictimDuration;
     }
 
     // 적 하나가 쓰러졌다. 누구에게 귀속시킬지만 담는다.
@@ -223,6 +231,7 @@ public static class EnemyWorldBridge
                 threatWeight = stats != null ? stats.threatWeight : 1f,
                 attackerCount = ally.AttackersFrom(UnitTeam.Enemy),
                 alive = (byte)(ally.IsDead ? 0 : 1),
+                canBeBitten = (byte)(ally.CanBeSkillVictim ? 1 : 0),
             });
         }
     }
@@ -637,6 +646,10 @@ public static class EnemyWorldBridge
             if (ally == null || ally.IsDead) continue;
 
             ally.TakeEnemyDamage(hit.damage, hit.fromPosition, hit.source, hit.poiseDamage);
+
+            // 물린 아군에게 면역 시간을 건다. 피해보다 먼저 걸면 안 된다 —
+            // 이 한 대로 쓰러지는 경우까지 포함해 "맞고 나서" 세는 것이 맞다.
+            if (hit.skillVictimDuration > 0f) ally.MarkSkillVictim(hit.skillVictimDuration);
         }
     }
 }

@@ -97,7 +97,7 @@ public class EnemyEcsTests
         return entity;
     }
 
-    private void AddAlly(float3 position, float threatWeight = 1f, int attackerCount = 0)
+    private void AddAlly(float3 position, float threatWeight = 1f, int attackerCount = 0, bool canBeBitten = true)
     {
         EnemyWorldBridge.AllyStates.Add(new EnemyWorldBridge.AllyState
         {
@@ -109,6 +109,7 @@ public class EnemyEcsTests
             threatWeight = threatWeight,
             attackerCount = attackerCount,
             alive = 1,
+            canBeBitten = (byte)(canBeBitten ? 1 : 0),
         });
     }
 
@@ -341,6 +342,79 @@ public class EnemyEcsTests
         });
 
         return entity;
+    }
+
+    private static EnemyStats BiterStats()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.biteDamage = 24;
+        stats.biteDuration = 2.08f;
+        stats.biteCooldown = 5f;
+        return stats;
+    }
+
+    [Test]
+    public void 붙으면_물고_늘어진다()
+    {
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), BiterStats());
+        AddAlly(new float3(0f, 0f, 1f));
+
+        Tick(0.05f, 4);
+
+        Assert.AreEqual(EnemyActionKind.Bite, manager.GetComponentData<EnemyAction>(enemy).kind);
+        Assert.AreEqual(EnemyClip.Bite, manager.GetComponentData<EnemyAnimation>(enemy).clip);
+    }
+
+    [Test]
+    public void 이미_물린_아군은_다시_물지_않는다()
+    {
+        // 이게 없으면 한 명에게 여럿이 동시에 물고 늘어져 그 자리에서 녹는다.
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), BiterStats());
+        AddAlly(new float3(0f, 0f, 1f), canBeBitten: false);
+
+        Tick(0.05f, 4);
+
+        Assert.AreEqual(EnemyActionKind.Windup, manager.GetComponentData<EnemyAction>(enemy).kind,
+            "물 수 없으면 평타로 떨어져야 한다");
+    }
+
+    [Test]
+    public void 무는_동안_상대를_따라간다()
+    {
+        // 2초가 넘는 동작이라 제자리에 서서 물면 상대가 걸어 나가는 동안 허공을 문다.
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), BiterStats());
+        AddAlly(new float3(0f, 0f, 1f));
+        Tick(0.05f, 4);
+        Assert.AreEqual(EnemyActionKind.Bite, manager.GetComponentData<EnemyAction>(enemy).kind);
+
+        // 아군이 걸어 나간다.
+        var moved = EnemyWorldBridge.AllyStates[0];
+        moved.position = new float3(0f, 0f, 4f);
+        EnemyWorldBridge.AllyStates[0] = moved;
+
+        float before = manager.GetComponentData<LocalTransform>(enemy).Position.z;
+        Tick(0.05f, 10);
+        float after = manager.GetComponentData<LocalTransform>(enemy).Position.z;
+
+        Assert.Greater(after, before + 0.3f, "붙잡은 쪽을 따라가야 한다");
+    }
+
+    [Test]
+    public void 무는_동작이_끝나면_크게_한_번_들어간다()
+    {
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), BiterStats());
+        AddAlly(new float3(0f, 0f, 1f));
+
+        Tick(0.05f, 60);   // 3초 — 2.08초짜리 동작이 끝난다
+
+        Assert.IsTrue(EnemyWorldBridge.HitsOnAllies.Count > 0, "물었으면 피해가 큐에 쌓여야 한다");
+        bool bit = false;
+        while (EnemyWorldBridge.HitsOnAllies.TryDequeue(out var hit))
+        {
+            if (hit.damage == 24 && hit.skillVictimDuration > 0f) bit = true;
+        }
+
+        Assert.IsTrue(bit, "평타(40)가 아니라 물어뜯기(24 + 면역 시간)여야 한다");
     }
 
     [Test]

@@ -259,6 +259,10 @@ public partial struct EnemyCombatSystem : ISystem
                     TickLeap(entity, ref action, ref animation, ref transform, target, stats);
                     return;
 
+                case EnemyActionKind.Bite:
+                    TickBite(entity, ref action, ref animation, ref transform, target, stats);
+                    return;
+
                 case EnemyActionKind.HitReact:
                 case EnemyActionKind.Stagger:
                     // 스스로 아무것도 못 한다. 시간이 다하면 교전으로 돌아간다.
@@ -290,6 +294,23 @@ public partial struct EnemyCombatSystem : ISystem
 
             float distance = math.distance(Flat(ally.position), Flat(transform.Position));
             bool inRange = distance <= stats.attackRange;
+
+            // 붙잡고 늘어지는 한 방. 평타보다 먼저 본다 — 쿨다운이 길어(5초) 기회가 왔을 때
+            // 쓰지 않으면 그 사이 평타가 계속 잡아먹는다.
+            //
+            // 이미 물린 아군은 다시 물지 않는다(canBeBitten). 그게 없으면 한 명에게 여럿이
+            // 동시에 물고 늘어져 그 자리에서 녹는다.
+            if (inRange && stats.biteDamage > 0 && stats.biteDuration > 0f &&
+                now >= action.nextBiteTime && ally.canBeBitten != 0)
+            {
+                action.kind = EnemyActionKind.Bite;
+                action.timer = stats.biteDuration;
+                action.struckThisSwing = false;
+                action.nextBiteTime = now + stats.biteCooldown;
+                animation.clip = EnemyClip.Bite;
+                animation.normalizedTime = 0f;
+                return;
+            }
 
             if (inRange && now >= action.nextAttackTime)
             {
@@ -368,6 +389,68 @@ public partial struct EnemyCombatSystem : ISystem
                             poiseDamage = stats.poiseDamagePerHit,
                             fromPosition = transform.Position,
                             source = self,
+                        });
+                    }
+                }
+            }
+
+            EnterRecover(ref action, ref animation, stats);
+        }
+
+        // 물고 늘어지는 구간. 붙잡은 아군을 따라다니다가 끝에 한 번 크게 문다.
+        //
+        // 따라다니는 것이 요점이다. 제자리에 서서 물면 상대가 걸어 나가는 동안 허공을 물게
+        // 되는데, 이 동작은 2초가 넘어서 그 어긋남이 그대로 보인다. 게임오브젝트 쪽은 목에
+        // 매달려 해결했고(UpdateCling), 여기서는 발치에 붙어 따라간다.
+        private void TickBite(Entity self, ref EnemyAction action, ref EnemyAnimation animation,
+            ref LocalTransform transform, in EnemyTarget target, in EnemyStats stats)
+        {
+            float length = math.max(0.01f, stats.biteDuration);
+            animation.normalizedTime = math.saturate(1f - action.timer / length);
+
+            bool hasAlly = TryGetAlly(target.allyIndex, out EnemyWorldBridge.AllyState ally);
+
+            // 붙잡은 쪽을 따라간다. 멈춰 설 거리만큼 남겨 겹쳐 서지 않게 한다.
+            if (hasAlly)
+            {
+                float3 toAlly = Flat(ally.position - transform.Position);
+                float distance = math.length(toAlly);
+                if (distance > stats.standoffDistance && distance > 0.001f)
+                {
+                    float3 direction = toAlly / distance;
+                    float step = math.min(distance - stats.standoffDistance, stats.moveSpeed * deltaTime);
+                    transform.Position += direction * step;
+                }
+
+                if (distance > 0.001f)
+                {
+                    quaternion facing = quaternion.LookRotationSafe(Flat(toAlly / distance), math.up());
+                    transform.Rotation = math.slerp(transform.Rotation, facing,
+                        math.saturate(stats.turnSpeed * deltaTime));
+                }
+            }
+
+            if (action.timer > 0f) return;
+
+            if (!action.struckThisSwing)
+            {
+                action.struckThisSwing = true;
+
+                // 끝까지 붙어 있었을 때만 들어간다. 상대가 떨쳐내고 걸어 나갔으면 헛문 것이다.
+                if (hasAlly)
+                {
+                    float3 toAlly = Flat(ally.position - transform.Position);
+                    if (math.length(toAlly) <= stats.attackRange + stats.attackHitTolerance)
+                    {
+                        hits.Enqueue(new EnemyWorldBridge.HitOnAlly
+                        {
+                            allyIndex = target.allyIndex,
+                            damage = stats.biteDamage,
+                            poiseDamage = stats.poiseDamagePerHit * 2f,
+                            fromPosition = transform.Position,
+                            source = self,
+                            // 문 상대는 이 동작이 한 바퀴 돌 동안 다시 물리지 않는다.
+                            skillVictimDuration = stats.biteCooldown,
                         });
                     }
                 }
@@ -536,6 +619,7 @@ public partial struct EnemyMovementSystem : ISystem
                                action.kind == EnemyActionKind.Stagger ||
                                action.kind == EnemyActionKind.HitReact ||
                                action.kind == EnemyActionKind.Leap ||
+                               action.kind == EnemyActionKind.Bite ||
                                action.kind == EnemyActionKind.Dead;
 
             float3 desired = float3.zero;
