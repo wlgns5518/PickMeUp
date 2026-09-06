@@ -86,6 +86,14 @@ public class EnemyHealthBar
             }
         }
 
+        // 엔티티가 된 적도 같은 바에 더한다. 이 바는 개체마다 하나가 아니라 팀 전체를
+        // 하나로 보여 주는 것이라, 두 세계의 합을 그대로 더하면 된다.
+        //
+        // 이게 없으면 적이 엔티티로 바뀌는 순간 바가 통째로 사라진다 — 최대 체력이 0이라
+        // 아예 켜지지도 않는다.
+        EnemyWorldBridge.SumEnemyHealth(out _, out float entityMax, out _);
+        totalMaxHp += entityMax;
+
         appliedRatio = -1f;
         appliedAlive = -1;
         root.gameObject.SetActive(totalMaxHp > 0f);
@@ -107,6 +115,10 @@ public class EnemyHealthBar
             current += Mathf.Max(0f, enemy.Stats.currentHp);
             alive++;
         }
+
+        EnemyWorldBridge.SumEnemyHealth(out float entityCurrent, out _, out int entityAlive);
+        current += entityCurrent;
+        alive += entityAlive;
 
         float ratio = Mathf.Clamp01(current / totalMaxHp);
         if (!Mathf.Approximately(ratio, appliedRatio))

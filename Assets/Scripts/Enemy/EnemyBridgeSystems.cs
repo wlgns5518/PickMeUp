@@ -78,6 +78,10 @@ public partial class EnemyBridgeOutputSystem : SystemBase
 
         // 쓰러진 적을 때린 아군의 처치로 얹고, 전투 매니저에게 알린다.
         EnemyWorldBridge.DrainKills();
+
+        // 살에 닿은 자리에 피를 뿌린다. 파티클은 관리 객체라 잡 안에서 만들 수 없어
+        // 자리만 큐로 넘어온다(EnemyHorde.DrainBlood).
+        EnemyHorde.DrainBlood();
     }
 }
 
@@ -156,6 +160,17 @@ public partial struct EnemyDamageSystem : ISystem
             }
 
             health.current -= damage;
+
+            // 살에 닿았으면 피가 튄다. 흘려낸 타격(피해 0)에는 뿌리지 않는다 —
+            // 아군 쪽도 막아낸 공격에는 피를 뿌리지 않는다.
+            if (damage > 0 && bridge.bloodOnEnemies.IsCreated)
+            {
+                bridge.bloodOnEnemies.Enqueue(new EnemyWorldBridge.BloodOnEnemy
+                {
+                    position = transform.Position,
+                    fromPosition = hit.fromPosition,
+                });
+            }
 
             // 마지막으로 때린 쪽을 남긴다. 이 적이 쓰러지면 그 아군의 처치가 된다.
             // 흘려내기(피해 0)로는 갱신하지 않는다 — 쳐낸 것이 처치의 공은 아니다.

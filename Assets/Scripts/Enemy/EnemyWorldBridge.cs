@@ -74,6 +74,16 @@ public static class EnemyWorldBridge
         public bool IsAlive => hp > 0 && action != EnemyActionKind.Dead;
     }
 
+    // 살에 칼이 닿은 자리. 메인 스레드가 꺼내 피를 뿌린다.
+    //
+    // 피해 적용은 Burst 잡 안에서 일어나는데 파티클은 관리 객체라 그 자리에서 만들 수 없다.
+    // 그래서 자리만 큐에 남기고 뿌리는 것은 바깥에서 한다 — 피해가 큐를 건너가는 것과 같은 이유다.
+    public struct BloodOnEnemy
+    {
+        public float3 position;
+        public float3 fromPosition;
+    }
+
     // 적이 아군을 때렸다. 메인 스레드에서 꺼내 UnitController.TakeEnemyDamage로 흘려보낸다.
     public struct HitOnAlly
     {
@@ -129,6 +139,7 @@ public static class EnemyWorldBridge
         public NativeQueue<HitOnAlly> hitsOnAllies;
         public NativeQueue<HitOnEnemy> hitsOnEnemies;
         public NativeQueue<EnemyKill> kills;
+        public NativeQueue<BloodOnEnemy> bloodOnEnemies;
     }
 
     public static BridgeData AsComponent() => new BridgeData
@@ -138,6 +149,7 @@ public static class EnemyWorldBridge
         hitsOnAllies = HitsOnAllies,
         hitsOnEnemies = HitsOnEnemies,
         kills = Kills,
+        bloodOnEnemies = BloodOnEnemies,
     };
 
     // ---------------------------------------------------------------- 컨테이너
@@ -147,6 +159,7 @@ public static class EnemyWorldBridge
     public static NativeQueue<HitOnAlly> HitsOnAllies;
     public static NativeQueue<HitOnEnemy> HitsOnEnemies;
     public static NativeQueue<EnemyKill> Kills;
+    public static NativeQueue<BloodOnEnemy> BloodOnEnemies;
 
     // 적 하나가 쓰러졌다. BattleManager가 이걸 듣고 처치 수를 센다 —
     // 게임오브젝트 쪽 UnitController.OnAnyUnitDied와 같은 자리다.
@@ -178,6 +191,7 @@ public static class EnemyWorldBridge
         HitsOnAllies = new NativeQueue<HitOnAlly>(Allocator.Persistent);
         HitsOnEnemies = new NativeQueue<HitOnEnemy>(Allocator.Persistent);
         Kills = new NativeQueue<EnemyKill>(Allocator.Persistent);
+        BloodOnEnemies = new NativeQueue<BloodOnEnemy>(Allocator.Persistent);
         IsReady = true;
     }
 
@@ -190,6 +204,7 @@ public static class EnemyWorldBridge
         if (HitsOnAllies.IsCreated) HitsOnAllies.Dispose();
         if (HitsOnEnemies.IsCreated) HitsOnEnemies.Dispose();
         if (Kills.IsCreated) Kills.Dispose();
+        if (BloodOnEnemies.IsCreated) BloodOnEnemies.Dispose();
 
         AllyByIndex.Clear();
         IndexByAlly.Clear();
@@ -289,6 +304,26 @@ public static class EnemyWorldBridge
     {
         if (entity == Entity.Null) return 0;
         return AllyAttackersByEntity.TryGetValue(entity, out int count) ? count : 0;
+    }
+
+    // 엔티티가 된 적의 체력 합. 화면의 적 체력바가 팀 전체를 하나로 보여 주므로
+    // 게임오브젝트 쪽 합과 그대로 더하면 된다(UI/EnemyHealthBar).
+    public static void SumEnemyHealth(out float current, out float max, out int alive)
+    {
+        current = 0f;
+        max = 0f;
+        alive = 0;
+        if (!IsReady) return;
+
+        for (int i = 0; i < EnemyStates.Length; i++)
+        {
+            EnemyState enemy = EnemyStates[i];
+            max += Mathf.Max(0f, enemy.maxHp);
+            if (!enemy.IsAlive) continue;
+
+            current += Mathf.Max(0f, enemy.hp);
+            alive++;
+        }
     }
 
     public static bool HasLivingEnemy()

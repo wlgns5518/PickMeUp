@@ -12,6 +12,13 @@ public class EnemyHordeSpawner : MonoBehaviour
              "만드는 법: 고블린 프리팹을 고르고 메뉴에서 PickMeUp > 적 애니메이션 굽기.")]
     [SerializeField] private EnemyAnimationLibrary animationLibrary;
 
+    [Tooltip("살에 칼이 닿을 때 뿌릴 파티클. 비워 두면 피가 튀지 않는다.\n" +
+             "Goblin.prefab의 UnitController에 들어 있는 것과 같은 프리팹을 넣으면 된다.")]
+    [SerializeField] private GameObject[] bloodEffectPrefabs;
+    [Tooltip("피 색. 고블린은 초록이다 — 종족마다 다르므로 프리팹 원본의 색조만 바꾼다.")]
+    [SerializeField] private Color bloodColor = new Color(0.2f, 0.6f, 0.1f, 1f);
+    [SerializeField] private Vector3 bloodEffectOffset = new Vector3(0f, 1f, 0f);
+
     [Header("체력과 피해")]
     [SerializeField] private int maxHp = 100;
     [SerializeField] private int attackDamage = 40;
@@ -82,13 +89,19 @@ public class EnemyHordeSpawner : MonoBehaviour
     [SerializeField] private float hpPerLevel = 0.15f;
     [SerializeField] private float damagePerLevel = 0.1f;
 
-    public EnemyStats BuildStats(int level)
+    // healthMultiplier는 부르는 쪽이 넘긴다(CharacterBattleSpawner.debugHealthMultiplier).
+    //
+    // 이 값을 여기서 들고 있지 않는 이유: 아군과 게임오브젝트 적이 같은 손잡이 하나를 쓰는데,
+    // 엔티티만 제 값을 따로 가지면 그 셋이 조용히 어긋난다. 실제로 그랬다 — 엔티티에만
+    // 배율이 안 걸려 체력이 1/100이었고, 전투가 3초 만에 끝났다.
+    public EnemyStats BuildStats(int level, float healthMultiplier = 1f)
     {
         int steps = Mathf.Max(0, level - 1);
+        float health = Mathf.Max(0.01f, healthMultiplier);
 
         return new EnemyStats
         {
-            maxHp = Mathf.Max(1, Mathf.RoundToInt(maxHp * (1f + hpPerLevel * steps))),
+            maxHp = Mathf.Max(1, Mathf.RoundToInt(maxHp * (1f + hpPerLevel * steps) * health)),
             attackDamage = Mathf.Max(1, Mathf.RoundToInt(attackDamage * (1f + damagePerLevel * steps))),
 
             attackRange = attackRange,
@@ -128,7 +141,7 @@ public class EnemyHordeSpawner : MonoBehaviour
     }
 
     // 층 하나를 시작할 때 부른다. 돌려주는 값은 실제로 만들어진 마리 수.
-    public int SpawnWave(int count, Vector3 center, float spread, int level, uint seed = 1)
+    public int SpawnWave(int count, Vector3 center, float spread, int level, uint seed = 1, float healthMultiplier = 1f)
     {
         // 무엇으로 그릴지 먼저 알려 준다. 굽지 않았으면 보이지 않을 뿐 전투는 그대로 돈다.
         if (animationLibrary != null && animationLibrary.IsBaked)
@@ -136,7 +149,9 @@ public class EnemyHordeSpawner : MonoBehaviour
             EnemyHorde.ConfigureVisual(animationLibrary.skinnedMesh, animationLibrary.material, animationLibrary);
         }
 
-        EnemyStats stats = BuildStats(level);
+        EnemyHorde.ConfigureBlood(bloodEffectPrefabs, bloodColor, bloodEffectOffset);
+
+        EnemyStats stats = BuildStats(level, healthMultiplier);
         return EnemyHorde.Spawn(stats, count, center, spread, seed);
     }
 

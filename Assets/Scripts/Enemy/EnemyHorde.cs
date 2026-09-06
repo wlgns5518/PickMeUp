@@ -204,6 +204,49 @@ public static class EnemyHorde
         return (byte)steps;
     }
 
+    // ---------------------------------------------------------------- 피
+
+    // 무엇으로 피를 뿌릴지. 프리팹과 색은 관리 객체라 엔티티에 실을 수 없어 여기 둔다.
+    // 스포너가 그릴 것을 알려 줄 때 함께 넘긴다.
+    private static GameObject[] bloodPrefabs;
+    private static Color bloodColor = new Color(0.2f, 0.6f, 0.1f, 1f);
+    private static Vector3 bloodOffset = new Vector3(0f, 1f, 0f);
+
+    public static void ConfigureBlood(GameObject[] prefabs, Color color, Vector3 offset)
+    {
+        bloodPrefabs = prefabs;
+        bloodColor = color;
+        bloodOffset = offset;
+    }
+
+    // 큐에 쌓인 자리에 피를 뿌린다. 메인 스레드에서만 부른다(EnemyBridgeOutputSystem).
+    //
+    // 프리팹이 없으면 큐만 비운다 — 그러지 않으면 전투 내내 쌓이기만 한다.
+    public static void DrainBlood()
+    {
+        if (!EnemyWorldBridge.IsReady || !EnemyWorldBridge.BloodOnEnemies.IsCreated) return;
+
+        bool canSpawn = bloodPrefabs != null && bloodPrefabs.Length > 0 && BloodEffectPool.Instance != null;
+
+        while (EnemyWorldBridge.BloodOnEnemies.TryDequeue(out EnemyWorldBridge.BloodOnEnemy blood))
+        {
+            if (!canSpawn) continue;
+
+            GameObject prefab = bloodPrefabs[UnityEngine.Random.Range(0, bloodPrefabs.Length)];
+            if (prefab == null) continue;
+
+            // 때린 쪽을 향해 튀게 한다. 아군 쪽 SpawnBloodEffect와 같은 규칙이다.
+            Vector3 position = (Vector3)blood.position + bloodOffset;
+            Vector3 toAttacker = (Vector3)blood.fromPosition - (Vector3)blood.position;
+            toAttacker.y = 0f;
+            Quaternion rotation = toAttacker.sqrMagnitude > 0.0001f
+                ? Quaternion.LookRotation(toAttacker.normalized)
+                : Quaternion.identity;
+
+            BloodEffectPool.Instance.Spawn(prefab, position, rotation, bloodColor);
+        }
+    }
+
     // 전투가 끝났을 때 남은 적을 치운다.
     public static void Clear()
     {

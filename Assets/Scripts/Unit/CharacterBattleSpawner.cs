@@ -168,7 +168,10 @@ public class CharacterBattleSpawner : MonoBehaviour
         Vector3 center = GetEnemySpawnPosition(0);
         float spread = Mathf.Max(2f, Mathf.Sqrt(count) * 1.2f);
 
-        entityEnemySettings.SpawnWave(count, center, spread, level, (uint)(floor * 7919 + 13));
+        // 체력 배율은 여기서 넘긴다. 아군과 게임오브젝트 적이 같은 손잡이를 쓰므로
+        // 엔티티만 빠지면 셋이 조용히 어긋난다(BuildStats 주석 참조).
+        entityEnemySettings.SpawnWave(count, center, spread, level, (uint)(floor * 7919 + 13),
+            debugHealthMultiplier);
     }
 
     // 탱커부터 상한까지 채우고, 남는 슬롯은 나머지 아군에게 라운드로빈으로 분배한다.
