@@ -242,9 +242,19 @@ public readonly struct TargetRef : IEquatable<TargetRef>
         if (IsEntity) EnemyWorldBridge.StaggerEnemy(Entity, duration, Position);
     }
 
+    // 발을 묶는다. 창수의 부위 억제와 빙결 마법이 이걸 부른다.
+    //
+    // 엔티티 쪽도 큐를 건너 적용된다 — 아군이 메인 스레드에서 거는데 그 자리에서 엔티티를
+    // 건드리면 돌고 있던 잡이 무효가 되기 때문이다(피해와 같은 이유, 같은 큐).
     public void ApplySlow(float duration, float multiplier)
     {
-        if (IsUnit) Unit.ApplySlow(duration, multiplier);
+        if (IsUnit)
+        {
+            Unit.ApplySlow(duration, multiplier);
+            return;
+        }
+
+        if (IsEntity) EnemyWorldBridge.SlowEnemy(Entity, duration, multiplier, Position);
     }
 
     // 이 상대가 지금 겨누고 있는 쪽. 도주를 멈출지 정할 때 "그놈이 아직 나를 보는가"를 묻는다.

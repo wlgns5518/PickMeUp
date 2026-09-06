@@ -418,6 +418,7 @@ public partial struct EnemyMovementSystem : ISystem
             hash = hash.map,
             cellSize = hash.cellSize,
             deltaTime = SystemAPI.Time.DeltaTime,
+            now = SystemAPI.Time.ElapsedTime,
         };
 
         state.Dependency = job.ScheduleParallel(state.Dependency);
@@ -430,6 +431,7 @@ public partial struct EnemyMovementSystem : ISystem
         [ReadOnly] public NativeParallelMultiHashMap<int, EnemyNeighbor> hash;
         public float cellSize;
         public float deltaTime;
+        public double now;
 
         private void Execute(Entity entity, ref LocalTransform transform, ref EnemyMotion motion,
             in EnemyStats stats, in EnemyTarget target, in EnemyAction action)
@@ -494,7 +496,11 @@ public partial struct EnemyMovementSystem : ISystem
 
             desired += push * SeparationStrength;
 
-            float3 wanted = math.normalizesafe(desired) * (holdsGround ? 0f : stats.moveSpeed);
+            // 발이 묶여 있으면 그만큼 느리게 간다(창수의 부위 억제, 빙결 마법).
+            // 가속에는 걸지 않는다 — 묶인 것은 다리이지 반응이 아니다.
+            float moveSpeed = stats.moveSpeed * motion.SlowFactor(now);
+
+            float3 wanted = math.normalizesafe(desired) * (holdsGround ? 0f : moveSpeed);
             motion.desiredDirection = math.normalizesafe(desired);
             motion.velocity = math.lerp(motion.velocity, wanted, math.saturate(stats.acceleration * deltaTime));
 

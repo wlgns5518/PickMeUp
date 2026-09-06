@@ -344,6 +344,43 @@ public class EnemyEcsTests
     }
 
     [Test]
+    public void 발이_묶이면_느리게_다가온다()
+    {
+        // 창수의 부위 억제와 빙결 마법이 이 경로다. 예전에는 엔티티에게 아무 일도 일어나지
+        // 않아서, 근접을 붙이지 않는 것이 밥줄인 직군이 엔티티 상대로는 성립하지 않았다.
+        EnemyStats stats = DefaultStats();
+        Entity free = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        Entity slowed = CreateEnemy(new float3(20f, 0f, 0f), stats);
+
+        // 탐지 범위(8m) 안이어야 표적을 잡는다. 그러면서 1초 안에 멈춰 설 거리까지
+        // 닿지는 않을 만큼 떨어뜨린다 — 둘 다 도착해 버리면 비교가 사라진다.
+        AddAlly(new float3(0f, 0f, 7.5f));   // 0번 — free가 쫓는다
+        AddAlly(new float3(20f, 0f, 7.5f));  // 1번 — slowed가 쫓는다
+
+        EnemyWorldBridge.SlowEnemy(slowed, 5f, 0.4f, new float3(20f, 0f, 0f));
+        Tick(0.05f, 20);
+
+        float freeGain = manager.GetComponentData<LocalTransform>(free).Position.z;
+        float slowedGain = manager.GetComponentData<LocalTransform>(slowed).Position.z;
+
+        Assert.Greater(freeGain, 0.5f, "묶이지 않은 쪽은 평소대로 다가와야 한다");
+        Assert.Less(slowedGain, freeGain * 0.75f, "묶인 쪽이 뚜렷하게 덜 나아가야 한다");
+    }
+
+    [Test]
+    public void 둔화는_시간이_지나면_풀린다()
+    {
+        EnemyStats stats = DefaultStats();
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        AddAlly(new float3(0f, 0f, 10f));
+
+        EnemyWorldBridge.SlowEnemy(enemy, 0.2f, 0.2f, float3.zero);
+        Tick(0.05f, 10);   // 0.5초 — 이미 풀렸다
+
+        Assert.AreEqual(1f, manager.GetComponentData<EnemyMotion>(enemy).SlowFactor(world.Time.ElapsedTime), 0.001f);
+    }
+
+    [Test]
     public void 스윙_궤적_안의_엔티티만_걸린다()
     {
         Entity front = AddEnemyState(new float3(0f, 0f, 1.5f));

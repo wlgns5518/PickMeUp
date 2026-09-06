@@ -115,6 +115,30 @@ public partial struct EnemyDamageSystem : ISystem
 
             if (action.kind == EnemyActionKind.Dead) continue;
 
+            // 발을 묶는 것은 피해와 따로 온다(마법은 둘을 따로 건다). 더 센 쪽이 이기고,
+            // 같은 세기면 더 오래 가는 쪽으로 늘린다 — 아군 쪽 ApplySlow와 같은 규칙이다.
+            if (hit.slowDuration > 0f && hit.slowMultiplier < 1f)
+            {
+                var motionLookup = SystemAPI.GetComponentLookup<EnemyMotion>();
+                if (motionLookup.HasComponent(hit.enemy))
+                {
+                    EnemyMotion motion = motionLookup[hit.enemy];
+                    double until = now + hit.slowDuration;
+                    bool stronger = hit.slowMultiplier < motion.slowMultiplier || motion.slowUntil <= now;
+                    if (stronger)
+                    {
+                        motion.slowMultiplier = hit.slowMultiplier;
+                        motion.slowUntil = until;
+                    }
+                    else if (until > motion.slowUntil)
+                    {
+                        motion.slowUntil = until;
+                    }
+
+                    motionLookup[hit.enemy] = motion;
+                }
+            }
+
             // 뒤를 잡혔으면 더 아프다. 아군 쪽 backstabDamageMultiplier와 같은 규칙인데,
             // 여기서는 적이 맞는 쪽이라 아군의 배후 공격에 값이 붙는다.
             LocalTransform transform = transformLookup[hit.enemy];

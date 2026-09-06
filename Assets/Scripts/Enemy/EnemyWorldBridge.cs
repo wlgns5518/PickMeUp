@@ -102,6 +102,11 @@ public static class EnemyWorldBridge
         // 퍼펙트 가드로 흘려낸 경우. 강인도와 무관하게 그 자리에서 무너뜨린다.
         public bool forceStagger;
         public float forceStaggerDuration;
+
+        // 발을 묶는다. 창수의 부위 억제와 빙결 마법이 이걸로 온다.
+        // 피해와 따로 오는 경우가 있어(마법은 피해와 둔화를 따로 건다) 0이어도 처리한다.
+        public float slowDuration;
+        public float slowMultiplier;
     }
 
     // 잡에서 볼 수 있는 손잡이.
@@ -596,6 +601,28 @@ public static class EnemyWorldBridge
             fromPosition = fromPosition,
             forceStagger = true,
             forceStaggerDuration = duration,
+        });
+    }
+
+    // 발을 묶는다. 창수가 찌른 부위를 억제하거나, 빙결 마법이 얼릴 때 부른다.
+    //
+    // 피해와 같은 큐로 보낸다. 아군 쪽에서는 TakeDamage와 ApplySlow가 따로 불리지만,
+    // 여기서는 둘 다 "이 적에게 무언가를 건다"라 한 줄로 흘려보내는 편이 낫다 —
+    // 큐를 하나 더 두면 그만큼 매 프레임 비우고 맞춰야 할 것이 늘어난다.
+    public static void SlowEnemy(Entity enemy, float duration, float multiplier, float3 fromPosition)
+    {
+        if (!IsReady || enemy == Entity.Null) return;
+        if (duration <= 0f || multiplier >= 1f) return;
+
+        HitsOnEnemies.Enqueue(new HitOnEnemy
+        {
+            enemy = enemy,
+            damage = 0,
+            poiseDamage = 0f,
+            fromPosition = fromPosition,
+            attackerAllyIndex = -1,
+            slowDuration = duration,
+            slowMultiplier = multiplier,
         });
     }
 

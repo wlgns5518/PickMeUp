@@ -93,6 +93,21 @@ public struct EnemyMotion : IComponentData
 
     // 이번 프레임에 가려는 쪽. 스티어링 결과를 이동 시스템이 여기 적고 통합한다.
     public float3 desiredDirection;
+
+    // 발이 묶인 상태. 창수의 부위 억제와 빙결 마법이 여기로 온다
+    // (아군 쪽 UnitController.ApplySlow와 같은 뜻이다).
+    //
+    // 배율을 EnemyStats가 아니라 여기 두는 이유: 스탯은 프리팹에서 한 번 구워 오는 값이고
+    // 이것은 매 프레임 바뀌는 상태다. 스탯 쪽에 두면 같은 청크의 적들이 서로 다른 값을
+    // 갖게 되어 굽는 의미가 사라진다.
+    public double slowUntil;
+    public float slowMultiplier;
+
+    // 지금 걸린 이동 배율. 시간이 지났으면 1이다.
+    public float SlowFactor(double now)
+    {
+        return now < slowUntil && slowMultiplier > 0f ? slowMultiplier : 1f;
+    }
 }
 
 // 지금 겨누고 있는 아군.
