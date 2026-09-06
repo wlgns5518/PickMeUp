@@ -21,6 +21,22 @@ public static class EnemyAnimationBaker
         (EnemyClip.Hit, "Hit"),
         (EnemyClip.Stagger, "Stagger"),
         (EnemyClip.Death, "Death"),
+
+        // 콤보 2~7단. 없는 클립은 ResolveClips가 조용히 건너뛰므로, 리그마다 단수가 달라도 된다.
+        (EnemyClip.Attack2, "Attack2"),
+        (EnemyClip.Attack3, "Attack3"),
+        (EnemyClip.Attack4, "Attack4"),
+        (EnemyClip.Attack5, "Attack5"),
+        (EnemyClip.Attack6, "Attack6"),
+        (EnemyClip.Attack7, "Attack7"),
+
+        (EnemyClip.Kick, "Kick"),
+        (EnemyClip.LeapAttack, "LeapAttack"),
+
+        (EnemyClip.HitFront, "HitFront"),
+        (EnemyClip.HitBack, "HitBack"),
+        (EnemyClip.HitLeft, "HitLeft"),
+        (EnemyClip.HitRight, "HitRight"),
     };
 
     // 한 클립에서 뽑는 최대 프레임 수. 텍스처 세로 크기를 정하는 값이라 상한을 둔다 —

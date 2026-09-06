@@ -147,6 +147,11 @@ public static class EnemyHorde
 
         var random = Unity.Mathematics.Random.CreateFromIndex(seed);
 
+        // 콤보 단수는 부르는 쪽이 정하지 않는다. 실제로 구워진 클립이 몇 단까지 있는지는
+        // 라이브러리만 알고, 없는 단을 가리키면 그 스윙만 서 있는 그림이 되기 때문이다.
+        EnemyStats resolved = stats;
+        resolved.comboSteps = ResolveComboSteps();
+
         for (int i = 0; i < created.Length; i++)
         {
             Entity entity = created[i];
@@ -157,7 +162,7 @@ public static class EnemyHorde
             manager.SetComponentData(entity, LocalTransform.FromPositionRotation(
                 position, quaternion.RotateY(random.NextFloat(0f, math.PI * 2f))));
 
-            manager.SetComponentData(entity, stats);
+            manager.SetComponentData(entity, resolved);
             manager.SetComponentData(entity, new EnemyHealth
             {
                 current = stats.maxHp,
@@ -179,6 +184,24 @@ public static class EnemyHorde
         }
 
         return created.Length;
+    }
+
+    // 굽힌 콤보가 몇 단까지 있는가. Attack(1단)에서 시작해 Attack2부터 끊길 때까지 센다 —
+    // 중간이 빈 리그에서 그 구멍을 건너뛰어 재생하면 콤보가 튀므로, 이어진 데까지만 쓴다.
+    private static byte ResolveComboSteps()
+    {
+        if (animationLibrary == null || !animationLibrary.IsBaked) return 1;
+        if (!animationLibrary.TryGetClip(EnemyClip.Attack, out _)) return 1;
+
+        int steps = 1;
+        for (int i = 0; i < 6; i++)
+        {
+            EnemyClip next = (EnemyClip)((int)EnemyClip.Attack2 + i);
+            if (!animationLibrary.TryGetClip(next, out _)) break;
+            steps++;
+        }
+
+        return (byte)steps;
     }
 
     // 전투가 끝났을 때 남은 적을 치운다.

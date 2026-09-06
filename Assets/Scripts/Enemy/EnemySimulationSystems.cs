@@ -276,6 +276,9 @@ public partial struct EnemyCombatSystem : ISystem
             if (!TryGetAlly(target.allyIndex, out EnemyWorldBridge.AllyState ally))
             {
                 action.kind = EnemyActionKind.Idle;
+                // 겨눌 상대가 사라졌으면 콤보도 처음으로 돌아간다. 다음에 붙는 상대에게
+                // 5단부터 시작하면 그 앞 네 단을 건너뛴 셈이 된다.
+                action.comboIndex = 0;
                 animation.clip = EnemyClip.Idle;
                 animation.normalizedTime = math.frac(animation.normalizedTime + deltaTime * 0.5f);
                 return;
@@ -289,7 +292,7 @@ public partial struct EnemyCombatSystem : ISystem
                 action.kind = EnemyActionKind.Windup;
                 action.timer = stats.attackWindup;
                 action.struckThisSwing = false;
-                animation.clip = EnemyClip.Attack;
+                animation.clip = ComboClip(action.comboIndex, stats.comboSteps);
                 animation.normalizedTime = 0f;
                 return;
             }
@@ -352,6 +355,20 @@ public partial struct EnemyCombatSystem : ISystem
             action.kind = EnemyActionKind.Recover;
             action.timer = stats.attackRecovery;
             action.nextAttackTime = now + stats.attackCooldown;
+
+            // 다음 스윙은 다음 단이다. 마지막 단을 지나면 처음으로 돌아온다.
+            int steps = math.max(1, stats.comboSteps);
+            action.comboIndex = (byte)((action.comboIndex + 1) % steps);
+        }
+
+        // 몇 단째의 클립인가. 1단은 Attack이고 2단부터는 열거에 이어 붙어 있다
+        // (EnemyClip 주석 — 그 순서가 곧 단수다).
+        private static EnemyClip ComboClip(byte index, byte steps)
+        {
+            int limit = math.max(1, steps);
+            int step = index % limit;
+            if (step <= 0) return EnemyClip.Attack;
+            return (EnemyClip)((int)EnemyClip.Attack2 + (step - 1));
         }
 
         private void EnterApproach(ref EnemyAction action, ref EnemyAnimation animation)

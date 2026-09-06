@@ -70,6 +70,11 @@ public struct EnemyStats : IComponentData
 
     // 아군이 표적을 고를 때 쓰는 가중치. 아군 쪽 UnitStats.threatWeight와 같은 뜻이다.
     public float threatWeight;
+
+    // 이 리그가 가진 콤보 단수. 굽힌 클립 수에서 나오므로 스포너가 아니라 EnemyHorde가 채운다 —
+    // 리그마다 단수가 다르고, 없는 클립을 가리키면 그 스윙만 서 있는 그림이 된다.
+    // 0이나 1이면 콤보 없이 1단만 반복한다.
+    public byte comboSteps;
 }
 
 // 매 프레임 바뀌는 것.
@@ -164,6 +169,13 @@ public struct EnemyAction : IComponentData
 
     // 이번 스윙의 타격을 이미 넣었는가. windup이 끝나는 프레임에 한 번만 넣기 위한 것.
     public bool struckThisSwing;
+
+    // 지금 콤보의 몇 단인가(0이 1단). 스윙 하나가 끝날 때마다 오르고, 마지막 단을 지나면
+    // 처음으로 돌아온다. 표적을 잃으면 다시 1단부터다.
+    //
+    // 같은 클립만 반복하면 마리 수가 많을수록 "복사본이 같은 동작을 하는" 것이 눈에 띈다.
+    // 게임오브젝트 고블린이 일곱 단을 돌리던 것을 그대로 옮긴 값이다.
+    public byte comboIndex;
 }
 
 // 렌더러에게 넘기는 애니메이션 상태. 이 둘이면 GPU에서 굽든 인스턴싱을 하든 그릴 수 있다.
@@ -178,6 +190,28 @@ public enum EnemyClip : byte
     Hit,
     Stagger,
     Death,
+
+    // 콤보. 게임오브젝트 고블린이 쓰던 일곱 단을 그대로 옮긴다 — Attack이 곧 1단이므로
+    // 여기는 2단부터다. 한 단씩 이어 붙여야 "같은 동작을 반복하는 인형"이 아니게 된다.
+    //
+    // 순서가 곧 단수라 중간에 값을 끼워 넣으면 안 된다. 굽는 쪽(EnemyAnimationBaker.Wanted)과
+    // 고르는 쪽(EnemyCombatSystem.ComboClip)이 이 순서를 그대로 읽는다.
+    Attack2,
+    Attack3,
+    Attack4,
+    Attack5,
+    Attack6,
+    Attack7,
+
+    // 발차기와 도약. 붙어서 밀어내는 한 방과, 거리를 한 번에 좁히는 덤벼들기다.
+    Kick,
+    LeapAttack,
+
+    // 방향별 피격. 어디서 맞았는지가 보이면 난전의 그림이 통째로 달라진다.
+    HitFront,
+    HitBack,
+    HitLeft,
+    HitRight,
 }
 
 public struct EnemyAnimation : IComponentData

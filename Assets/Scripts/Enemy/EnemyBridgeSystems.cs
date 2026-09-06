@@ -217,7 +217,7 @@ public partial struct EnemyDamageSystem : ISystem
                 {
                     action.kind = EnemyActionKind.HitReact;
                     action.timer = stats.hitReactionDuration;
-                    animation.clip = EnemyClip.Hit;
+                    animation.clip = DirectionalHitClip(transform, hit.fromPosition);
                     animation.normalizedTime = 0f;
                 }
             }
@@ -226,6 +226,29 @@ public partial struct EnemyDamageSystem : ISystem
             actionLookup[hit.enemy] = action;
             animationLookup[hit.enemy] = animation;
         }
+    }
+
+    // 어디서 맞았는지에 맞는 움찔 모션을 고른다. 아군 쪽 ResolveDirectionalHitHash와 같은 규칙이다.
+    //
+    // 이게 없으면 사방에서 두들겨 맞아도 전부 같은 방향으로 움찔해서, 난전이 "각자 같은
+    // 동작을 반복하는 인형들"로 보인다. 굽지 않은 리그는 HitFront 자리가 비어 있을 수 있는데,
+    // 그때는 렌더러가 구간표에서 걸러 내므로 여기서 따로 확인하지 않는다.
+    private static EnemyClip DirectionalHitClip(in LocalTransform transform, float3 fromPosition)
+    {
+        float3 toAttacker = fromPosition - transform.Position;
+        toAttacker.y = 0f;
+        if (math.lengthsq(toAttacker) <= 0.0001f) return EnemyClip.Hit;
+
+        toAttacker = math.normalize(toAttacker);
+        float3 forward = math.normalizesafe(transform.Forward(), new float3(0f, 0f, 1f));
+
+        float front = math.dot(forward, toAttacker);
+        if (front > 0.5f) return EnemyClip.HitFront;
+        if (front < -0.5f) return EnemyClip.HitBack;
+
+        // 좌우는 외적의 y 부호로 가른다.
+        float side = math.cross(forward, toAttacker).y;
+        return side > 0f ? EnemyClip.HitRight : EnemyClip.HitLeft;
     }
 }
 

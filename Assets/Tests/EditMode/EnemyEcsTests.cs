@@ -344,6 +344,70 @@ public class EnemyEcsTests
     }
 
     [Test]
+    public void 콤보는_단마다_다른_클립을_쓴다()
+    {
+        // 같은 클립만 반복하면 마리 수가 많을수록 "복사본이 같은 동작을 하는" 것이 눈에 띈다.
+        EnemyStats stats = DefaultStats();
+        stats.comboSteps = 3;
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        AddAlly(new float3(0f, 0f, 1f));   // 사거리 안이라 계속 휘두른다
+
+        var seen = new System.Collections.Generic.HashSet<EnemyClip>();
+        for (int i = 0; i < 200; i++)
+        {
+            Tick(0.05f);
+            var action = manager.GetComponentData<EnemyAction>(enemy);
+            if (action.kind == EnemyActionKind.Windup) seen.Add(manager.GetComponentData<EnemyAnimation>(enemy).clip);
+        }
+
+        Assert.IsTrue(seen.Contains(EnemyClip.Attack), "1단은 Attack이다");
+        Assert.IsTrue(seen.Contains(EnemyClip.Attack2), "2단으로 넘어가야 한다");
+        Assert.IsTrue(seen.Contains(EnemyClip.Attack3), "3단까지 돌아야 한다");
+        Assert.IsFalse(seen.Contains(EnemyClip.Attack4), "굽지 않은 단으로 넘어가면 안 된다");
+    }
+
+    [Test]
+    public void 표적을_잃으면_콤보가_처음으로_돌아온다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.comboSteps = 4;
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        manager.SetComponentData(enemy, new EnemyAction { kind = EnemyActionKind.Idle, comboIndex = 3 });
+
+        Tick(0.05f);   // 아군이 없으므로 표적을 잃은 상태로 돈다
+
+        Assert.AreEqual(0, manager.GetComponentData<EnemyAction>(enemy).comboIndex,
+            "다음에 붙는 상대에게 4단부터 시작하면 앞 세 단을 건너뛴 셈이 된다");
+    }
+
+    [Test]
+    public void 등_뒤에서_맞으면_뒤로_움찔한다()
+    {
+        EnemyStats stats = DefaultStats();
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        manager.SetComponentData(enemy, LocalTransform.FromPositionRotation(float3.zero, quaternion.identity)); // +Z를 본다
+
+        // 강인도는 건드리지 않는다 — 무너지면 Stagger로 가서 방향 판정이 의미가 없다.
+        EnemyWorldBridge.DamageEnemy(enemy, 5, 0f, new float3(0f, 0f, -3f));
+        Tick(0.05f);
+
+        Assert.AreEqual(EnemyClip.HitBack, manager.GetComponentData<EnemyAnimation>(enemy).clip);
+    }
+
+    [Test]
+    public void 옆에서_맞으면_그_쪽으로_움찔한다()
+    {
+        EnemyStats stats = DefaultStats();
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        manager.SetComponentData(enemy, LocalTransform.FromPositionRotation(float3.zero, quaternion.identity));
+
+        EnemyWorldBridge.DamageEnemy(enemy, 5, 0f, new float3(3f, 0f, 0f));
+        Tick(0.05f);
+
+        Assert.AreEqual(EnemyClip.HitRight, manager.GetComponentData<EnemyAnimation>(enemy).clip);
+    }
+
+    [Test]
     public void 발이_묶이면_느리게_다가온다()
     {
         // 창수의 부위 억제와 빙결 마법이 이 경로다. 예전에는 엔티티에게 아무 일도 일어나지
