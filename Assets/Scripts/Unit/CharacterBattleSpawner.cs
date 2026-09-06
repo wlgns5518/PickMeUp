@@ -12,18 +12,13 @@ public class CharacterBattleSpawner : MonoBehaviour
     [SerializeField] private Transform[] allySpawnPoints;
     [SerializeField] private Vector3 allySpawnFallbackOffset = new Vector3(-2.5f, 0f, 0f);
 
-    [Header("Enemy (Dummy)")]
-    [Tooltip("적을 엔티티(DOTS)로 띄운다. 켜면 게임오브젝트 고블린 대신 EnemyHorde가 만든다.\n\n" +
+    [Header("Enemy")]
+    [Tooltip("적의 수치와 보이는 것. 적은 전부 엔티티(DOTS)로 뜬다.\n\n" +
              "화면에 그려지는 것은 구워 놓은 애니메이션 한 벌이 있을 때뿐이다 — " +
              "EnemyHordeSpawner의 Animation Library를 비워 두면 시뮬레이션만 돌고 아무것도 보이지 않는다. " +
-             "굽는 법은 고블린 프리팹을 고르고 메뉴에서 PickMeUp > 적 애니메이션 굽기.\n\n" +
-             "기본값이 꺼짐인 것은 게임오브젝트 경로를 아직 지우지 않았기 때문이다. " +
-             "그쪽은 Animator 이벤트로 피해가 들어가고 NavMesh로 길을 찾으므로 소수(수십 마리)에서 " +
-             "손보기 편하고, 엔티티 쪽은 그 수를 넘길 때 의미가 생긴다.")]
-    [SerializeField] private bool useEntityEnemies;
-    [Tooltip("엔티티 적의 수치. useEntityEnemies가 켜져 있을 때만 쓴다.")]
+             "굽는 법은 고블린 프리팹을 고르고 메뉴에서 PickMeUp > 적 애니메이션 굽기.")]
     [SerializeField] private EnemyHordeSpawner entityEnemySettings;
-    [SerializeField] private UnitController enemyUnitPrefab;
+    [Tooltip("적이 뜰 자리. 첫 지점을 중심으로 흩뿌린다.")]
     [SerializeField] private Transform[] enemySpawnPoints;
     [SerializeField] private Vector3 enemySpawnFallbackOffset = new Vector3(2.5f, 0f, 0f);
 
@@ -33,16 +28,8 @@ public class CharacterBattleSpawner : MonoBehaviour
     [Tooltip("적 레벨 = 고른 층 + 이 범위(포함)에서 뽑은 오프셋. 몬스터마다 독립적으로 뽑는다.")]
     [SerializeField] private int enemyLevelOffsetMin = 1;
     [SerializeField] private int enemyLevelOffsetMax = 2;
-    [Tooltip("적 레벨 1당 체력 증가 비율. 체력은 이 비율대로 계속 오르게 두고, 그만큼 플레이어 쪽은 " +
-             "attackDamagePerStrength(레벨업으로 쌓이는 힘이 공격력에 반영되는 배율)로 따라잡게 " +
-             "한다 — 몬스터를 약하게 만드는 대신 플레이어를 더 세게 만드는 방향.")]
-    [SerializeField] private float enemyHpPerLevel = 0.18f;
-    [Tooltip("적 레벨 1당 공격력 증가 비율.")]
-    [SerializeField] private float enemyDamagePerLevel = 0.12f;
-    [Tooltip("아군 한 명당 스폰 시점에 미리 배정하는 적 수의 상한(탱커부터 채움). " +
-             "TargetScanner.maxAttackersPerAlly와 같은 값으로 맞춰 둘 것 — 전투 중 편향은 그쪽이 맡고, " +
-             "여기는 스폰 첫 프레임에 몰려서 다 같은 아군을 고르는 문제를 막는 담당이다.")]
-    [SerializeField] private int maxAttackersPerAlly = 2;
+    // 레벨당 체력·공격력 증가는 EnemyHordeSpawner가 들고 있다(hpPerLevel / damagePerLevel).
+    // 여기서 넘기는 것은 층에서 뽑은 레벨과 체력 배율뿐이다.
 
     [Header("Spawn Formation")]
     [Tooltip("아군이 뭉쳐서 소환될 중심. 비워두면 스포너 위치 + allySpawnFallbackOffset을 쓴다.")]
@@ -119,46 +106,22 @@ public class CharacterBattleSpawner : MonoBehaviour
         int floor = Mathf.Max(FloorProgress.FirstFloor, FloorProgress.SelectedFloor);
         int count = floor + enemyCountOffset;
 
-        if (useEntityEnemies)
-        {
-            SpawnEnemyEntities(floor, count);
-            return;
-        }
-
-        if (enemyUnitPrefab == null) return;
-
-        // TargetScanner의 어그로/뭉침 편향만으로는 스폰 첫 프레임에 전원이 같은 아군을
-        // 동시에 고르는 걸 못 막는다 — 그 시점엔 서로 아직 아무도 타깃을 정하지 않아서
-        // "이미 몇 명 붙었는지" 편향이 읽을 정보 자체가 없다(전부 0으로 보임). 그래서
-        // 스폰 시점에 직접 순서대로 배정해 처음부터 1~2마리씩 갈라놓는다. 편향은 이후
-        // 타깃을 잃었을 때(적 사망 등) 다시 고르는 상황에서 계속 역할을 한다 — 그때는
-        // 이미 붙어 있는 정보가 실제로 존재하므로 정상 작동한다.
-        List<UnitController> targetSlots = BuildInitialTargetSlots(count);
-
-        for (int i = 0; i < count; i++)
-        {
-            int enemyLevel = floor + Random.Range(enemyLevelOffsetMin, enemyLevelOffsetMax + 1);
-            Vector3 position = GetEnemySpawnPosition(i);
-            UnitController enemy = SpawnUnit(enemyUnitPrefab, UnitTeam.Enemy, BuildEnemyStats(enemyLevel), position, "Goblin_" + (i + 1));
-
-            if (enemy != null && i < targetSlots.Count)
-            {
-                enemy.SetTarget(targetSlots[i]);
-            }
-        }
+        SpawnEnemyEntities(floor, count);
     }
 
     // 적을 엔티티로 띄운다.
     //
-    // 게임오브젝트 경로와 달리 초기 표적을 배정하지 않는다. 저쪽은 스폰 첫 프레임에 전원이
-    // 같은 아군을 고르는 것을 막으려고 슬롯을 손으로 나눠 줬는데, 엔티티 쪽은 표적 선택
-    // 자체가 "이미 붙은 수"를 점수에 넣고 있어(EnemyTargetingSystem) 처음부터 갈라진다.
+    // 초기 표적을 손으로 배정하지 않는다. 게임오브젝트 경로에는 그런 코드가 있었다 —
+    // 스폰 첫 프레임에는 아무도 아직 표적을 정하지 않아 "이미 몇 명 붙었는지" 편향이 읽을
+    // 정보가 없어서, 전원이 같은 아군을 고르는 것을 슬롯을 나눠 막아야 했다.
+    // 엔티티 쪽은 표적 선택 자체가 그 수를 점수에 넣고 있어(EnemyTargetingSystem)
+    // 처음부터 갈라진다.
     private void SpawnEnemyEntities(int floor, int count)
     {
         if (entityEnemySettings == null)
         {
-            Debug.LogWarning("[CharacterBattleSpawner] 엔티티 적을 켜 두었지만 수치(EnemyHordeSpawner)가 " +
-                             "지정되지 않아 적을 만들지 못했습니다.", this);
+            Debug.LogWarning("[CharacterBattleSpawner] 적 수치(EnemyHordeSpawner)가 지정되지 않아 " +
+                             "적을 만들지 못했습니다.", this);
             return;
         }
 
@@ -172,55 +135,6 @@ public class CharacterBattleSpawner : MonoBehaviour
         // 엔티티만 빠지면 셋이 조용히 어긋난다(BuildStats 주석 참조).
         entityEnemySettings.SpawnWave(count, center, spread, level, (uint)(floor * 7919 + 13),
             debugHealthMultiplier);
-    }
-
-    // 탱커부터 상한까지 채우고, 남는 슬롯은 나머지 아군에게 라운드로빈으로 분배한다.
-    // 예: 탱커 1명 + 나머지 2명, 상한 2면 [탱커,탱커,A,B,A,B] 순서로 적을 배정한다.
-    // 파티가 작아서 상한 x 인원수를 넘는 적이 남으면(예: 2인 파티에 적 5마리), 남는 몫은
-    // 탱커로 되돌아가 몰리지 않도록 전체 아군을 고르게 한 바퀴 더 돌려 채운다.
-    private List<UnitController> BuildInitialTargetSlots(int enemyCount)
-    {
-        var slots = new List<UnitController>();
-        IReadOnlyList<UnitController> allies = UnitRegistry.Allies;
-        if (allies.Count == 0) return slots;
-
-        // 탱커가 받는 슬롯 수는 전투 중 편향이 쓰는 상한과 같은 정의를 쓴다
-        // (UnitRegistry.EffectiveAttackerCap — 위협 가중치의 제곱근만큼 늘어난다).
-        // 예전에는 여기만 maxAttackersPerAlly 고정이라, 스폰 직후 탱커가 2마리만 받고
-        // 나머지가 곧바로 후방으로 흩어졌다 — 전투 중 상한(탱커 4)과 어긋나 있었다.
-        for (int i = 0; i < allies.Count; i++)
-        {
-            UnitController ally = allies[i];
-            if (ally == null || !ally.Stats.isTank) continue;
-
-            int cap = UnitRegistry.EffectiveAttackerCap(ally, maxAttackersPerAlly);
-            for (int slot = 0; slot < cap; slot++) slots.Add(ally);
-        }
-
-        for (int round = 0; round < maxAttackersPerAlly; round++)
-        {
-            for (int i = 0; i < allies.Count; i++)
-            {
-                UnitController ally = allies[i];
-                if (ally == null || ally.Stats.isTank) continue;
-                slots.Add(ally);
-            }
-        }
-
-        // 탱커가 없거나 상한이 0으로 설정된 경우의 안전장치 — 그래도 아무나 배정은 돼야 한다.
-        if (slots.Count == 0) slots.AddRange(allies);
-
-        // 상한 x 인원수보다 적이 많으면(작은 파티) 남는 몫을 앞에서부터 나머지 연산으로 채우면
-        // 매번 탱커(0번 슬롯)로 되돌아가 몰린다. 그 대신 전체 아군을 순서대로 한 바퀴씩 더 돌려
-        // 넘치는 만큼을 고르게 나눈다.
-        int allyIndex = 0;
-        while (slots.Count < enemyCount)
-        {
-            slots.Add(allies[allyIndex % allies.Count]);
-            allyIndex++;
-        }
-
-        return slots;
     }
 
     // 층이 높아지면 스폰 지점 수를 금방 넘어선다. 남는 적은 배치 중심을 둘러싸고 뭉친다.
@@ -257,20 +171,6 @@ public class CharacterBattleSpawner : MonoBehaviour
         float angle = slot / (float)slotsInRing * Mathf.PI * 2f;
         float radius = ring * Mathf.Max(0.1f, spacing);
         return new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
-    }
-
-    // 프리팹 스탯을 복사해 레벨 보정을 얹는다. 원본을 그대로 쓰면 모든 적이 같은 객체를 공유해
-    // 한 마리가 맞은 피해가 전부에게 반영된다.
-    private UnitStats BuildEnemyStats(int enemyLevel)
-    {
-        UnitStats source = enemyUnitPrefab != null ? enemyUnitPrefab.Stats : null;
-        UnitStats stats = source != null ? source.Clone() : new UnitStats();
-
-        int steps = Mathf.Max(0, enemyLevel - 1);
-        stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * (1f + enemyHpPerLevel * steps) * debugHealthMultiplier));
-        stats.attackDamage = Mathf.Max(1, Mathf.RoundToInt(stats.attackDamage * (1f + enemyDamagePerLevel * steps)));
-        stats.skillDamage = Mathf.Max(1, Mathf.RoundToInt(stats.skillDamage * (1f + enemyDamagePerLevel * steps)));
-        return stats;
     }
 
     // 스폰 순간부터 상대 진영을 보게 한다.
