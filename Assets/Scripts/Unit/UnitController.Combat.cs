@@ -692,6 +692,15 @@ public partial class UnitController
     // 예전처럼 걷기로 대신한다(발이 조금 미끄러지지만 서서 순간이동하는 것보다는 낫다).
     private void PlayFootworkAnimation(Vector3 move, Vector3 forward, float speed)
     {
+        PlayMoveAnimationForDirection(move, forward, speed, false);
+    }
+
+    // 나아가는 쪽에 맞는 다리를 고른다. 발놀림과 접근이 같이 쓴다.
+    //
+    // runWhenForward: 앞으로 가는 구간을 달리기로 칠지. 발놀림은 걷기고(제자리에서 재는
+    // 동작이라 달리면 안 된다), 접근은 달리기다.
+    public void PlayMoveAnimationForDirection(Vector3 move, Vector3 forward, float speed, bool runWhenForward = true)
+    {
         float forwardDot = Vector3.Dot(move, forward);
         float rightDot = Vector3.Dot(move, Vector3.Cross(Vector3.up, forward));
 
@@ -706,7 +715,7 @@ public partial class UnitController
 
         if (hash == 0)
         {
-            SetMoveAnimation(speed, false, false);
+            SetMoveAnimation(speed, runWhenForward, false);
             return;
         }
 
@@ -790,7 +799,8 @@ public partial class UnitController
 
     // ---------------------------------------------------------------- 반응 시간
 
-    private UnitController noticedThreat;
+    // 알아챈 위협. 게임오브젝트 적과 엔티티가 된 적을 가리지 않으므로 손잡이로 든다.
+    private TargetRef noticedThreat;
     private float noticedThreatTime;
     private float noticedThreatDelay;
 
@@ -810,12 +820,12 @@ public partial class UnitController
         // 순회하면 유닛 수의 제곱으로 비용이 커진다(TargetScanner가 스캔 주기를 흩어 놓는 것과 같은 이유).
         if (!CanEverBlock())
         {
-            noticedThreat = null;
+            noticedThreat = TargetRef.None;
             return;
         }
 
-        UnitController threat = UnitRegistry.FindTelegraphingAttacker(this);
-        if (threat == null)
+        TargetRef threat = UnitRegistry.FindTelegraphingAttacker(this);
+        if (!threat.Exists)
         {
             // 칼을 든 놈이 잠깐 없어도 곧바로 경계를 풀지 않는다.
             //
@@ -823,7 +833,7 @@ public partial class UnitController
             // 아무도 아닌 순간이 끼어든다. 그때마다 경계를 처음부터 다시 세우면 반응 시간이
             // 영영 끝나지 않아서, 둘러싸일수록 덜 막게 되는 거꾸로 된 결과가 나온다.
             // (실측: 고블린 10마리에 둘러싸인 탱커가 56대를 맞는 동안 막은 것은 5번뿐이었다.)
-            if (Time.time >= alertGraceUntil) noticedThreat = null;
+            if (Time.time >= alertGraceUntil) noticedThreat = TargetRef.None;
             return;
         }
 
@@ -831,7 +841,7 @@ public partial class UnitController
 
         if (threat == noticedThreat) return;
 
-        if (noticedThreat != null)
+        if (noticedThreat.Exists)
         {
             // 이미 경계 중이다. 보는 대상만 바꾸고 반응 시간은 다시 재지 않는다.
             // 사람은 칼을 든 특정 한 명이 아니라 눈앞의 난투 전체를 경계한다 — 옆 놈으로
@@ -881,8 +891,8 @@ public partial class UnitController
 
     // 알아챈 위협에 반응까지 마쳤고, 그 위협이 아직 칼을 내지르지 않았는가.
     private bool HasReactedToThreat =>
-        noticedThreat != null &&
-        !noticedThreat.IsDead &&
+        noticedThreat.Exists &&
+        noticedThreat.IsAlive &&
         noticedThreat.IsTelegraphing &&
         Time.time >= noticedThreatTime + noticedThreatDelay;
 
@@ -1146,18 +1156,55 @@ public partial class UnitController
     // 물고, 암살자는 등 뒤(180도)로 돌아간다. 아군 탱커의 위치를 참조하지 않는데도 "탱커 옆에
     // 검사가 선다"가 되는 이유는, 적의 정면을 이미 어그로가 붙은 탱커가 차지하고 있기 때문이다.
     // 탱커가 쓰러져도 기준이 사라지지 않는다는 점에서 위치 참조보다 튼튼하다.
+    //
+    // 다만 그 자리를 매 프레임 다시 계산하면 안 된다 — 아래 EngageBearingHold 참조.
+
+    // 파고들 자리의 방위를 이번 접근이 끝날 때까지 붙들어 둔다.
+    //
+    // 이게 없으면 자리가 상대의 지금 정면을 따라 계속 돈다. 상대도 제 표적을 향해 도는 중이라,
+    // 등 뒤(180도)를 노리는 암살자는 그 자리를 영영 따라잡지 못하고 상대 둘레를 빙글빙글 돈다.
+    //
+    // 시간으로 끊어 봤더니(1.2초) 도는 것이 주기적인 급회전으로 바뀌기만 했다. 실측 로그에서
+    // 그 순간마다 감속 → 회전 → 재가속이 일어났고, 다 돌기 전에 가속이 시작돼 0.2초가량
+    // 몸과 진행방향이 거의 직각인 채로 달리기 클립이 돌았다(dot 0.98 → 0.04).
+    // 그게 화면에서 "몸과 진행방향이 반대"로 보이던 것의 정체다.
+    //
+    // 그래서 시간이 아니라 접근 단위로 붙든다. 한 번 고른 방위는 그 접근이 끝날 때까지 그대로고,
+    // 자리는 상대를 따라 평행이동만 한다 — 표적이 움직여도 급회전이 생기지 않는다.
+    // 다시 고르는 시점은 접근을 새로 시작할 때(ChaseBehavior.OnEnter)와 표적이 바뀔 때뿐이다.
+    private Vector3 heldEngageBearing;
+    private TargetRef heldEngageBearingTarget;
+
+    // 다음 접근에서 방위를 새로 고르게 한다. 접근을 시작하는 쪽이 부른다.
+    public void ClearEngageBearing()
+    {
+        heldEngageBearing = Vector3.zero;
+        heldEngageBearingTarget = TargetRef.None;
+    }
+
+    // "멀 때는 곧장 붙고 가까워지면 그때 파고든다"도 실측했다가 걷어냈다. 접근 곡선이 완만해질
+    // 것이라고 봤는데, 45초씩 번갈아 두 바퀴 재 보니 차이가 노이즈 안이었다
+    // (미끄러짐 0.299 대 0.281인데, 같은 설정끼리도 0.321과 0.269로 벌어졌다).
+    // 몸이 진행방향을 못 따라잡는 것은 접근 경로 모양의 문제가 아니라는 뜻이다.
+
     public Vector3 GetEngageDestination(float standoffDistance)
     {
         Vector3 predicted = GetPredictedTargetPosition();
         if (!CurrentTarget.Exists || !HasEngagePreference) return predicted;
 
-        Vector3 theirForward = CurrentTarget.Forward;
-        theirForward.y = 0f;
-        if (theirForward.sqrMagnitude <= 0.0001f) return predicted;
+        bool held = heldEngageBearingTarget == CurrentTarget && heldEngageBearing.sqrMagnitude > 0.0001f;
+        if (!held)
+        {
+            Vector3 theirForward = CurrentTarget.Forward;
+            theirForward.y = 0f;
+            if (theirForward.sqrMagnitude <= 0.0001f) return predicted;
 
-        Quaternion rotation = Quaternion.AngleAxis(stats.engageAngle * flankSign, Vector3.up);
-        Vector3 offset = rotation * theirForward.normalized * standoffDistance;
-        return predicted + offset;
+            Quaternion rotation = Quaternion.AngleAxis(stats.engageAngle * flankSign, Vector3.up);
+            heldEngageBearing = rotation * theirForward.normalized;
+            heldEngageBearingTarget = CurrentTarget;
+        }
+
+        return predicted + heldEngageBearing * standoffDistance;
     }
 
     // ---------------------------------------------------------------- 히트스톱
@@ -1430,9 +1477,10 @@ public partial class UnitController
         hasLastHitAttacker = false;
         hitFromGuardBreak = false;
         EndDodgeMove();
-        noticedThreat = null;
+        noticedThreat = TargetRef.None;
         footworkThisGap = false;
         footworkVelocity = Vector3.zero;
+        ClearEngageBearing();
         lastRetreatDirection = Vector3.zero;
         lastRetreatDirectionTime = -999f;
         // 재사용되는 유닛이 도약 도중에 회수됐다면 모델이 떠 있는 채로 남는다.

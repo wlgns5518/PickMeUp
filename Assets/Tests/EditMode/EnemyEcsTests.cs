@@ -3,6 +3,7 @@ using Unity.Core;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
+using UnityEngine;
 
 // 적 ECS 계층이 실제로 도는지 확인한다. 씬도 프리팹도 없이 월드 하나만 세워 놓고 돌린다.
 //
@@ -310,5 +311,121 @@ public class EnemyEcsTests
         float3 pb = manager.GetComponentData<LocalTransform>(b).Position;
 
         Assert.Greater(math.distance(pa, pb), 0.2f, "겹쳐 있던 둘이 벌어져야 한다");
+    }
+
+    // ---------------------------------------------------------------- 아군이 엔티티를 읽는 쪽
+    //
+    // 위의 테스트들이 "적이 스스로 도는가"라면, 아래는 "아군이 그 적을 볼 수 있는가"다.
+    // 아군은 시뮬레이션이 아니라 브리지의 스냅샷을 읽으므로(UnitRegistry의 합쳐진 질의들)
+    // 출력 시스템을 세우지 않고 그 스냅샷을 직접 채워 읽는 쪽만 떼어 확인한다.
+    //
+    // 셋 다 답 하나를 돌려주지 않고 진행 중인 계산에 제 몫을 더하는 모양이다. 게임오브젝트로
+    // 남은 적과 같은 누적값을 이어받아야 "가장 가까운 하나"와 무게중심이 두 세계에 걸쳐
+    // 하나의 규칙으로 남기 때문이다 — 여기서 고정하는 것이 그 이어받기다.
+
+    private Entity AddEnemyState(float3 position, int targetAllyIndex = EnemyTarget.None)
+    {
+        Entity entity = manager.CreateEntity();
+        EnemyWorldBridge.EnemyStates.Add(new EnemyWorldBridge.EnemyState
+        {
+            entity = entity,
+            position = position,
+            forward = new float3(0f, 0f, 1f),
+            radius = 0.5f,
+            hp = 100,
+            maxHp = 100,
+            poise = 100f,
+            threatWeight = 1f,
+            targetAllyIndex = targetAllyIndex,
+            action = EnemyActionKind.Approach,
+        });
+
+        return entity;
+    }
+
+    [Test]
+    public void 스윙_궤적_안의_엔티티만_걸린다()
+    {
+        Entity front = AddEnemyState(new float3(0f, 0f, 1.5f));
+        AddEnemyState(new float3(0f, 0f, -1.5f));
+
+        Entity best = Entity.Null;
+        float bestSqr = 2f * 2f;
+        EnemyWorldBridge.AccumulateEnemyInArc(Vector3.zero, Vector3.forward, 130f, ref best, ref bestSqr);
+
+        Assert.AreEqual(front, best, "등 뒤에 선 놈은 부채꼴 밖이라 베이지 않는다");
+    }
+
+    [Test]
+    public void 더_가까운_게임오브젝트가_이미_있으면_엔티티가_덮지_않는다()
+    {
+        AddEnemyState(new float3(0f, 0f, 1.5f));
+
+        // 게임오브젝트 쪽에서 이미 1m 거리의 적을 골라 둔 상태를 흉내 낸다.
+        Entity best = Entity.Null;
+        float bestSqr = 1f;
+        EnemyWorldBridge.AccumulateEnemyInArc(Vector3.zero, Vector3.forward, 130f, ref best, ref bestSqr);
+
+        Assert.AreEqual(Entity.Null, best, "더 먼 엔티티가 이미 고른 것을 밀어내면 안 된다");
+    }
+
+    [Test]
+    public void 무게중심은_평균이_아니라_합과_개수로_넘어온다()
+    {
+        AddEnemyState(new float3(0f, 0f, 2f));
+        AddEnemyState(new float3(0f, 0f, 4f));
+        AddEnemyState(new float3(0f, 0f, 40f)); // 반경 밖
+
+        Vector3 sum = Vector3.zero;
+        int count = 0;
+        EnemyWorldBridge.AccumulateCentroidAround(Vector3.zero, 10f, ref sum, ref count);
+
+        // 합과 개수를 그대로 넘겨야 게임오브젝트 쪽 합과 섞어 하나의 무게중심을 낼 수 있다.
+        Assert.AreEqual(2, count);
+        Assert.AreEqual(6f, sum.z, 0.001f);
+    }
+
+    [Test]
+    public void 전선이_가장_가까운_적보다_먼저다()
+    {
+        Entity idle = AddEnemyState(new float3(0f, 0f, 3f));
+        Entity engaged = AddEnemyState(new float3(0f, 0f, 8f), targetAllyIndex: 0);
+
+        Entity engagedFound = Entity.Null;
+        Entity nearestFound = Entity.Null;
+        float engagedSqr = float.MaxValue;
+        float nearestSqr = float.MaxValue;
+        EnemyWorldBridge.AccumulateRallyCandidates(Vector3.zero,
+            ref engagedFound, ref engagedSqr, ref nearestFound, ref nearestSqr);
+
+        Assert.AreEqual(engaged, engagedFound, "누군가를 물고 있는 적이 곧 전선이다");
+        Assert.AreEqual(idle, nearestFound, "가장 가까운 적은 따로 남아 있어야 한다");
+    }
+
+    [Test]
+    public void 쓰러진_엔티티는_어느_질의에도_잡히지_않는다()
+    {
+        Entity entity = manager.CreateEntity();
+        EnemyWorldBridge.EnemyStates.Add(new EnemyWorldBridge.EnemyState
+        {
+            entity = entity,
+            position = new float3(0f, 0f, 1f),
+            forward = new float3(0f, 0f, 1f),
+            hp = 0,
+            maxHp = 100,
+            targetAllyIndex = 0,
+            action = EnemyActionKind.Dead,
+        });
+
+        Entity best = Entity.Null;
+        float bestSqr = 4f;
+        EnemyWorldBridge.AccumulateEnemyInArc(Vector3.zero, Vector3.forward, 130f, ref best, ref bestSqr);
+
+        Vector3 sum = Vector3.zero;
+        int count = 0;
+        EnemyWorldBridge.AccumulateCentroidAround(Vector3.zero, 10f, ref sum, ref count);
+
+        Assert.AreEqual(Entity.Null, best);
+        Assert.AreEqual(0, count);
     }
 }

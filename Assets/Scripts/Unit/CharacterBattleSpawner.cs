@@ -14,8 +14,12 @@ public class CharacterBattleSpawner : MonoBehaviour
 
     [Header("Enemy (Dummy)")]
     [Tooltip("적을 엔티티(DOTS)로 띄운다. 켜면 게임오브젝트 고블린 대신 EnemyHorde가 만든다.\n\n" +
-             "아직 기본값이 꺼짐인 이유는 렌더링이 없어서다 — 엔티티는 시뮬레이션은 돌지만 " +
-             "화면에 그려지지 않는다(EnemyAnimation 주석 참조). GPU 스키닝이 붙으면 켜면 된다.")]
+             "화면에 그려지는 것은 구워 놓은 애니메이션 한 벌이 있을 때뿐이다 — " +
+             "EnemyHordeSpawner의 Animation Library를 비워 두면 시뮬레이션만 돌고 아무것도 보이지 않는다. " +
+             "굽는 법은 고블린 프리팹을 고르고 메뉴에서 PickMeUp > 적 애니메이션 굽기.\n\n" +
+             "기본값이 꺼짐인 것은 게임오브젝트 경로를 아직 지우지 않았기 때문이다. " +
+             "그쪽은 Animator 이벤트로 피해가 들어가고 NavMesh로 길을 찾으므로 소수(수십 마리)에서 " +
+             "손보기 편하고, 엔티티 쪽은 그 수를 넘길 때 의미가 생긴다.")]
     [SerializeField] private bool useEntityEnemies;
     [Tooltip("엔티티 적의 수치. useEntityEnemies가 켜져 있을 때만 쓴다.")]
     [SerializeField] private EnemyHordeSpawner entityEnemySettings;

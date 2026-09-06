@@ -15,15 +15,26 @@ using UnityEngine;
 public class FleeBehavior : UnitBehavior
 {
     // 한 번 달리는 구간의 상한. 길이 막히거나 목적지에 닿지 못해도 여기서 끊고 다시 잡는다.
-    private const float MaxFleeDuration = 1.5f;
+    //
+    // 잡아 놓은 거리(survivalFleeDistance 12m)를 실제로 달릴 수 있어야 한다. 마법사의 질주가
+    // 4.66m/s이므로 12m에 2.6초가 걸리는데, 예전 값(1.5초)은 그 절반에서 끊었다. 끊길 때마다
+    // 방향을 다시 잡으므로 도착하지도 못한 채 매번 새 목적지로 꺾는 그림이 됐다.
+    private const float MaxFleeDuration = 3f;
 
     // 최소로 달아나는 시간. 이보다 일찍 안전해져도 이 시간까지는 돌아서지 않는다.
-    private const float MinFleeDuration = 0.35f;
+    //
+    // 회피(EvadeBehavior)의 0.35초를 그대로 가져다 썼던 값인데, 그쪽은 마주 본 채 한 발짝
+    // 물러나는 동작이라 짧아도 된다. 등을 보이고 달리는 이쪽에서 0.35초는 1.6m다 —
+    // 돌아서는 모션과 되돌아오는 모션이 곧바로 이어져 "달아나다 만" 것처럼 보인다.
+    private const float MinFleeDuration = 0.8f;
 
     private float stateTimer;
     private float fleeTimer;
     private Vector3 destination;
     private bool startFailed;
+
+    // 이번 도주의 첫 구간인가. 몸을 즉시 돌리는 것은 그때 한 번뿐이다.
+    private bool firstLeg;
 
     // 붙잡혀서 달아나는가(마법사), 아니면 HP가 바닥나서인가.
     // 이 값이 멈출 조건과 물러날 쪽을 함께 정한다.
@@ -41,6 +52,7 @@ public class FleeBehavior : UnitBehavior
 
     protected override void OnEnter()
     {
+        firstLeg = true;
         startFailed = !BeginLeg();
     }
 
@@ -87,9 +99,18 @@ public class FleeBehavior : UnitBehavior
 
         if (!unit.HasUsableTarget()) return false;
 
-        // 간격을 잃은 쪽을 먼저 본다. 둘 다 해당하면(붙잡힌 데다 HP까지 낮으면) 붙잡힌 것으로
-        // 친다 — 그때 필요한 것은 "쫓아오는 놈을 떼어내기"이고, 그게 곧 살아남는 길이다.
-        chasedOff = unit.Stats.fleeByRunning && unit.ShouldKeepDistance();
+        // 목숨이 걸렸으면 그쪽이 이긴다. 둘 다 해당해도(붙잡힌 데다 HP까지 낮아도) 마찬가지다.
+        //
+        // 예전에는 반대였다 — "붙잡힌 것"으로 쳐서 간격 후퇴의 방향 규칙을 그대로 썼는데,
+        // 그 규칙에는 전선 복귀가 들어 있다(GetSpacingRetreatDirection → IsSeparatedFromLine이면
+        // 아군 쪽). 그래서 죽어 가는 마법사가 등을 보이고 달아나는 대신 파티 쪽으로,
+        // 즉 적이 몰려 있는 쪽으로 되돌아 뛰었다. regroupDistance 주석이 "목숨이 걸린 후퇴에는
+        // 걸리지 않는다 — 그때는 전선을 등지고 멀리 달아나는 것이 맞다"고 적어 둔 규칙이
+        // 여기서만 깨져 있었다.
+        //
+        // 멈추는 조건까지 함께 넘어간다(StillPressured). HP가 임계 아래인 동안은 계속
+        // 참이므로, 쫓던 놈이 표적을 바꿨다고 해서 피가 바닥난 채 돌아서지 않는다.
+        chasedOff = !unit.ShouldRetreatForSurvival() && unit.Stats.fleeByRunning && unit.ShouldKeepDistance();
 
         // 가는 쪽을 보고 달린다. 그래야 달리기 모션과 실제 이동이 맞으므로 회전은 에이전트에게
         // 맡긴다. 여기서 코드가 회전을 가져가면 몸은 적을 향한 채 뒤로 달려 발이 그대로 미끄러진다.
@@ -121,10 +142,16 @@ public class FleeBehavior : UnitBehavior
         // 막힌 원래 방향이 계속 돌아와 같은 벽으로 다시 향한다.
         if (chasedOff) unit.CommitRetreatDirection(resolved);
 
-        // 출발하는 순간 몸을 가는 쪽으로 돌려 둔다. 그러지 않으면 에이전트가 서서히 도는 동안
+        // 등을 보이는 첫 순간에만 몸을 즉시 돌린다. 그러지 않으면 에이전트가 서서히 도는 동안
         // 달리기 모션은 앞으로 재생되는데 몸은 아직 옆이나 뒤로 밀려, 그 짧은 구간에 발이
-        // 눈에 띄게 미끄러진다(실측 -0.96). 어차피 등을 보이기로 한 참이라 서서히 돌 이유도 없다.
-        unit.SnapFacing(resolved);
+        // 눈에 띄게 미끄러진다(실측 -0.96). 돌아서기로 한 참이라 서서히 돌 이유도 없다.
+        //
+        // 다만 이어 달리는 구간에서는 스냅하지 않는다. 이미 등을 보이고 달리는 중이라
+        // 어긋남이 크지 않은데, 여기서 매번 즉시 회전을 걸면 방향이 조금만 바뀌어도 몸이
+        // 순간이동하듯 홱 돈다 — 달리는 도중에 그게 반복되는 것이 곧 "모션이 이상한" 그림이다.
+        // 이어지는 구간의 회전은 에이전트에게 맡긴다.
+        if (firstLeg) unit.SnapFacing(resolved);
+        firstLeg = false;
 
         // 떼어놓는 것이 목적이라 속도를 아낄 이유가 없다.
         unit.MoveTo(destination, unit.Stats.runSpeed);

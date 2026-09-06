@@ -20,6 +20,9 @@ public class StalkBehavior : UnitBehavior
     private Vector3 destination;
     private bool startFailed;
 
+    // 이번 빠지기가 스스로 끝났는가. 중간에 잘린 것과 구분해야 한다 — 아래 OnExit 참조.
+    private bool completed;
+
     public StalkBehavior(UnitController context) : base(context)
     {
     }
@@ -34,9 +37,7 @@ public class StalkBehavior : UnitBehavior
     {
         elapsed = 0f;
         startFailed = false;
-
-        // 다음 빠지기는 반드시 새 콤보 뒤에만 나온다(MarkStalkStarted 주석 참조).
-        unit.MarkStalkStarted();
+        completed = false;
 
         if (!unit.HasUsableTarget())
         {
@@ -70,9 +71,17 @@ public class StalkBehavior : UnitBehavior
 
     protected override BTStatus OnTick()
     {
-        if (startFailed) return BTStatus.Failure;
+        if (startFailed)
+        {
+            completed = true;
+            return BTStatus.Failure;
+        }
 
-        if (!unit.HasUsableTarget()) return BTStatus.Failure;
+        if (!unit.HasUsableTarget())
+        {
+            completed = true;
+            return BTStatus.Failure;
+        }
 
         unit.SetMoveAnimationFromGroundSpeed(true);
         elapsed += AnimationDeltaTime;
@@ -81,15 +90,34 @@ public class StalkBehavior : UnitBehavior
         if (elapsed < unit.Stats.stalkMinDuration) return BTStatus.Running;
 
         // 접촉이 끊겨 그림자에 들었다 — 이제 파고들 차례다. 여기가 이 동작의 목적이다.
-        if (unit.IsStealthed) return BTStatus.Success;
+        if (unit.IsStealthed)
+        {
+            completed = true;
+            return BTStatus.Success;
+        }
 
         // 목적지에 닿았는데도 못 숨었거나(적이 따라붙었다) 시간이 다 됐으면 그냥 돌아간다.
         // 계속 빠져 있어 봐야 아무것도 못 한다.
         if (elapsed >= unit.Stats.stalkMaxDuration || unit.HasReachedDestination(destination))
         {
+            completed = true;
             return BTStatus.Success;
         }
 
         return BTStatus.Running;
+    }
+
+    // 이번 콤보의 빠지기를 소진 처리한다 — 스스로 끝났을 때만이다.
+    //
+    // 예전에는 이걸 OnEnter에서 했다. 그래서 빠지는 도중에 한 대 맞으면(피격 리액션은 트리
+    // 위쪽 가지라 무엇이든 끊고 들어온다) 그 자리에서 빠지기 자격이 사라졌고, 리액션이 끝난
+    // 뒤 트리가 다시 고를 때 ShouldStalk이 거짓이라 곧바로 공격 가지로 떨어졌다 —
+    // 등을 보이고 물러나던 암살자가 반쯤 물러난 자리에서 홱 돌아 다시 덤벼드는 그림이 그것이다.
+    //
+    // 암살자는 파티에서 가장 많이 맞는 유닛이라(이 파일 첫 주석의 실측) 사실상 매번 그랬다.
+    // 잘린 빠지기는 아직 끝나지 않은 것으로 두면 리액션 뒤에 이어서 물러난다.
+    protected override void OnExit()
+    {
+        if (completed) unit.MarkStalkStarted();
     }
 }

@@ -1,7 +1,7 @@
 using NUnit.Framework;
 
 // 피해 계산은 밸런싱하면서 가장 자주 손대는 수식인데, 검증할 방법이 전투를 돌려 보는 것뿐이었다.
-// 경감이 겹쳤을 때 0이 되지 않는다는 규칙(전투가 끝나지 않는 것을 막는 안전장치)이 특히 중요하다.
+// 경감이 겹치는 순서(방어 → 상시)와, 완전 무효가 정말 0이 되는지가 특히 중요하다.
 public class UnitStatsTests
 {
     private static UnitStats NewStats(int maxHp = 100)
@@ -46,16 +46,47 @@ public class UnitStatsTests
     }
 
     [Test]
-    public void 경감이_아무리_높아도_유효타는_최소_1이_들어간다()
+    public void 완전히_막아내면_피해가_0이다()
     {
-        // 이 규칙이 없으면 단단한 유닛끼리 만났을 때 서로 0을 때려 전투가 영원히 끝나지 않는다.
+        // 탱커의 방패가 이 값이다(blockDamageReduction 1). 완벽하게 받아낸 한 대에 피가
+        // 깎이면 그 판단 자체가 무의미해진다.
+        //
+        // 교착에 빠지지 않는 이유는 강인도다 — 막은 타격도 강인도는 그대로 깎으므로 몇 번
+        // 막다 보면 가드가 뚫리고 몇 초를 통째로 무너진 채 서 있게 된다.
         UnitStats stats = NewStats();
-        stats.damageReduction = 0.9f;
         stats.blockDamageReduction = 1f;
 
-        stats.TakeDamage(1, true);
+        stats.TakeDamage(40, true);
 
-        Assert.AreEqual(99, stats.currentHp);
+        Assert.AreEqual(100, stats.currentHp);
+    }
+
+    [Test]
+    public void 경감으로_0이_된_타격은_0이_들어간다()
+    {
+        // 예전에는 여기에 "유효타는 최소 1" 하한이 있어 1이 들어갔다. 그 하한은 방어 쪽에서
+        // 이미 빠져 있었고(위 테스트), 같은 논리가 상시 경감에도 적용돼 걷어냈다.
+        // 완전 무효는 어디서 왔든 완전 무효다.
+        UnitStats stats = NewStats();
+        stats.damageReduction = 0.9f;
+
+        // 1 → 상시 90% → 반올림하면 0.
+        stats.TakeDamage(1);
+
+        Assert.AreEqual(100, stats.currentHp);
+    }
+
+    [Test]
+    public void 경감을_뚫는_타격은_그대로_남는다()
+    {
+        // 하한을 걷어냈다고 큰 타격까지 0이 되지는 않는다. 상시 경감은 0.9가 상한이므로
+        // 피해가 5 이상이면 반올림해도 반드시 1 이상이 남는다.
+        UnitStats stats = NewStats();
+        stats.damageReduction = 0.9f;
+
+        stats.TakeDamage(50);
+
+        Assert.AreEqual(95, stats.currentHp);
     }
 
     [Test]

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Unity.Entities;
 using UnityEngine;
 
 public static class UnitRegistry
@@ -341,13 +342,38 @@ public static class UnitRegistry
     // defender를 노리고 공격 모션을 휘두르는 중인 적대 유닛을 찾는다. defender의 CurrentTarget
     // 하나만 보지 않고 적대 팀 전체를 훑는다 — 여러 적에게 둘러싸이면 defender가 지금 맞서
     // 싸우는 상대가 아닌 다른 적이 휘두르는 경우가 흔한데, 그 공격도 막을 수 있어야 한다.
-    public static UnitController FindTelegraphingAttacker(UnitController defender)
+    public static TargetRef FindTelegraphingAttacker(UnitController defender)
     {
-        if (defender == null) return null;
+        if (defender == null) return TargetRef.None;
 
         GetHostileLists(defender.Team, out List<UnitController> first, out List<UnitController> second);
         UnitController found = FindTelegraphingAttackerInList(defender, first);
-        return found != null ? found : FindTelegraphingAttackerInList(defender, second);
+        if (found == null) found = FindTelegraphingAttackerInList(defender, second);
+        if (found != null) return found;
+
+        return FindTelegraphingEnemyEntity(defender);
+    }
+
+    // 준비 동작 중인 적은 이미 제 사거리 안까지 들어와 있다 — 엔티티 쪽은 사거리 밖에서 아예
+    // 칼을 들지 않는다(EnemySimulationSystems.CombatJob). 그래서 이 거리는 막을 상대를 고르는
+    // 조건이 아니라, 스냅샷이 한 프레임 낡았을 때를 위한 상한이다. 고블린의 사거리(1.2m)와
+    // 타격 여유(0.4m)를 넉넉히 덮는다.
+    private const float TelegraphReach = 4f;
+
+    private static TargetRef FindTelegraphingEnemyEntity(UnitController defender)
+    {
+        // 브리지가 겨눔을 아군 인덱스로 기록하므로, 스냅샷에 실리는 유닛만 물어볼 수 있다.
+        // 그 밖(적 팀, 중립)은 여기서 -1로 떨어져 게임오브젝트 쪽 결과만 쓰게 된다.
+        int allyIndex = EnemyWorldBridge.IndexOfAlly(defender);
+        if (allyIndex < 0) return TargetRef.None;
+
+        if (!EnemyWorldBridge.TryFindTelegraphingAttacker(allyIndex, defender.transform.position,
+                TelegraphReach, out int index))
+        {
+            return TargetRef.None;
+        }
+
+        return new TargetRef(EnemyWorldBridge.GetEnemy(index).entity);
     }
 
     private static UnitController FindTelegraphingAttackerInList(UnitController defender, List<UnitController> list)
@@ -371,16 +397,35 @@ public static class UnitRegistry
     // 공격자의 스윙 궤적(사거리 + 정면 부채꼴) 안에 있는 적을 하나 찾는다.
     // 노리던 상대가 스윙 도중 빠져나갔을 때 "그럼 눈앞에 있는 놈이 맞는다"를 위한 것 —
     // 실제로 칼을 휘두르면 표적으로 삼지 않은 상대도 베인다.
-    public static UnitController FindEnemyInArc(UnitController attacker, float reach, float arcAngle)
+    public static TargetRef FindEnemyInArc(UnitController attacker, float reach, float arcAngle)
     {
-        if (attacker == null) return null;
+        if (attacker == null) return TargetRef.None;
 
         GetHostileLists(attacker.Team, out List<UnitController> first, out List<UnitController> second);
-        UnitController found = FindEnemyInArcInList(attacker, first, reach, arcAngle);
-        return found != null ? found : FindEnemyInArcInList(attacker, second, reach, arcAngle);
+
+        // 최단거리를 하나만 들고 양쪽 세계를 이어서 훑는다. 세계마다 따로 고르면
+        // "궤적 안에 여럿이 있으면 가장 가까운 하나만 벤다"는 규칙이 둘로 쪼개진다.
+        float bestSqr = reach * reach;
+        UnitController best = null;
+        AccumulateEnemyInArc(attacker, first, arcAngle, ref best, ref bestSqr);
+        AccumulateEnemyInArc(attacker, second, arcAngle, ref best, ref bestSqr);
+
+        if (SeesEnemyEntities(attacker))
+        {
+            Entity entity = Entity.Null;
+            Transform t = attacker.transform;
+            EnemyWorldBridge.AccumulateEnemyInArc(t.position, t.forward, arcAngle, ref entity, ref bestSqr);
+
+            // 엔티티가 잡혔다면 위에서 고른 것보다 반드시 가깝다 — 같은 bestSqr를 이어받아
+            // 그보다 가까울 때만 덮었기 때문이다.
+            if (entity != Entity.Null) return new TargetRef(entity);
+        }
+
+        return best != null ? new TargetRef(best) : TargetRef.None;
     }
 
-    private static UnitController FindEnemyInArcInList(UnitController attacker, List<UnitController> list, float reach, float arcAngle)
+    private static void AccumulateEnemyInArc(UnitController attacker, List<UnitController> list, float arcAngle,
+        ref UnitController best, ref float bestSqrDistance)
     {
         Vector3 origin = attacker.transform.position;
         Vector3 forward = attacker.transform.forward;
@@ -389,13 +434,9 @@ public static class UnitRegistry
         if (hasForward) forward.Normalize();
 
         float minDot = Mathf.Cos(Mathf.Clamp(arcAngle * 0.5f, 0f, 180f) * Mathf.Deg2Rad);
-        float reachSqr = reach * reach;
 
         // 궤적 안에 여럿이 있으면 가장 가까운 하나만 벤다. 광역기가 아니라 스윙이므로
         // 전부에게 피해가 들어가면 난전에서 근접 유닛이 지나치게 강해진다.
-        float bestSqrDistance = reachSqr;
-        UnitController best = null;
-
         for (int i = list.Count - 1; i >= 0; i--)
         {
             UnitController candidate = list[i];
@@ -411,8 +452,6 @@ public static class UnitRegistry
             bestSqrDistance = sqrDistance;
             best = candidate;
         }
-
-        return best;
     }
 
     // 이미 그 적을 타깃으로 삼고 있는 attackerTeam 소속 유닛 수. 대상 선정에 편향을 줘서
@@ -579,6 +618,11 @@ public static class UnitRegistry
         AccumulateCentroid(requester, first, center, radius, ref sum, ref count);
         AccumulateCentroid(requester, second, center, radius, ref sum, ref count);
 
+        // 엔티티가 된 적도 같은 합에 더한다. 세계마다 무게중심을 따로 내서 둘을 다시 평균 내면
+        // 마리 수가 적은 쪽이 과대평가돼, 고블린 스무 마리를 등지고 게임오브젝트 하나 쪽으로
+        // 물러나는 그림이 나온다.
+        if (SeesEnemyEntities(requester)) EnemyWorldBridge.AccumulateCentroidAround(center, radius, ref sum, ref count);
+
         if (count == 0) return false;
 
         centroid = sum / count;
@@ -613,7 +657,12 @@ public static class UnitRegistry
         if (self == null) return false;
 
         GetHostileLists(self.Team, out List<UnitController> first, out List<UnitController> second);
-        return HasChaserInList(self, first, range) || HasChaserInList(self, second, range);
+        if (HasChaserInList(self, first, range) || HasChaserInList(self, second, range)) return true;
+
+        // 엔티티가 된 적도 함께 본다. 이게 없으면 원거리 유닛이 고블린 무리에게 쫓기는 동안
+        // "아무도 나를 안 쫓는다"고 읽고 달아나기를 멈춘다 — 그대로 붙잡힌다.
+        int allyIndex = EnemyWorldBridge.IndexOfAlly(self);
+        return allyIndex >= 0 && EnemyWorldBridge.HasEnemyChasing(allyIndex, self.transform.position, range);
     }
 
     private static bool HasChaserInList(UnitController self, List<UnitController> list, float range)
@@ -701,9 +750,9 @@ public static class UnitRegistry
     //
     // 아군이 이미 붙어 있는 적을 먼저 고른다 — 그 자리가 곧 전선이다.
     // 아무도 교전 중이 아니면(첫 진입, 또는 모두 놓친 뒤) 가장 가까운 적으로 떨어진다.
-    public static UnitController FindRallyEnemy(UnitController seeker)
+    public static TargetRef FindRallyEnemy(UnitController seeker)
     {
-        if (seeker == null) return null;
+        if (seeker == null) return TargetRef.None;
 
         GetHostileLists(seeker.Team, out List<UnitController> first, out List<UnitController> second);
 
@@ -715,7 +764,22 @@ public static class UnitRegistry
         AccumulateRallyCandidates(seeker, first, ref engaged, ref engagedSqr, ref nearest, ref nearestSqr);
         AccumulateRallyCandidates(seeker, second, ref engaged, ref engagedSqr, ref nearest, ref nearestSqr);
 
-        return engaged != null ? engaged : nearest;
+        // 거리도 같은 값을 이어받으므로, 엔티티가 잡혔다면 그쪽이 더 가까운 것이다.
+        Entity engagedEntity = Entity.Null;
+        Entity nearestEntity = Entity.Null;
+        if (SeesEnemyEntities(seeker))
+        {
+            EnemyWorldBridge.AccumulateRallyCandidates(seeker.transform.position,
+                ref engagedEntity, ref engagedSqr, ref nearestEntity, ref nearestSqr);
+        }
+
+        // 전선(이미 붙어 있는 적)이 먼저다. 두 세계를 통틀어 그런 적이 없을 때에만
+        // 가장 가까운 적으로 떨어진다 — 세계마다 따로 고르면 엔티티 쪽 전선이 있는데도
+        // 게임오브젝트 쪽 "가장 가까운 적"이 이겨 버린다.
+        if (engagedEntity != Entity.Null) return new TargetRef(engagedEntity);
+        if (engaged != null) return engaged;
+        if (nearestEntity != Entity.Null) return new TargetRef(nearestEntity);
+        return nearest != null ? new TargetRef(nearest) : TargetRef.None;
     }
 
     private static void AccumulateRallyCandidates(UnitController seeker, List<UnitController> list,
@@ -760,6 +824,21 @@ public static class UnitRegistry
             case UnitTeam.Enemy: return allies.Count > 0;
             default: return allies.Count > 0 || enemies.Count > 0 || EnemyWorldBridge.HasLivingEnemy();
         }
+    }
+
+    // 엔티티가 된 적을 함께 훑어야 하는 요청인가. 게임오브젝트끼리의 적대는 AreEnemies가 본다.
+    //
+    // 엔티티는 전부 Enemy 팀이다. 그래서 적대하는 쪽은 아군과 중립뿐이고, 게임오브젝트로
+    // 남은 적(프리팹에 직접 스탯을 넣는 고블린)에게는 같은 편이라 훑을 이유가 없다.
+    // 팀을 묻지 않고 브리지에 그냥 넘기면 그 고블린이 제 무리를 적으로 세어, 광역기 자리도
+    // 도망 방향도 전부 뒤집힌다.
+    //
+    // 방어와 카이팅 쪽(FindTelegraphingAttacker, HasEnemyChasing)은 이 검사를 쓰지 않는다.
+    // 그쪽은 브리지가 겨눔을 아군 인덱스로 기록하므로, 아군 스냅샷에 없는 유닛은 애초에
+    // 물어볼 방법이 없어서 -1로 떨어진다.
+    private static bool SeesEnemyEntities(UnitController requester)
+    {
+        return requester != null && requester.Team != UnitTeam.Enemy;
     }
 
     public static bool AreEnemies(UnitController a, UnitController b)

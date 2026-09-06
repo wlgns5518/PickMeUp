@@ -375,6 +375,93 @@ public static class EnemyWorldBridge
         return count;
     }
 
+    // ---------------------------------------------------------------- 두 세계를 함께 훑는 질의
+    //
+    // 아래 셋은 답 하나를 돌려주지 않고 진행 중인 계산에 제 몫을 더한다.
+    // 게임오브젝트로 남은 적과 엔티티가 된 적을 각자 따로 고른 뒤 합치면 규칙이 무너지기
+    // 때문이다 — 무게중심은 마리 수가 적은 쪽이 과대평가되고, "가장 가까운 하나"는 세계마다
+    // 하나씩 둘이 나온다. 그래서 UnitRegistry가 같은 누적값을 들고 양쪽을 이어서 훑는다.
+
+    // 어느 지점 둘레에 있는 적들의 자리를 합에 더한다(UnitRegistry.TryGetEnemyCentroidAround).
+    public static void AccumulateCentroidAround(Vector3 center, float radius, ref Vector3 sum, ref int count)
+    {
+        if (!IsReady) return;
+
+        float sqrRadius = radius * radius;
+        for (int i = 0; i < EnemyStates.Length; i++)
+        {
+            EnemyState enemy = EnemyStates[i];
+            if (!enemy.IsAlive) continue;
+
+            // 높이는 빼고 잰다. 게임오브젝트 쪽과 같은 규칙이어야 두 합이 섞인다.
+            float3 offset = enemy.position - (float3)center;
+            offset.y = 0f;
+            if (math.lengthsq(offset) > sqrRadius) continue;
+
+            sum += (Vector3)enemy.position;
+            count++;
+        }
+    }
+
+    // 스윙 궤적(사거리 + 정면 부채꼴) 안에서 가장 가까운 적 하나를 고른다.
+    // bestSqr에는 이미 지금까지의 최단거리가 들어 있고, 그보다 가까운 적을 찾았을 때만 덮는다
+    // (UnitRegistry.FindEnemyInArc).
+    public static void AccumulateEnemyInArc(Vector3 origin, Vector3 forward, float arcAngle,
+        ref Entity best, ref float bestSqr)
+    {
+        if (!IsReady) return;
+
+        float3 flatForward = new float3(forward.x, 0f, forward.z);
+        bool hasForward = math.lengthsq(flatForward) > 0.0001f;
+        if (hasForward) flatForward = math.normalize(flatForward);
+
+        float minDot = math.cos(math.radians(math.clamp(arcAngle * 0.5f, 0f, 180f)));
+
+        for (int i = 0; i < EnemyStates.Length; i++)
+        {
+            EnemyState enemy = EnemyStates[i];
+            if (!enemy.IsAlive) continue;
+
+            float3 toEnemy = enemy.position - (float3)origin;
+            toEnemy.y = 0f;
+
+            float sqr = math.lengthsq(toEnemy);
+            if (sqr > bestSqr || sqr <= 0.0001f) continue;
+            if (hasForward && math.dot(flatForward, toEnemy / math.sqrt(sqr)) < minDot) continue;
+
+            bestSqr = sqr;
+            best = enemy.entity;
+        }
+    }
+
+    // 시야에 적이 없을 때 걸어갈 자리의 후보. 이미 누군가와 붙어 있는 적(전선)이 먼저이고,
+    // 아무도 교전 중이 아니면 가장 가까운 적으로 떨어진다(UnitRegistry.FindRallyEnemy).
+    public static void AccumulateRallyCandidates(Vector3 from, ref Entity engaged, ref float engagedSqr,
+        ref Entity nearest, ref float nearestSqr)
+    {
+        if (!IsReady) return;
+
+        for (int i = 0; i < EnemyStates.Length; i++)
+        {
+            EnemyState enemy = EnemyStates[i];
+            if (!enemy.IsAlive) continue;
+
+            float sqr = math.distancesq(enemy.position, (float3)from);
+            if (sqr < nearestSqr)
+            {
+                nearestSqr = sqr;
+                nearest = enemy.entity;
+            }
+
+            // 이 적이 누군가를 물고 있는가. 그 자리가 곧 전선이다.
+            if (enemy.targetAllyIndex < 0) continue;
+            if (sqr >= engagedSqr) continue;
+
+            engagedSqr = sqr;
+            engaged = enemy.entity;
+        }
+    }
+
     // 나를 향해 칼을 들어올린 적. 아군의 방어 판단이 이걸 읽는다
     // (예전 UnitRegistry.FindTelegraphingAttacker).
     public static bool TryFindTelegraphingAttacker(int allyIndex, float3 allyPosition, float reach, out int index)

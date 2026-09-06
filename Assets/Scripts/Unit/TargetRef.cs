@@ -145,6 +145,21 @@ public readonly struct TargetRef : IEquatable<TargetRef>
     // 지금 방패를 들고 있는가. 고블린은 막지 않으므로(guardStyle None) 엔티티는 늘 거짓이다.
     public bool IsBlocking => IsUnit && Unit.IsBlocking;
 
+    // 칼을 들어올렸는가. 아군의 방어 판단이 이 값 하나에 걸려 있다.
+    //
+    // 두 세계가 재는 방식은 다르다 — 엔티티는 준비 동작이 곧 하나의 구간이고
+    // (EnemyActionKind.Windup), 게임오브젝트는 공격 클립 안에서 아직 내지르기 전인 구간이다.
+    // 아군에게 열리는 창이라는 뜻은 같으므로 여기서 하나로 묶는다.
+    public bool IsTelegraphing
+    {
+        get
+        {
+            if (IsUnit) return Unit.IsTelegraphing;
+            if (IsEntity && EnemyWorldBridge.TryGetEnemy(Entity, out var state)) return state.IsTelegraphing;
+            return false;
+        }
+    }
+
     public bool IsStaggered
     {
         get

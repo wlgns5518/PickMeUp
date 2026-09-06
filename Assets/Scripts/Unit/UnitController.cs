@@ -187,7 +187,8 @@ public partial class UnitController : MonoBehaviour
     private UnitController healTarget;
     // 영창을 시작할 때 잠가 둔 대상. 완성(CompleteHeal)은 이쪽만 본다 — BeginHealCast 주석 참조.
     private UnitController castHealTarget;
-    private UnitController blockThreat;
+    // 막을 상대. 엔티티일 수도 있으므로 참조가 아니라 손잡이다.
+    private TargetRef blockThreat;
     private float attackLockedUntil;
     private float poiseImmuneUntil;
     private bool pendingIsComboFinisher;
@@ -1181,7 +1182,7 @@ public partial class UnitController : MonoBehaviour
     // 여기서는 이미 알아채고 반응까지 끝난 위협이 있는지만 확인한다.
     public bool CanBlock()
     {
-        blockThreat = null;
+        blockThreat = TargetRef.None;
         if (!CanEverBlock()) return false;
         if (!HasReactedToThreat) return false;
 
@@ -1204,7 +1205,7 @@ public partial class UnitController : MonoBehaviour
     public bool RefreshBlockThreat()
     {
         blockThreat = UnitRegistry.FindTelegraphingAttacker(this);
-        return blockThreat != null;
+        return blockThreat.Exists;
     }
 
     // 등 뒤를 잡혔는가를 가르는 정면 반구(180도). 이건 몸의 앞뒤이므로 직군과 무관하게 고정이다 —
@@ -1301,16 +1302,35 @@ public partial class UnitController : MonoBehaviour
     // 넉넉히 떼어놓고 멈춰야 돌아와서 실제로 영창을 시작할 여유가 생긴다.
     private const float ChaseEscapeRatio = 2.5f;
 
+    // 쫓는 놈이 잠깐 안 보여도 곧바로 멈추지 않는 유예. 방어 쪽의 AlertGrace와 같은 장치다.
+    //
+    // 이게 없으면 "그 적이 나를 타깃으로 들고 있는가"가 프레임마다 뒤집힌다. 적은 제 주기마다
+    // 표적을 다시 고르고(TargetScanner / EnemyTargetingSystem), 그 사이사이 아무도 나를 물지
+    // 않는 순간이 끼어든다. 그때마다 도주가 그 자리에서 끝나 버리므로, 달아나다 멈춰 서서
+    // 돌아보고 다시 달아나는 그림이 된다 — 실제로 떨어진 거리는 얼마 되지 않는데도.
+    //
+    // 고블린이 4.0m/s로 꾸준히 쫓아오고 마법사가 4.66m/s로 달아나므로 벌어지는 속도는
+    // 0.66m/s뿐이다. 유예 없이 한 번 끊기면 그때까지 번 거리를 통째로 잃는다.
+    private const float ChaseGrace = 0.6f;
+    private float chaseGraceUntil = -999f;
+
     // 나를 노리고 쫓아오는 적이 아직 붙어 있는가. 달아나기(fleeByRunning)를 계속할지 정한다.
     //
     // 거리만 보지 않고 "그 적이 나를 타깃으로 들고 있는가"까지 본다. 쫓아오던 놈이 표적을
-    // 바꾸면(탱커가 도발로 끌어갔거나 다른 아군을 물었으면) 그 순간 도망칠 이유가 사라진다.
+    // 바꾸면(탱커가 도발로 끌어갔거나 다른 아군을 물었으면) 도망칠 이유가 사라진다 —
+    // 다만 그 판단은 위 유예를 지나고 나서야 내린다.
     public bool IsBeingChased()
     {
         float threshold = KeepDistanceThreshold;
         if (threshold <= 0f) return false;
 
-        return UnitRegistry.HasEnemyChasing(this, threshold * ChaseEscapeRatio);
+        if (UnitRegistry.HasEnemyChasing(this, threshold * ChaseEscapeRatio))
+        {
+            chaseGraceUntil = Time.time + ChaseGrace;
+            return true;
+        }
+
+        return Time.time < chaseGraceUntil;
     }
 
     // 전선에서 떨어져 나왔는가. 프레임당 한 번만 재고 그 답을 재사용한다 —
@@ -1582,7 +1602,10 @@ public partial class UnitController : MonoBehaviour
         // (이 한 대로 은신은 풀린다 — 아래에서 BreakStealth를 부른다.)
         if (IsStealthed) damageMultiplier *= stats.stealthDamageMultiplier;
 
-        int incoming = damage > 0 ? Mathf.Max(1, Mathf.RoundToInt(damage * damageMultiplier)) : damage;
+        // 배율이 아무리 낮아도 1은 들어가던 하한을 걷어냈다(UnitStats.TakeDamage 주석 참조).
+        // 그림자 속에서 겨눠 맞힌 스치는 한 대가 0이 될 수 있다 — 그게 은신이 몸으로 버티지
+        // 않고도 사는 방식이고, 배율을 낮게 잡아 둔 뜻이기도 하다.
+        int incoming = damage > 0 ? Mathf.RoundToInt(damage * damageMultiplier) : damage;
 
         int hpBefore = stats.currentHp;
         stats.TakeDamage(incoming, wasBlocking);
@@ -2260,12 +2283,107 @@ public partial class UnitController : MonoBehaviour
     // 그림의 절반이 이것이다. EvadeBehavior가 후퇴 모션에 같은 보정을 이미 쓰고 있다.
     //
     // 이동 모션을 재생하는 표준 경로. 이동 중인 상태는 전부 이것만 부르면 된다.
+    // ---------------------------------------------------------------- 속도에 맞는 보행 고르기
+    //
+    // 질주 클립 하나로 전 구간을 덮으면 느린 구간에서 다리가 헛돈다. 배속 하한이 0.6이라
+    // 질주 클립(4.2m/s)은 아무리 눌러도 2.5m/s만큼 다리를 젓는데, 실제로는 그보다 훨씬
+    // 느리게 기어가는 구간이 많다 — 실측으로 크게 어긋난 프레임의 73%가 이 경우였다.
+    //
+    // 하한을 낮추는 것은 답이 아니다. 그러면 이번엔 질주가 슬로모션으로 돌아간다.
+    // 대신 클립을 바꾼다: 빠르면 질주, 느리면 걷기, 사실상 멈췄으면 대기.
+
+    // 질주와 걷기가 갈리는 속도. 두 클립의 배속이 똑같이 1에서 멀어지는 지점이라
+    // 어느 쪽으로 가도 손해가 같다(기하평균).
+    private float RunWalkCrossoverSpeed =>
+        hasWalkAnimationState ? Mathf.Sqrt(Mathf.Max(0.01f, walkClipSpeed * runClipSpeed)) : 0f;
+
+    private bool ShouldRunAtGroundSpeed(float groundSpeed) => groundSpeed >= RunWalkCrossoverSpeed;
+
+    // 사실상 멈춰 있는 구간. 여기서 이동 클립을 계속 돌리면 제자리 뜀박질이 된다.
+    //
+    // 들어가는 문턱과 나오는 문턱을 다르게 두고 짧은 지연까지 붙인 이유는, 예전에 이 자리에서
+    // 겪은 깜빡임 때문이다 — 막혔다 풀렸다 하는 유닛이 달리기와 대기 사이를 프레임마다
+    // 오갔다. 그래서 예전에는 속도에 0.05 바닥을 깔아 아예 대기로 못 가게 막아 뒀는데,
+    // 그게 곧 제자리 뜀박질의 원인이었다. 막는 대신 문턱을 벌린다.
+    private const float MoveIdleEnterSpeed = 0.3f;
+    private const float MoveIdleExitSpeed = 0.6f;
+    private const float MoveIdleDelay = 0.15f;
+    private float belowMoveIdleSince = -1f;
+    private bool moveIdleLatched;
+
+    private bool TryPlayMoveIdle(float groundSpeed)
+    {
+        if (groundSpeed >= MoveIdleExitSpeed)
+        {
+            moveIdleLatched = false;
+            belowMoveIdleSince = -1f;
+            return false;
+        }
+
+        if (!moveIdleLatched)
+        {
+            if (groundSpeed > MoveIdleEnterSpeed)
+            {
+                belowMoveIdleSince = -1f;
+                return false;
+            }
+
+            if (belowMoveIdleSince < 0f) belowMoveIdleSince = Time.time;
+            if (Time.time - belowMoveIdleSince < MoveIdleDelay) return false;
+
+            moveIdleLatched = true;
+        }
+
+        // 교전 중이면 칼을 든 자세로 선다. 순찰 중에 그 자세로 서 있으면 어색하므로
+        // 겨누는 상대가 있을 때만이다(PlayCombatIdle 주석과 같은 이유).
+        if (CurrentTarget.Exists) PlayCombatIdle();
+        else PlayAnimation(idleAnimationHash, false);
+        return true;
+    }
+
     public void SetMoveAnimationFromGroundSpeed(bool isRunning)
     {
-        // 0으로 떨어지면 SetMoveAnimation이 대기 자세로 보내 버려, 막혔다 풀렸다 하는
-        // 유닛의 모션이 달리기와 대기 사이에서 깜빡인다. 아주 작은 값으로 바닥을 깐다
-        // (배속 하한은 moveSpeedMultiplierRange가 어차피 잡는다).
-        SetMoveAnimation(Mathf.Max(CurrentMoveSpeed, 0.05f), isRunning, false);
+        float ground = CurrentMoveSpeed;
+        if (TryPlayMoveIdle(ground)) return;
+
+        SetMoveAnimation(Mathf.Max(ground, 0.05f), isRunning && ShouldRunAtGroundSpeed(ground), false);
+    }
+
+    // 실제로 나아가는 쪽에 맞는 다리를 고른다. 앞이면 달리기, 옆이나 뒤면 그 방향 클립.
+    //
+    // 몸과 진행방향은 완전히 맞출 수 없다. NavMeshAgent는 회전과 이동을 따로 돌리고
+    // (angularSpeed와 speed가 서로 무관하다), 목적지는 상대가 움직이고 지역 회피가 밀 때마다
+    // 방향이 바뀐다. 실측으로 추격 중 이동 프레임의 13%가 진행방향과 45도 이상 어긋났고,
+    // 몸을 즉시 돌리는 것도(SnapFacing) 속도를 누르는 것도(회전이 그만큼 빨라지지 않는다)
+    // 그 수치를 낮추지 못했다.
+    //
+    // 그래서 몸을 속도에 맞추는 대신 클립을 속도에 맞춘다. 어긋난 그 구간이 옆걸음·뒷걸음으로
+    // 재생되면 발이 땅을 딛고, 몸이 조금 어긋나 있는 것은 오히려 자연스러운 그림이 된다.
+    // 교전 발놀림이 이미 같은 방식으로 클립을 고른다(PlayFootworkAnimation).
+    public void SetDirectionalMoveAnimationFromGroundSpeed()
+    {
+        float speed = CurrentMoveSpeed;
+
+        // 사실상 멈췄으면 방향을 물어봐야 의미가 없다.
+        if (TryPlayMoveIdle(speed)) return;
+
+        if (agent == null || !agent.enabled)
+        {
+            SetMoveAnimationFromGroundSpeed(true);
+            return;
+        }
+
+        Vector3 move = agent.velocity;
+        move.y = 0f;
+        Vector3 forward = transform.forward;
+        forward.y = 0f;
+        if (move.sqrMagnitude <= 0.0001f || forward.sqrMagnitude <= 0.0001f)
+        {
+            SetMoveAnimationFromGroundSpeed(true);
+            return;
+        }
+
+        PlayMoveAnimationForDirection(move.normalized, forward.normalized, speed, ShouldRunAtGroundSpeed(speed));
     }
 
     public void FaceTarget() => FaceDirection(CurrentTarget, rotationSpeed);
@@ -2496,6 +2614,11 @@ public partial class UnitController : MonoBehaviour
     // 감정과 둔화가 걸린 값을 다시 계산해 에이전트에 밀어 넣는다.
     // 둘 중 하나가 바뀌는 순간에만 부르면 되므로 매 프레임 계산하지 않는다.
     private void RefreshAgentSpeed() => ApplyAgentSpeed(requestedAgentSpeed);
+
+    // 회전이 따라잡을 때까지 속도를 눌러 보는 안을 실측했다가 걷어냈다. 도움이 되지 않는다 —
+    // 에이전트의 회전 속도는 이동 속도와 무관해서(angularSpeed), 느리게 가면 회전이 빨리
+    // 끝나는 것이 아니라 어긋난 채로 더 오래 갈 뿐이다.
+    // (실측: 미끄러짐 지수가 0.218에서 0.259로 오히려 나빠졌다.)
 
     private float EmotionMultiplier => emotion != null ? emotion.StatMultiplier : 1f;
 

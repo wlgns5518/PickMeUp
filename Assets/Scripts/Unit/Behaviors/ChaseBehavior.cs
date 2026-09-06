@@ -19,6 +19,9 @@ public class ChaseBehavior : UnitBehavior
     private float stalledTimer;
     private float waitTimer;
 
+    // 가는 쪽을 보고 달리는 중인가. 파고드는 접근에서만 참이다(아래 OnTick 주석).
+    private bool facingTravel;
+
     public ChaseBehavior(UnitController context) : base(context)
     {
     }
@@ -33,6 +36,9 @@ public class ChaseBehavior : UnitBehavior
     {
         // 예측 위치로 달리면서 상대를 본다 — 그 둘이 어긋나므로 회전은 코드가 잡는다.
         unit.SetCodeDrivenFacing(true);
+        facingTravel = false;
+        // 이번 접근의 파고들 방위를 새로 고르게 한다(GetEngageDestination 주석 참조).
+        unit.ClearEngageBearing();
         // 0으로 두어 이번 틱에 곧바로 길을 잡게 한다. 남겨 두면 첫 간격만큼 목적지 없이 서 있다.
         destinationTimer = 0f;
         stalledTimer = 0f;
@@ -41,7 +47,7 @@ public class ChaseBehavior : UnitBehavior
 
     protected override BTStatus OnTick()
     {
-        unit.FaceTarget();
+        TickFacing();
 
         // 자리가 나기를 기다리는 중. 이 동안은 목적지를 잡지 않는다 —
         // 여기서 다시 SetDestination을 걸면 곧바로 앞줄을 다시 밀기 시작한다.
@@ -61,8 +67,50 @@ public class ChaseBehavior : UnitBehavior
         // 이번 프레임에 멈춰 섰으면 방금 잡은 전투 대기 자세를 달리기로 덮지 않는다.
         if (TickStall()) return BTStatus.Running;
 
-        unit.SetMoveAnimationFromGroundSpeed(true);
+        // 실제로 나아가는 쪽에 맞는 다리를 고른다. 몸이 진행방향을 못 따라잡는 구간이
+        // 남아 있는데, 거기서 앞으로 달리는 클립을 쓰면 그대로 미끄러진다
+        // (SetDirectionalMoveAnimationFromGroundSpeed 주석 참조).
+        unit.SetDirectionalMoveAnimationFromGroundSpeed();
         return BTStatus.Running;
+    }
+
+    // 몸을 어느 쪽으로 둘 것인가. 곧장 달려드는 접근과 돌아 들어가는 접근이 다르다.
+    //
+    // 곧장 들어갈 때는 상대를 본다. 목적지가 상대의 발밑이라 가는 쪽과 보는 쪽이 거의 같고,
+    // 예측 위치로 달리면서 상대를 겨누는 그림이 맞다.
+    //
+    // 파고들 때는 그럴 수 없다. 목적지가 상대의 옆이나 등 뒤라 가는 쪽과 보는 쪽이 갈라지는데,
+    // 재생되는 것은 앞으로 달리는 클립 하나뿐이다. 암살자(engageAngle 180도)에서 그 어긋남이
+    // 정확히 180도가 되어, 상대를 마주 본 채 등 뒤로 미끄러지는 — 앞으로 달리는 모션인데
+    // 몸은 뒤로 가는 — 그림이 나온다. 검사(55도)와 창수(28도)는 덜하지만 같은 종류의 어긋남이다.
+    //
+    // 그래서 파고드는 동안은 가는 쪽을 보고 달린다. 사각지대로 돌아 들어가는 사람은 상대를
+    // 노려보며 게걸음치지 않는다. 사거리에 들어서면 공격 동작이 다시 회전을 가져가 상대를
+    // 마주 본다(AttackBehavior.OnEnter).
+    //
+    // 한 번 돌아 들어가기로 했으면 이 접근이 끝날 때까지 유지한다. HasEngagePreference는
+    // 상대가 나를 보는 순간 거짓이 되는데, 적이 제 주기마다 표적을 다시 고르므로 그대로 두면
+    // 몸의 주도권이 프레임마다 오가며 홱홱 돈다.
+    private void TickFacing()
+    {
+        if (!facingTravel) unit.FaceTarget();
+    }
+
+    // 회전 주도권을 에이전트에게 넘긴다.
+    //
+    // 여기서 몸을 즉시 돌려서는 안 된다. 도주와 빠지기는 직전에 StopMovement로 속도가 0이라
+    // 스냅해도 안전하지만, 추격은 이미 전속력으로 달리는 중에 들어올 수 있다 —
+    // 그 상태로 180도를 스냅하면 몸만 돌고 에이전트에는 이전 방향의 속도가 그대로 남아,
+    // 감속하는 0.2초 동안 그림이 통째로 역주행이 된다.
+    // (실측: 스냅을 넣었더니 dotV가 -0.96까지 떨어지고 어긋난 프레임이 9.2%에서 19.6%로 늘었다.)
+    //
+    // 몸은 에이전트가 제 속도에 맞춰 돌린다. 회전은 720도/초라 따라잡는 데 오래 걸리지 않는다.
+    private void BeginTravelFacing()
+    {
+        if (facingTravel) return;
+
+        facingTravel = true;
+        unit.SetCodeDrivenFacing(false);
     }
 
     // 앞이 막혀 더 갈 수 없는데도 계속 밀어붙이면, 지역 회피가 매 프레임 되밀어 그 자리에서 떤다.
@@ -128,6 +176,9 @@ public class ChaseBehavior : UnitBehavior
         // 사거리 안에 드는 자리만 후보라, 고지를 찾다 전선에서 떨어져 나가지는 않는다.
         Vector3 highGround;
         if (unit.TryFindHighGround(destination, out highGround)) destination = highGround;
+
+        // 돌아 들어가기로 했으면 몸의 주도권을 에이전트에게 넘긴다(BeginTravelFacing 주석 참조).
+        if (flanking) BeginTravelFacing();
 
         // 파고드는 자리로 갈 때는 그 지점까지 실제로 걸어가야 한다. 여기에 standoff를 다시
         // 걸면 목표에서 한 번 더 물러난 자리에 서게 되어 영영 사거리에 닿지 못한다.

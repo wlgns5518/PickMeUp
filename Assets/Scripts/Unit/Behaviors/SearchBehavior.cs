@@ -38,10 +38,10 @@ public class SearchBehavior : UnitBehavior
     // 다시 잡는다 — 목적지를 한 번 찍고 마는 것이라 상대가 움직여도 따라붙는 비용이 들지 않는다.
     private bool TryJoinFight()
     {
-        UnitController rally = UnitRegistry.FindRallyEnemy(unit);
-        if (rally == null) return false;
+        TargetRef rally = UnitRegistry.FindRallyEnemy(unit);
+        if (!rally.Exists) return false;
 
-        unit.SetMoveDestination(rally.transform.position);
+        unit.SetMoveDestination(rally.Position);
         return true;
     }
 }
