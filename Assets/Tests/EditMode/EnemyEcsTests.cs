@@ -673,4 +673,40 @@ public class EnemyEcsTests
         Assert.AreEqual(Entity.Null, best);
         Assert.AreEqual(0, count);
     }
+
+    // 생존 여부는 스냅샷을 훑지 않고 표를 세울 때 함께 센 수로 답한다.
+    //
+    // 그 수가 전투를 새로 열 때 초기화되지 않으면 아무도 없는 맵에서 참이 나오고,
+    // 아군 전원이 없는 적을 찾아 헤매다 전투가 끝나지 않는다. 실제로 그렇게 났던 자리다.
+    [Test]
+    public void 생존_여부는_훑지_않고_답한다()
+    {
+        Assert.IsFalse(EnemyWorldBridge.HasLivingEnemy(), "아무도 없으면 거짓이다.");
+
+        AddDeadEnemyState(new float3(3f, 0f, 3f));
+        EnemyWorldBridge.RebuildEnemyIndex();
+        Assert.IsFalse(EnemyWorldBridge.HasLivingEnemy(), "시체만 있으면 거짓이다.");
+
+        AddEnemyState(new float3(5f, 0f, 5f));
+        EnemyWorldBridge.RebuildEnemyIndex();
+        Assert.IsTrue(EnemyWorldBridge.HasLivingEnemy());
+    }
+
+    private void AddDeadEnemyState(float3 position)
+    {
+        Entity entity = manager.CreateEntity();
+        EnemyWorldBridge.EnemyStates.Add(new EnemyWorldBridge.EnemyState
+        {
+            entity = entity,
+            position = position,
+            forward = new float3(0f, 0f, 1f),
+            radius = 0.5f,
+            hp = 0,
+            maxHp = 100,
+            poise = 0f,
+            threatWeight = 1f,
+            targetAllyIndex = EnemyTarget.None,
+            action = EnemyActionKind.Dead,
+        });
+    }
 }

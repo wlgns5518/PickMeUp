@@ -192,7 +192,20 @@ public static class EnemyWorldBridge
         HitsOnEnemies = new NativeQueue<HitOnEnemy>(Allocator.Persistent);
         Kills = new NativeQueue<EnemyKill>(Allocator.Persistent);
         BloodOnEnemies = new NativeQueue<BloodOnEnemy>(Allocator.Persistent);
+        ClearSnapshotLookups();
         IsReady = true;
+    }
+
+    // 스냅샷에서 파생된 표들. 스냅샷과 함께 살고 죽어야 한다.
+    //
+    // 특히 생존 수가 그렇다. 전투를 닫았다 새로 여는 사이에 지난 판의 값이 남아 있으면
+    // HasLivingEnemy가 아무도 없는 맵에서 참을 돌려준다 — 아군 전원이 없는 적을 찾아
+    // 헤매고 전투가 끝나지 않는다(UnitRegistry.ResetOnPlay가 같은 이유로 있다).
+    private static void ClearSnapshotLookups()
+    {
+        IndexByEntity.Clear();
+        AllyAttackersByEntity.Clear();
+        aliveEnemyCount = 0;
     }
 
     public static void Dispose()
@@ -208,6 +221,7 @@ public static class EnemyWorldBridge
 
         AllyByIndex.Clear();
         IndexByAlly.Clear();
+        ClearSnapshotLookups();
         IsReady = false;
     }
 
@@ -272,13 +286,22 @@ public static class EnemyWorldBridge
 
     public static EnemyState GetEnemy(int index) => EnemyStates[index];
 
+    // 살아 있는 적 수. 아래 루프가 어차피 전부 도는 김에 함께 센다.
+    private static int aliveEnemyCount;
+
     // 적 스냅샷을 다 채운 뒤 부른다. 손잡이로 찾을 수 있게 표를 다시 세운다.
     public static void RebuildEnemyIndex()
     {
         IndexByEntity.Clear();
+        aliveEnemyCount = 0;
         if (!IsReady) return;
 
-        for (int i = 0; i < EnemyStates.Length; i++) IndexByEntity[EnemyStates[i].entity] = i;
+        for (int i = 0; i < EnemyStates.Length; i++)
+        {
+            EnemyState enemy = EnemyStates[i];
+            IndexByEntity[enemy.entity] = i;
+            if (enemy.IsAlive) aliveEnemyCount++;
+        }
     }
 
     // 손잡이로 이번 프레임의 상태를 푼다. 이미 지워진 엔티티면 거짓.
@@ -326,17 +349,8 @@ public static class EnemyWorldBridge
         }
     }
 
-    public static bool HasLivingEnemy()
-    {
-        if (!IsReady) return false;
-
-        for (int i = 0; i < EnemyStates.Length; i++)
-        {
-            if (EnemyStates[i].IsAlive) return true;
-        }
-
-        return false;
-    }
+    // 표를 세울 때 함께 센 값이라 훑지 않는다. 겨눌 상대가 없는 아군이 매 틱 묻는 질문이다.
+    public static bool HasLivingEnemy() => IsReady && aliveEnemyCount > 0;
 
     // 가장 가까운 적. 시야 판정(레이캐스트)은 부르는 쪽이 후보를 받고 나서 한다 —
     // 여기서 매번 쏘면 1000마리에서 그대로 무너진다.
