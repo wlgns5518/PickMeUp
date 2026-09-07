@@ -324,4 +324,35 @@ public class BehaviorTreeTests
         Assert.AreEqual(BTStatus.Failure, selector.Tick());
         Assert.AreEqual(new[] { "A.Enter", "A.Tick", "A.Exit" }, log.ToArray());
     }
+
+    // RunningChildLocked는 FindRunningLeaf로 잎까지 걸어 내려가는 것을 대신한다.
+    // 둘이 같은 답을 준다는 것이 이 최적화의 전제이므로 여기서 못 박는다.
+    [Test]
+    public void 잠긴_갈래를_잎까지_걷지_않고도_알아낸다()
+    {
+        var committed = new Committed(ctx, "Committed", log);
+        var plain = new Recording(ctx, "Plain", log);
+        bool useCommitted = true;
+
+        var selector = new BTSelector<Ctx>(ctx, true,
+            Guard(() => useCommitted, committed),
+            Guard(() => true, plain));
+
+        Assert.IsFalse(selector.RunningChildLocked, "아무것도 돌지 않을 때는 잠긴 것도 없다.");
+
+        selector.Tick();
+
+        Assert.IsTrue(selector.RunningChildLocked);
+        Assert.IsFalse(selector.FindRunningLeaf().AllowsReprioritize,
+            "잎까지 걸어 내려가 물어도 같은 답이어야 한다.");
+
+        // 잠그지 않은 갈래로 갈아타면 둘 다 반대로 뒤집힌다.
+        committed.Result = BTStatus.Success;
+        selector.Tick();
+        useCommitted = false;
+        selector.Tick();
+
+        Assert.IsFalse(selector.RunningChildLocked);
+        Assert.IsTrue(selector.FindRunningLeaf().AllowsReprioritize);
+    }
 }

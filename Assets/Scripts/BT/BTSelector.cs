@@ -24,6 +24,13 @@ public class BTSelector<TContext> : BTNode<TContext>
 
     public override BTNode<TContext> FindRunningLeaf() => running != null ? running.FindRunningLeaf() : null;
 
+    // 돌고 있는 갈래가 스스로 잠갔는가.
+    //
+    // FindRunningLeaf로 잎까지 걸어 내려간 뒤 그 잎에게 묻는 것과 답이 같다 —
+    // BTGuard.AllowsReprioritize가 자식에게 그대로 위임하므로, 중간 노드에게 물어도
+    // 결국 같은 잎이 답한다. 매 틱 도는 검사라 세 단을 다시 걷지 않는 쪽을 쓴다.
+    public bool RunningChildLocked => running != null && !running.AllowsReprioritize;
+
     protected override BTStatus OnTick()
     {
         int start = 0;

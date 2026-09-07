@@ -76,6 +76,12 @@ public static class UnitBehaviorTree
             Guard(unit, () => IsActionBlocked(unit), new PanicBehavior(unit)),
             Guard(unit, () => unit.HasPendingStagger, new StaggerBehavior(unit), true),
             Guard(unit, () => unit.HasPendingHitReaction, new HitBehavior(unit), true),
+            // 셋이 CanTendSelf를 각자 다시 묻는다. 한 번 가지 하나로 묶어 봤는데
+            // (바깥 가드 하나 + 안쪽 셀렉터) 재 보니 손해였다 — 검사는 3번에서 1번이 되지만
+            // 트리가 한 단 깊어져서, 가장 흔한 두 상황에서 오히려 느려졌다:
+            // 손이 비었는데 셋 다 안 쓸 때 +43%, 회복약을 마시는 중에 +58%
+            // (BehaviorTreeBenchmark.공유_전제를_묶은_것이_이득인지_잰다).
+            // 검사 넷은 전부 필드 읽기라 노드 하나 더 타는 값보다 싸다.
             Guard(unit, () => CanTendSelf(unit) && unit.CanUsePotion(), new PotionBehavior(unit), true),
             Guard(unit, () => CanTendSelf(unit) && unit.CanHealAlly(), new HealBehavior(unit), true),
             Guard(unit, () => CanTendSelf(unit) && unit.CanShieldAlly(), new ShieldBehavior(unit), true),
@@ -126,7 +132,7 @@ public static class UnitBehaviorTree
     // 곧바로 다시 훑는다(예전 ChaseState.TryRefreshTarget). 순찰 중에는 이 즉시 탐색을
     // 하지 않는다. 시야·거리·레이캐스트를 전부 도는 전면 탐색이라, 상대가 없는 유닛 전원이
     // 매 프레임 돌리면 유닛 수의 제곱으로 비용이 커진다(TargetScanner 주석).
-    private static bool HasEngagement(UnitController unit, BTNode<UnitController> engage)
+    private static bool HasEngagement(UnitController unit, BTSelector<UnitController> engage)
     {
         // 이미 나간 스윙은 상대가 쓰러져도 끝까지 휘두른다. 여기서 끊으면 칼을 반쯤 휘두르다
         // 달리기로 튄다 — 무기가 무거울수록 더 눈에 띈다(도끼는 1.67초짜리다).
@@ -141,8 +147,7 @@ public static class UnitBehaviorTree
         // 읽는 쪽이 싸다) 그렇게 하면 안 된다 — HasUsableTarget은 순수 판정이 아니라 표적이
         // 쓸 수 없으면 그 자리에서 ClearTarget을 부른다. 앞으로 옮기면 매달리는 스킬이
         // 도는 도중에 표적이 지워져 UpdateCling이 붙잡을 목을 잃는다.
-        BTNode<UnitController> leaf = engage.FindRunningLeaf();
-        if (leaf != null && !leaf.AllowsReprioritize) return true;
+        if (engage.RunningChildLocked) return true;
 
         if (unit.HasUsableTarget()) return true;
 

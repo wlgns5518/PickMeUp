@@ -958,27 +958,39 @@ public partial class UnitController : MonoBehaviour
 
     public bool CanUseSkill()
     {
-        return skillAnimationHash != 0 &&
-               // 이번 전투에 쓸 몫이 남았는가. 쿨다운과는 다른 질문이다 — 쿨다운은 "얼마나 자주",
-               // 이쪽은 "이번 판에 몇 번이나"다(UnitStats.skillUseCount 주석 참조).
-               stats.HasSkillUse &&
-               // 상대가 방금 이 스킬에 당했으면 다시 걸지 않는다. 붙잡는 스킬에 반드시 필요하다 —
-               // 없으면 고블린 다섯이 같은 아군 하나의 목에 동시에 매달린다.
-               // 무는 쪽이 아니라 물리는 쪽에 걸린 시간이라, 여러 마리가 각자 세어도 결과가 같다.
-               (stats.skillVictimImmunity <= 0f || !IsTargetValid() || CurrentTarget.CanBeSkillVictim) &&
-               // 붙어서 겨룬 시간이 모자라면 아직 못 쓴다. 달려들자마자가 아니라 한 합
-               // 주고받은 뒤에 큰 수가 나오게 하는 조건이다(TickEngageDwell 주석 참조).
-               engagedDwell >= stats.skillEngageDelay &&
-               // 스킬은 여는 수가 아니다. 한 번도 휘두르지 않았는데 먼저 나가면 교전의 첫 동작이
-               // 늘 스킬로 똑같아진다. 원거리 유닛에서 특히 두드러졌다 — 스폰되자마자 사거리에
-               // 들어서므로 "입장하자마자 스킬"이 매 전투 고정 연출이 됐다.
-               // 콤보 레커버리 게이트는 이미 붙어서 칼을 섞는 중일 때만 걸리므로
-               // (UnitBehaviorTree.WantsSkill), 막 사거리에 들어선 순간에는 이 검사가 전부다.
-               hasSwungAtLeastOnce &&
-               IsTargetValid() &&
-               IsTargetInAttackRange() &&
-               stats.HasMana(stats.skillManaCost) &&
-               Time.time >= nextSkillTime;
+        // 순서는 싼 것부터다. 아래 다섯은 전부 필드와 산술이라, 여기서 걸리면 표적을
+        // 확인하는 비용(IsTargetValid는 표적이 게임오브젝트일 때 네이티브 호출이고,
+        // 엔티티일 때는 브리지 조회다)을 통째로 건너뛴다.
+        if (skillAnimationHash == 0) return false;
+
+        // 이번 전투에 쓸 몫이 남았는가. 쿨다운과는 다른 질문이다 — 쿨다운은 "얼마나 자주",
+        // 이쪽은 "이번 판에 몇 번이나"다(UnitStats.skillUseCount 주석 참조).
+        if (!stats.HasSkillUse) return false;
+
+        // 붙어서 겨룬 시간이 모자라면 아직 못 쓴다. 달려들자마자가 아니라 한 합
+        // 주고받은 뒤에 큰 수가 나오게 하는 조건이다(TickEngageDwell 주석 참조).
+        if (engagedDwell < stats.skillEngageDelay) return false;
+
+        // 스킬은 여는 수가 아니다. 한 번도 휘두르지 않았는데 먼저 나가면 교전의 첫 동작이
+        // 늘 스킬로 똑같아진다. 원거리 유닛에서 특히 두드러졌다 — 스폰되자마자 사거리에
+        // 들어서므로 "입장하자마자 스킬"이 매 전투 고정 연출이 됐다.
+        // 콤보 레커버리 게이트는 이미 붙어서 칼을 섞는 중일 때만 걸리므로
+        // (UnitBehaviorTree.WantsSkill), 막 사거리에 들어선 순간에는 이 검사가 전부다.
+        if (!hasSwungAtLeastOnce) return false;
+
+        if (!stats.HasMana(stats.skillManaCost)) return false;
+        if (Time.time < nextSkillTime) return false;
+
+        // 표적 확인은 한 번만 한다. 예전에는 이 판정이 한 식 안에서 두 번 불렸다
+        // (희생자 면역 검사에서 한 번, 그 아래에서 또 한 번).
+        if (!IsTargetValid()) return false;
+
+        // 상대가 방금 이 스킬에 당했으면 다시 걸지 않는다. 붙잡는 스킬에 반드시 필요하다 —
+        // 없으면 고블린 다섯이 같은 아군 하나의 목에 동시에 매달린다.
+        // 무는 쪽이 아니라 물리는 쪽에 걸린 시간이라, 여러 마리가 각자 세어도 결과가 같다.
+        if (stats.skillVictimImmunity > 0f && !CurrentTarget.CanBeSkillVictim) return false;
+
+        return IsTargetInAttackRange();
     }
 
     // 이 유닛이 붙잡는 스킬에 다시 당할 수 있는가(무는 쪽이 아니라 물리는 쪽의 시계다).
@@ -1273,12 +1285,31 @@ public partial class UnitController : MonoBehaviour
     // 물러날지 정하는 기준(여기)과 어느 쪽으로 물러날지 정하는 기준
     // (GetSpacingRetreatDirection), 영창을 접을지 정하는 기준(ShouldAbandonCast)이
     // 전부 같은 것을 봐야 한다. 셋이 어긋나면 그 차이가 그대로 갈팡질팡으로 나타난다.
+    //
+    // 한 프레임 안에서는 답을 기억해 둔다. 한 틱에 여러 번 불리기 때문이다 —
+    // 물러날지(UnitBehaviorTree.WantsRetreat), 어떻게 물러날지(RunsAway), 영창을 접을지
+    // (ShouldAbandonCast), 그리고 물러나는 동작 자체(EvadeBehavior)가 전부 같은 질문을 한다.
+    // 안이 적 전체를 훑는 선형 스캔이라 그 중복이 그대로 비용이 된다.
+    //
+    // 프레임 안에서 답이 바뀔 일은 없다. 유닛은 프레임당 한 번 움직이고, 이 질문은 전부
+    // 그 이동이 끝난 뒤의 같은 brain.Tick() 안에서 나온다.
+    private int keepDistanceFrame = -1;
+    private bool keepDistanceCached;
+
     public bool ShouldKeepDistance()
     {
+        // 유지 거리가 없는 직군(근접 대부분)은 여기서 끝난다. 이 게이트가 메모보다 앞에
+        // 있어야 한다 — Time.frameCount는 네이티브 호출이라 11ns쯤 드는데, 그 뒤에 두면
+        // 스캔을 아예 하지 않는 유닛이 2ns짜리 검사를 13ns에 하게 된다(실측).
         float threshold = KeepDistanceThreshold;
         if (threshold <= 0f) return false;
 
-        return UnitRegistry.CountEnemiesAround(this, transform.position, threshold) > 0;
+        int frame = Time.frameCount;
+        if (keepDistanceFrame == frame) return keepDistanceCached;
+
+        keepDistanceFrame = frame;
+        keepDistanceCached = UnitRegistry.CountEnemiesAround(this, transform.position, threshold) > 0;
+        return keepDistanceCached;
     }
 
     // 영창을 버리고 빠져야 하는가.
