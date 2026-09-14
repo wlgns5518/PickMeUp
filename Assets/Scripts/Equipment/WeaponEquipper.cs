@@ -146,8 +146,9 @@ public class WeaponEquipper : MonoBehaviour
 
     // 로스터 캐릭터가 장착 중인 장비를 그대로 든다.
     //
-    // 무기는 무기고에서 실물을 골라 두는 것이 전제라, 여기서 종류를 보고 무엇을 들지 고르는 일은 없다.
-    // 고른 것이 없는 빈손 캐릭터만 이 유닛 프리팹의 기본 장비를 쥔다 —
+    // 무기는 무기창고에서 실물을 골라 두는 것이 전제라, 여기서 종류를 보고 무엇을 들지 고르는 일은 없다.
+    // 무엇을 드는지는 CharacterLoadout이 정한다 — 들린 제작 장비가 있으면 그것, 없으면 에셋의 기본 장비.
+    // 그것마저 없는 빈손 캐릭터만 이 유닛 프리팹의 기본 장비를 쥔다 —
     // 기본 장비를 비워 둔 유닛(적)은 맨손 그대로다.
     public void Equip(CharacterSO character)
     {
@@ -157,11 +158,12 @@ public class WeaponEquipper : MonoBehaviour
             return;
         }
 
-        WeaponDefinition main = character.mainHandWeapon;
+        WeaponDefinition main = CharacterLoadout.MainHandOf(character);
         if (main == null) main = defaultMainHand;
 
-        WeaponDefinition off = character.HasShield ? character.offHandWeapon : null;
-        if (off == null && character.HasShield) off = defaultOffHand;
+        bool hasShield = CharacterLoadout.HasShield(character);
+        WeaponDefinition off = hasShield ? CharacterLoadout.OffHandOf(character) : null;
+        if (off == null && hasShield) off = defaultOffHand;
 
         Equip(main, off);
     }

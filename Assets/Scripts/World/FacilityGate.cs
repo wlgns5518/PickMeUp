@@ -39,6 +39,7 @@ public class FacilityGate : MonoBehaviour, IPointerClickHandler, IPointerEnterHa
             case VillageBlockout.Kind.Synthesis:
             case VillageBlockout.Kind.Rift:
             case VillageBlockout.Kind.EquipmentWorkshop:
+            case VillageBlockout.Kind.Armory:
                 return true;
             default:
                 return false;
@@ -87,6 +88,9 @@ public class FacilityGate : MonoBehaviour, IPointerClickHandler, IPointerEnterHa
                 return FindAnyObjectByType<DeckBuildUI>(FindObjectsInactive.Include);
             case VillageBlockout.Kind.EquipmentWorkshop:
                 return FindAnyObjectByType<EquipmentWorkshopUI>(FindObjectsInactive.Include);
+            // 제작소에서 만든 장비를 영웅에게 들리는 자리.
+            case VillageBlockout.Kind.Armory:
+                return FindAnyObjectByType<ArmoryUI>(FindObjectsInactive.Include);
             default:
                 return null;
         }

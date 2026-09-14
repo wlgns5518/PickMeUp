@@ -1,13 +1,15 @@
-// 장비제작소가 만들어 낸 결과 한 점. 인벤토리 시스템이 아직 없어 지금은 이 값만 들고 화면에
-// 알리는 데 쓴다 — 인벤토리가 생기면 여기 담긴 값을 그대로 넘기면 된다.
+// 장비제작소가 방금 만들어 낸 결과 한 점. 창고에 들어간 실물은 OwnedEquipment이고,
+// 이건 "무엇이 나왔는지"를 화면에 알리는 데만 쓴다.
 public readonly struct CraftedEquipment
 {
+    public readonly WeaponDefinition weapon;
     public readonly string name;
     public readonly EquipmentGrade grade;
 
-    public CraftedEquipment(string name, EquipmentGrade grade)
+    public CraftedEquipment(WeaponDefinition weapon, EquipmentGrade grade)
     {
-        this.name = name;
+        this.weapon = weapon;
+        this.name = weapon != null ? weapon.DisplayName : string.Empty;
         this.grade = grade;
     }
 }

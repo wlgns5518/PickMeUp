@@ -9,11 +9,21 @@ using UnityEngine;
 // PartyRoster의 사망 기록은 런타임 컬렉션뿐이라 플레이를 멈추면 사라졌고,
 // 결과적으로 "영구"라는 말이 실제로는 성립하지 않았다.
 //
-// 로스터 상태와 층 해금 상태를 함께 남긴다.
+// 로스터 상태와 층 해금 상태, 무기창고(제작한 장비와 누가 무엇을 들었는지)를 함께 남긴다.
 // 캐릭터 식별은 에셋 이름(CharacterSO.name)을 쓴다. GUID는 에디터 전용이라 빌드에서 못 쓴다.
 public static class SaveSystem
 {
     private const string FileName = "pickmeup_roster.json";
+
+    // 무기창고의 장비 한 점. 무기는 에셋 이름으로, 주인은 CharacterSO.Id로 가리킨다.
+    [Serializable]
+    private class EquipmentRecord
+    {
+        public string weapon;
+        public EquipmentGrade grade;
+        // 비어 있으면 창고에 보관 중이다.
+        public string owner;
+    }
 
     [Serializable]
     private class CharacterRecord
@@ -44,6 +54,8 @@ public static class SaveSystem
         // 0이면 이 칸이 없던 시절의 세이브다 — 그때는 PlayerPrefs에 남은 시각을 쓴다.
         public long stressStampUtcTicks;
         public List<CharacterRecord> characters = new List<CharacterRecord>();
+        // 이 칸이 없던 시절의 세이브는 빈 창고로 읽힌다.
+        public List<EquipmentRecord> equipment = new List<EquipmentRecord>();
     }
 
     public static string SavePath => Path.Combine(Application.persistentDataPath, FileName);
@@ -91,6 +103,94 @@ public static class SaveSystem
             data.characters.Add(record);
         }
 
+        // 창고는 스스로 파일에서 읽어 온 뒤에 적는다(EquipmentInventory.Items). 창고를 한 번도 열지 않은
+        // 전투 씬에서 저장해도 방금 덮어쓸 파일에 있던 장비가 그대로 실린다.
+        WriteEquipment(data);
+        Write(data);
+    }
+
+    // 무기창고만 저장한다. 제작·장착은 마을에서 일어나 로스터 명단을 쥔 쪽이 없으므로,
+    // 파일에 이미 있는 성장 기록은 그대로 두고 장비 칸만 갈아 끼운다.
+    public static void SaveEquipment()
+    {
+        SaveData data;
+        if (HasSave)
+        {
+            if (!TryRead(out data)) return; // 깨진 파일을 창고만 든 새 파일로 덮으면 남은 진행도까지 영영 사라진다.
+        }
+        else
+        {
+            // 스트레스 기준 시각은 0으로 둔다(기록 없음). 캐릭터 기록이 하나도 없는 파일이라 기준으로 삼을 값도 없다.
+            data = new SaveData { highestClearedFloor = FloorProgress.HighestCleared };
+        }
+
+        WriteEquipment(data);
+        Write(data);
+    }
+
+    // EquipmentInventory가 처음 쓰일 때 스스로 부른다. 세이브가 없거나 깨졌으면 빈 창고로 시작한다.
+    public static void LoadEquipment()
+    {
+        var restored = new List<OwnedEquipment>();
+
+        SaveData data;
+        if (HasSave && TryRead(out data) && data.equipment != null)
+        {
+            for (int i = 0; i < data.equipment.Count; i++)
+            {
+                EquipmentRecord record = data.equipment[i];
+                if (record == null) continue;
+
+                WeaponDefinition weapon = WeaponCatalog.Find(record.weapon);
+                if (weapon == null)
+                {
+                    Debug.LogWarning($"[SaveSystem] 무기창고의 '{record.weapon}'을(를) 카탈로그에서 찾지 못해 건너뜁니다.");
+                    continue;
+                }
+
+                restored.Add(new OwnedEquipment(weapon, record.grade, record.owner));
+            }
+        }
+
+        EquipmentInventory.Restore(restored);
+    }
+
+    private static void WriteEquipment(SaveData data)
+    {
+        data.equipment = new List<EquipmentRecord>();
+
+        IReadOnlyList<OwnedEquipment> items = EquipmentInventory.Items;
+        for (int i = 0; i < items.Count; i++)
+        {
+            OwnedEquipment item = items[i];
+            if (item == null || item.Weapon == null) continue;
+
+            data.equipment.Add(new EquipmentRecord
+            {
+                weapon = item.Weapon.name,
+                grade = item.Grade,
+                owner = item.OwnerId,
+            });
+        }
+    }
+
+    private static bool TryRead(out SaveData data)
+    {
+        data = null;
+        try
+        {
+            data = JsonUtility.FromJson<SaveData>(File.ReadAllText(SavePath));
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[SaveSystem] 불러오기 실패: {e.Message}\n경로: {SavePath}");
+            return false;
+        }
+        return data != null;
+    }
+
+    private static void Write(SaveData data)
+    {
         try
         {
             File.WriteAllText(SavePath, JsonUtility.ToJson(data, true));
@@ -109,17 +209,7 @@ public static class SaveSystem
         if (!HasSave) return false;
 
         SaveData data;
-        try
-        {
-            data = JsonUtility.FromJson<SaveData>(File.ReadAllText(SavePath));
-        }
-        catch (Exception e)
-        {
-            Debug.LogError($"[SaveSystem] 불러오기 실패: {e.Message}\n경로: {SavePath}");
-            return false;
-        }
-
-        if (data == null) return false;
+        if (!TryRead(out data)) return false;
 
         FloorProgress.RestoreCleared(data.highestClearedFloor);
         // 스트레스 값을 얹기 전에 그 값들이 기준으로 삼는 시각부터 되돌린다.
@@ -151,6 +241,8 @@ public static class SaveSystem
         try
         {
             if (File.Exists(SavePath)) File.Delete(SavePath);
+            // 창고는 파일에서 스스로 읽어 온 값을 들고 있다. 파일이 사라졌는데 그대로 두면 다음 저장이 되살려 놓는다.
+            EquipmentInventory.Forget();
         }
         catch (Exception e)
         {

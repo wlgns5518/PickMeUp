@@ -63,11 +63,13 @@ public static class OwnedRoster
     /// 명단에서 뺀다. 합성 재료가 사라지는 통로다.
     /// 편성에 올라가 있던 캐릭터면 거기서도 함께 뺀다 — 가지고 있지도 않은 사람이
     /// 출전 슬롯에 남아 있으면 전투에 그대로 끌려 나간다.
+    /// 들고 있던 제작 장비는 무기창고로 돌아온다. 사라진 사람 손에 걸린 칼은 다시 꺼낼 길이 없다.
     public static bool Remove(CharacterSO character)
     {
         if (character == null || !members.Remove(character)) return false;
 
         PartyDeck.RemoveEverywhere(character);
+        EquipmentInventory.UnequipAll(character);
         Changed?.Invoke();
         return true;
     }

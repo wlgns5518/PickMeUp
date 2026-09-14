@@ -40,16 +40,25 @@ public static class HeroLabel
     }
 
     // 받침이 있으면 "이", 없으면 "가". 이름마다 조사를 손으로 고를 수는 없다.
-    public static string SubjectParticle(string name)
-    {
-        if (string.IsNullOrEmpty(name)) return "가";
+    public static string SubjectParticle(string name) => Particle(name, "이", "가");
 
-        for (int i = name.Length - 1; i >= 0; i--)
+    // 을/를. 무기 이름처럼 무엇이 올지 모르는 말 뒤에 붙인다.
+    public static string ObjectParticle(string word) => Particle(word, "을", "를");
+
+    // 은/는.
+    public static string TopicParticle(string word) => Particle(word, "은", "는");
+
+    // 마지막 한글 음절의 받침 유무로 고른다. 한글로 끝나지 않으면 판별할 수 없어 받침 없는 쪽으로 둔다.
+    private static string Particle(string word, string withFinal, string withoutFinal)
+    {
+        if (string.IsNullOrEmpty(word)) return withoutFinal;
+
+        for (int i = word.Length - 1; i >= 0; i--)
         {
-            char c = name[i];
-            if (c >= 0xAC00 && c <= 0xD7A3) return (c - 0xAC00) % 28 != 0 ? "이" : "가";
+            char c = word[i];
+            if (c >= 0xAC00 && c <= 0xD7A3) return (c - 0xAC00) % 28 != 0 ? withFinal : withoutFinal;
             if (char.IsLetterOrDigit(c)) break; // 한글이 아니면 판별할 수 없다.
         }
-        return "가";
+        return withoutFinal;
     }
 }

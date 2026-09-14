@@ -281,13 +281,14 @@ public class CharacterBattleSpawner : MonoBehaviour
 
     // 아군이 실제로 손에 들고 나갈 무기의 분류.
     //
+    // 무기창고에서 들린 제작 장비가 있으면 그 무기, 없으면 에셋의 기본 장비다(CharacterLoadout).
     // 장비를 하나도 고르지 않은 캐릭터는 제 몸의 기본 무기(낡은 철검)를 쥐고 나간다(WeaponEquipper).
     // 수치를 so.MainHandType 그대로 뽑으면 검을 든 채로 맨손 배율을 맞게 되므로 여기서 같은 무기를 본다.
     // 몸마다 기본 무기가 다를 수 있으므로 공용 프리팹이 아니라 이번에 실제로 입는 몸을 본다.
     // 적은 이 경로를 타지 않는다(BuildEnemyStats) — 맨손 고블린은 그대로 맨손이다.
     private WeaponType AllyMainHandType(CharacterSO so, GameObject body)
     {
-        WeaponType type = so.MainHandType;
+        WeaponType type = CharacterLoadout.MainHandTypeOf(so);
         if (type != WeaponType.None || body == null) return type;
 
         var equipment = body.GetComponent<WeaponEquipper>();
@@ -302,7 +303,7 @@ public class CharacterBattleSpawner : MonoBehaviour
     {
         JobCombatProfile job = JobProfile.For(so.job);
         WeaponCombatProfile weapon = JobProfile.For(AllyMainHandType(so, body));
-        bool hasShield = so.HasShield;
+        bool hasShield = CharacterLoadout.HasShield(so);
 
         var stats = new UnitStats
         {
@@ -347,7 +348,7 @@ public class CharacterBattleSpawner : MonoBehaviour
         // 나머지가 뒤에서 때리는 진형은 여기서 시작된다.
         stats.isTank = so.job == JobType.Tank || hasShield;
 
-        ApplyRole(stats, job, hasShield, so.mainHand);
+        ApplyRole(stats, job, hasShield, CharacterLoadout.MainHandTypeOf(so));
 
         // 마법사가 평생 다루는 속성 하나. 이 값이 그가 쓸 수 있는 마법 전부를 정한다(SpellCatalog).
         // 마법사가 아닌 직업은 None이라 영창 경로 자체를 타지 않는다.

@@ -5,7 +5,10 @@ using UnityEngine.UI;
 
 // 마을 장비제작소에서 여는 창.
 //
-// 맨 위에서 재료 등급(E~S)을 먼저 고른다 — 무엇이 나오느냐는 이 재료가 정한다.
+// 왼쪽 칸에서 만들 무기를 고른다. 무기는 종류(한손검·도끼·방패 …) 탭으로 나뉘어 있고, 목록은
+// Forge.CollectCraftable이 WeaponCatalog에서 뽑아 준다 — 무기 에셋이 늘면 여기도 따라 는다.
+//
+// 오른쪽 칸 맨 위에서 재료 등급(E~S)을 고른다 — 얼마나 좋게 나오느냐는 이 재료가 정한다.
 // 그 아래 두 탭. 자동 제작은 퍼즐 없이 눌러서 바로 만든다 — 등급은 고른 재료 그대로 나온다.
 // 수동 제작은 난이도(쉬움~헬)를 고르면 재료 등급을 밑변으로 그 난이도만큼 위로 오를 수 있는
 // 등급 확률표가 뜨고, "제작 시작"을 누르면 PuzzleGame이 그 난이도로 열린다. 퍼즐에 성공하면
@@ -32,7 +35,8 @@ public class EquipmentWorkshopUI : FacilityWindow
     [SerializeField] private Sprite bannerSprite;
     [SerializeField] private float bannerWidth = 900f;
 
-    private const float PanelWidth = 820f;
+    // 오른쪽 칸(재료·제작 방식) 너비. 왼쪽 무기 칸은 그 앞에 붙는다.
+    private const float ControlColumnWidth = 748f;
     private static readonly Vector2 PanelPadding = new Vector2(36f, 30f);
     private const float TitleHeight = 62f;
     private const float TabHeight = 78f;
@@ -50,6 +54,15 @@ public class EquipmentWorkshopUI : FacilityWindow
     private const float RateRowHeight = 44f;
     private const float StartButtonHeight = 90f;
     private const float HintHeight = 54f;
+
+    // 왼쪽 무기 칸.
+    private const float WeaponColumnWidth = 440f;
+    private const float ColumnGap = 28f;
+    private const int TypeTabColumns = 3;
+    private const float TypeTabHeight = 52f;
+    private const float WeaponRowHeight = 60f;
+    private const float WeaponRowGap = 10f;
+    private const float WeaponLabelInset = 18f;
 
     private static readonly PuzzleDifficulty[] Difficulties =
     {
@@ -85,12 +98,24 @@ public class EquipmentWorkshopUI : FacilityWindow
     private readonly List<TMP_Text> rateGradeLabels = new List<TMP_Text>();
     private readonly List<TMP_Text> ratePercentLabels = new List<TMP_Text>();
 
+    // 만들 수 있는 무기와, 그 무기들이 걸친 종류(열거형 순서). 종류 탭·목록 묶음은 weaponTypes와 같은 순서다.
+    private readonly List<WeaponDefinition> craftableWeapons = new List<WeaponDefinition>();
+    private readonly List<WeaponType> weaponTypes = new List<WeaponType>();
+    private readonly List<Image> typeTabBackgrounds = new List<Image>();
+    private readonly List<RectTransform> weaponLists = new List<RectTransform>();
+    private readonly List<WeaponDefinition> weaponButtonTargets = new List<WeaponDefinition>();
+    private readonly List<Image> weaponButtonBackgrounds = new List<Image>();
+
     private GameObject resultBar;
     private TMP_Text resultText;
     private Button startManualButton;
     private TMP_Text autoDescText;
+    private TMP_Text autoCraftLabel;
+    private TMP_Text startManualLabel;
 
     private Mode mode = Mode.Auto;
+    private WeaponDefinition selectedWeapon;
+    private WeaponType selectedType;
     private EquipmentGrade selectedMaterial = EquipmentGrade.E;
     private PuzzleDifficulty selectedDifficulty = PuzzleDifficulty.Easy;
 
@@ -138,7 +163,13 @@ public class EquipmentWorkshopUI : FacilityWindow
             return;
         }
 
-        forge.CraftAuto(selectedMaterial);
+        if (selectedWeapon == null)
+        {
+            warningBanner?.Show("제작할 무기를 고르세요.");
+            return;
+        }
+
+        forge.CraftAuto(selectedWeapon, selectedMaterial);
     }
 
     private void StartManual()
@@ -149,15 +180,21 @@ public class EquipmentWorkshopUI : FacilityWindow
             return;
         }
 
+        if (selectedWeapon == null)
+        {
+            warningBanner?.Show("제작할 무기를 고르세요.");
+            return;
+        }
+
         // 퍼즐이 뜨는 동안은 창을 접는다. 떠 있으면 배경막이 퍼즐 판을 가린다.
         Hide();
-        forge.StartManual(selectedMaterial, selectedDifficulty);
+        forge.StartManual(selectedWeapon, selectedMaterial, selectedDifficulty);
     }
 
     private void HandleCrafted(CraftedEquipment result)
     {
         Show();
-        ShowBar($"{result.name} 제작 완료 — {EquipmentGradeNames.NameOf(result.grade)} 등급", GradeColor(result.grade));
+        ShowBar($"{result.name} ({EquipmentGradeNames.NameOf(result.grade)}) 제작 완료 — 무기창고에 보관했습니다", GradeColor(result.grade));
     }
 
     private void HandleFailed()
@@ -180,6 +217,12 @@ public class EquipmentWorkshopUI : FacilityWindow
         diffTabBackgrounds.Clear();
         rateGradeLabels.Clear();
         ratePercentLabels.Clear();
+        typeTabBackgrounds.Clear();
+        weaponLists.Clear();
+        weaponButtonTargets.Clear();
+        weaponButtonBackgrounds.Clear();
+
+        CollectWeapons();
 
         BuildCanvas();
         BuildPopup();
@@ -188,8 +231,35 @@ public class EquipmentWorkshopUI : FacilityWindow
         warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, bannerSprite, null, bannerWidth);
 
         RefreshMode();
+        RefreshWeapon();
         RefreshMaterial();
         RefreshRates();
+    }
+
+    // 만들 수 있는 무기를 모으고 종류별로 나눈다. 고른 무기가 목록에 없으면 첫 종류의 첫 무기로 둔다.
+    private void CollectWeapons()
+    {
+        Forge.CollectCraftable(craftableWeapons);
+
+        weaponTypes.Clear();
+        for (int i = 0; i < craftableWeapons.Count; i++)
+        {
+            if (!weaponTypes.Contains(craftableWeapons[i].type)) weaponTypes.Add(craftableWeapons[i].type);
+        }
+        weaponTypes.Sort();
+
+        if (selectedWeapon == null || !craftableWeapons.Contains(selectedWeapon))
+            selectedWeapon = weaponTypes.Count > 0 ? FirstWeaponOf(weaponTypes[0]) : null;
+        if (selectedWeapon != null) selectedType = selectedWeapon.type;
+    }
+
+    private WeaponDefinition FirstWeaponOf(WeaponType type)
+    {
+        for (int i = 0; i < craftableWeapons.Count; i++)
+        {
+            if (craftableWeapons[i].type == type) return craftableWeapons[i];
+        }
+        return null;
     }
 
     private void BuildPopup()
@@ -199,7 +269,9 @@ public class EquipmentWorkshopUI : FacilityWindow
 
     private void BuildPanel(RectTransform popup)
     {
-        float contentWidth = PanelWidth - PanelPadding.x * 2f;
+        float controlX = PanelPadding.x + WeaponColumnWidth + ColumnGap;
+        float panelWidth = controlX + ControlColumnWidth + PanelPadding.x;
+        float contentWidth = panelWidth - PanelPadding.x * 2f;
 
         Image panel = HudFactory.CreateImage(popup, "Panel", BattleHudPalette.PanelBody);
         panel.raycastTarget = true;
@@ -219,24 +291,131 @@ public class EquipmentWorkshopUI : FacilityWindow
         BuildCloseButton(y, contentWidth);
         y += TitleHeight + Gap;
 
-        BuildMaterialSelector(y, contentWidth);
+        float columnTop = y;
+
+        BuildMaterialSelector(controlX, y, ControlColumnWidth);
         y += MaterialLabelHeight + MaterialRowHeight + Gap;
 
-        BuildModeTabs(y, contentWidth);
+        BuildModeTabs(controlX, y, ControlColumnWidth);
         y += TabHeight + Gap;
 
         autoSection = HudFactory.CreateGroup(panelRect, "Auto");
-        HudFactory.SetTopLeft(autoSection, new Vector2(contentWidth, DescHeight + Gap + CraftButtonHeight), new Vector2(PanelPadding.x, -y));
-        BuildAutoSection(autoSection, contentWidth);
+        HudFactory.SetTopLeft(autoSection, new Vector2(ControlColumnWidth, DescHeight + Gap + CraftButtonHeight), new Vector2(controlX, -y));
+        BuildAutoSection(autoSection, ControlColumnWidth);
 
         manualSection = HudFactory.CreateGroup(panelRect, "Manual");
-        HudFactory.SetTopLeft(manualSection, new Vector2(contentWidth,
+        HudFactory.SetTopLeft(manualSection, new Vector2(ControlColumnWidth,
             DiffTabHeight + Gap + RateHeaderHeight + Grades.Length * RateRowHeight + Gap + StartButtonHeight + Gap + HintHeight),
-            new Vector2(PanelPadding.x, -y));
-        BuildManualSection(manualSection, contentWidth);
+            new Vector2(controlX, -y));
+        BuildManualSection(manualSection, ControlColumnWidth);
 
-        float panelHeight = y + Mathf.Max(autoSection.sizeDelta.y, manualSection.sizeDelta.y) + PanelPadding.y;
-        panelRect.sizeDelta = new Vector2(PanelWidth, panelHeight);
+        // 무기 칸은 오른쪽 칸 높이에 맞춘다 — 목록이 몇 줄까지 들어가는지가 여기서 정해진다.
+        float columnBottom = y + Mathf.Max(autoSection.sizeDelta.y, manualSection.sizeDelta.y);
+        BuildWeaponColumn(PanelPadding.x, columnTop, columnBottom);
+
+        Image divider = HudFactory.CreateImage(panelRect, "Divider", BattleHudPalette.PortraitFrame);
+        HudFactory.SetTopLeft(divider.rectTransform, new Vector2(2f, columnBottom - columnTop),
+            new Vector2(PanelPadding.x + WeaponColumnWidth + ColumnGap * 0.5f - 1f, -columnTop));
+
+        panelRect.sizeDelta = new Vector2(panelWidth, columnBottom + PanelPadding.y);
+    }
+
+    private void BuildWeaponColumn(float x, float top, float bottom)
+    {
+        float y = top;
+
+        TMP_Text label = HudFactory.CreateText(panelRect, "WeaponLabel", resolvedFont, 24f, HintText);
+        label.alignment = TextAlignmentOptions.Left;
+        HudFactory.SetTopLeft(label.rectTransform, new Vector2(WeaponColumnWidth, MaterialLabelHeight), new Vector2(x, -y));
+        y += MaterialLabelHeight;
+
+        if (weaponTypes.Count == 0)
+        {
+            label.text = "만들 수 있는 무기가 없습니다";
+            return;
+        }
+        label.text = "제작할 무기";
+
+        float tabWidth = (WeaponColumnWidth - Gap * (TypeTabColumns - 1)) / TypeTabColumns;
+        for (int i = 0; i < weaponTypes.Count; i++)
+        {
+            var type = weaponTypes[i];
+            int column = i % TypeTabColumns;
+            int row = i / TypeTabColumns;
+
+            Image background = HudFactory.CreateImage(panelRect, "TypeTab_" + type, BattleHudPalette.PortraitFrame);
+            background.raycastTarget = true;
+            HudFactory.SetTopLeft(background.rectTransform, new Vector2(tabWidth, TypeTabHeight),
+                new Vector2(x + column * (tabWidth + Gap), -(y + row * (TypeTabHeight + Gap))));
+
+            var button = background.gameObject.AddComponent<Button>();
+            button.targetGraphic = background;
+            button.onClick.AddListener(() => SelectWeaponType(type));
+
+            TMP_Text tabLabel = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 24f, BattleHudPalette.PanelText);
+            HudFactory.Stretch(tabLabel.rectTransform);
+            tabLabel.text = CharacterRules.Korean(type);
+
+            typeTabBackgrounds.Add(background);
+        }
+
+        int tabRows = Mathf.CeilToInt(weaponTypes.Count / (float)TypeTabColumns);
+        y += tabRows * TypeTabHeight + (tabRows - 1) * Gap + Gap;
+
+        BuildWeaponLists(x, y, bottom - y);
+    }
+
+    // 종류마다 목록 한 벌씩 미리 깔아 두고 탭에 따라 켜고 끈다.
+    // 한 줄로 다 안 들어가는 종류는 칸을 나눠 여러 줄로 늘어놓는다.
+    private void BuildWeaponLists(float x, float y, float height)
+    {
+        int maxRows = Mathf.Max(1, Mathf.FloorToInt((height + WeaponRowGap) / (WeaponRowHeight + WeaponRowGap)));
+        var weapons = new List<WeaponDefinition>();
+
+        for (int t = 0; t < weaponTypes.Count; t++)
+        {
+            WeaponType type = weaponTypes[t];
+
+            weapons.Clear();
+            for (int i = 0; i < craftableWeapons.Count; i++)
+            {
+                if (craftableWeapons[i].type == type) weapons.Add(craftableWeapons[i]);
+            }
+
+            RectTransform list = HudFactory.CreateGroup(panelRect, "Weapons_" + type);
+            HudFactory.SetTopLeft(list, new Vector2(WeaponColumnWidth, height), new Vector2(x, -y));
+
+            int columns = Mathf.CeilToInt(weapons.Count / (float)maxRows);
+            float itemWidth = (WeaponColumnWidth - Gap * (columns - 1)) / columns;
+
+            for (int i = 0; i < weapons.Count; i++)
+            {
+                var weapon = weapons[i];
+                int column = i % columns;
+                int row = i / columns;
+
+                Image background = HudFactory.CreateImage(list, "Weapon_" + weapon.name, BattleHudPalette.PortraitFrame);
+                background.raycastTarget = true;
+                HudFactory.SetTopLeft(background.rectTransform, new Vector2(itemWidth, WeaponRowHeight),
+                    new Vector2(column * (itemWidth + Gap), -row * (WeaponRowHeight + WeaponRowGap)));
+
+                var button = background.gameObject.AddComponent<Button>();
+                button.targetGraphic = background;
+                button.onClick.AddListener(() => SelectWeapon(weapon));
+
+                TMP_Text weaponLabel = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 27f, BattleHudPalette.PanelText);
+                weaponLabel.alignment = TextAlignmentOptions.Left;
+                HudFactory.Stretch(weaponLabel.rectTransform);
+                weaponLabel.rectTransform.offsetMin = new Vector2(WeaponLabelInset, 0f);
+                weaponLabel.rectTransform.offsetMax = new Vector2(-WeaponLabelInset, 0f);
+                weaponLabel.text = weapon.DisplayName;
+
+                weaponButtonTargets.Add(weapon);
+                weaponButtonBackgrounds.Add(background);
+            }
+
+            weaponLists.Add(list);
+        }
     }
 
     private void BuildCloseButton(float y, float contentWidth)
@@ -255,12 +434,12 @@ public class EquipmentWorkshopUI : FacilityWindow
         label.text = "X";
     }
 
-    private void BuildMaterialSelector(float y, float contentWidth)
+    private void BuildMaterialSelector(float x, float y, float contentWidth)
     {
         TMP_Text label = HudFactory.CreateText(panelRect, "MaterialLabel", resolvedFont, 24f, HintText);
         label.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(label.rectTransform, new Vector2(contentWidth, MaterialLabelHeight), new Vector2(PanelPadding.x, -y));
-        label.text = "재료 등급 — 무엇을 넣느냐가 결과를 정합니다";
+        HudFactory.SetTopLeft(label.rectTransform, new Vector2(contentWidth, MaterialLabelHeight), new Vector2(x, -y));
+        label.text = "재료 등급 — 무엇을 넣느냐가 등급을 정합니다";
 
         float rowY = y + MaterialLabelHeight;
         float tabWidth = (contentWidth - Gap * (Grades.Length - 1)) / Grades.Length;
@@ -272,7 +451,7 @@ public class EquipmentWorkshopUI : FacilityWindow
             Image background = HudFactory.CreateImage(panelRect, "MaterialTab_" + grade, BattleHudPalette.PortraitFrame);
             background.raycastTarget = true;
             HudFactory.SetTopLeft(background.rectTransform, new Vector2(tabWidth, MaterialRowHeight),
-                new Vector2(PanelPadding.x + i * (tabWidth + Gap), -rowY));
+                new Vector2(x + i * (tabWidth + Gap), -rowY));
 
             var button = background.gameObject.AddComponent<Button>();
             button.targetGraphic = background;
@@ -286,7 +465,7 @@ public class EquipmentWorkshopUI : FacilityWindow
         }
     }
 
-    private void BuildModeTabs(float y, float contentWidth)
+    private void BuildModeTabs(float x, float y, float contentWidth)
     {
         string[] labels = { "자동 제작", "수동 제작" };
         float tabWidth = (contentWidth - Gap) * 0.5f;
@@ -298,7 +477,7 @@ public class EquipmentWorkshopUI : FacilityWindow
             Image background = HudFactory.CreateImage(panelRect, "ModeTab_" + thisMode, BattleHudPalette.PortraitFrame);
             background.raycastTarget = true;
             HudFactory.SetTopLeft(background.rectTransform, new Vector2(tabWidth, TabHeight),
-                new Vector2(PanelPadding.x + i * (tabWidth + Gap), -y));
+                new Vector2(x + i * (tabWidth + Gap), -y));
 
             var button = background.gameObject.AddComponent<Button>();
             button.targetGraphic = background;
@@ -326,9 +505,9 @@ public class EquipmentWorkshopUI : FacilityWindow
         button.targetGraphic = background;
         button.onClick.AddListener(CraftAuto);
 
-        TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 34f, BattleHudPalette.Mvp);
-        HudFactory.Stretch(label.rectTransform);
-        label.text = "제작하기";
+        autoCraftLabel = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 34f, BattleHudPalette.Mvp);
+        HudFactory.Stretch(autoCraftLabel.rectTransform);
+        autoCraftLabel.text = "제작하기";
     }
 
     private void BuildManualSection(RectTransform section, float contentWidth)
@@ -396,9 +575,9 @@ public class EquipmentWorkshopUI : FacilityWindow
         startManualButton.targetGraphic = startBackground;
         startManualButton.onClick.AddListener(StartManual);
 
-        TMP_Text startLabel = HudFactory.CreateText(startBackground.rectTransform, "Label", resolvedFont, 34f, BattleHudPalette.Mvp);
-        HudFactory.Stretch(startLabel.rectTransform);
-        startLabel.text = "제작 시작 (퍼즐)";
+        startManualLabel = HudFactory.CreateText(startBackground.rectTransform, "Label", resolvedFont, 34f, BattleHudPalette.Mvp);
+        HudFactory.Stretch(startManualLabel.rectTransform);
+        startManualLabel.text = "제작 시작 (퍼즐)";
         y += StartButtonHeight + Gap;
 
         TMP_Text hint = HudFactory.CreateText(section, "Hint", resolvedFont, 22f, HintText);
@@ -425,6 +604,10 @@ public class EquipmentWorkshopUI : FacilityWindow
 
         resultText = HudFactory.CreateText(barRect, "Result", resolvedFont, 28f, BattleHudPalette.PanelText);
         resultText.alignment = TextAlignmentOptions.Left;
+        // 이름이 긴 무기("원형 강철 방패")면 한 줄에 다 안 들어간다. 잘리느니 글자를 줄인다.
+        resultText.enableAutoSizing = true;
+        resultText.fontSizeMin = 20f;
+        resultText.fontSizeMax = 28f;
         SetLeftMiddle(resultText.rectTransform, new Vector2(textWidth, BarHeight), BarPadding);
 
         float confirmX = BarWidth - BarPadding - BarButtonWidth;
@@ -474,6 +657,38 @@ public class EquipmentWorkshopUI : FacilityWindow
             modeTabBackgrounds[i].color = (Mode)i == mode ? TabSelected : BattleHudPalette.PortraitFrame;
     }
 
+    // 탭을 바꾸면 그 종류의 첫 무기를 고른다. 고른 무기가 가려진 채 버튼에 딴 종류 이름이 남아 있으면 헷갈린다.
+    private void SelectWeaponType(WeaponType type)
+    {
+        if (selectedWeapon == null || selectedWeapon.type != type)
+            selectedWeapon = FirstWeaponOf(type);
+        selectedType = type;
+        RefreshWeapon();
+    }
+
+    private void SelectWeapon(WeaponDefinition weapon)
+    {
+        selectedWeapon = weapon;
+        selectedType = weapon.type;
+        RefreshWeapon();
+    }
+
+    private void RefreshWeapon()
+    {
+        for (int i = 0; i < typeTabBackgrounds.Count; i++)
+            typeTabBackgrounds[i].color = weaponTypes[i] == selectedType ? TabSelected : BattleHudPalette.PortraitFrame;
+
+        for (int i = 0; i < weaponLists.Count; i++)
+            weaponLists[i].gameObject.SetActive(weaponTypes[i] == selectedType);
+
+        for (int i = 0; i < weaponButtonBackgrounds.Count; i++)
+            weaponButtonBackgrounds[i].color = weaponButtonTargets[i] == selectedWeapon ? TabSelected : BattleHudPalette.PortraitFrame;
+
+        string weaponName = selectedWeapon != null ? selectedWeapon.DisplayName : "무기";
+        if (autoCraftLabel != null) autoCraftLabel.text = $"{weaponName} 제작하기";
+        if (startManualLabel != null) startManualLabel.text = $"{weaponName} 제작 시작 (퍼즐)";
+    }
+
     private void SelectMaterial(EquipmentGrade material)
     {
         selectedMaterial = material;
@@ -505,18 +720,7 @@ public class EquipmentWorkshopUI : FacilityWindow
             ratePercentLabels[i].text = EquipmentCraftTable.PercentText(selectedMaterial, selectedDifficulty, Grades[i]);
     }
 
-    private static Color GradeColor(EquipmentGrade grade)
-    {
-        switch (grade)
-        {
-            case EquipmentGrade.S: return BattleHudPalette.Mvp;
-            case EquipmentGrade.A: return new Color(0.80f, 0.55f, 1.00f);
-            case EquipmentGrade.B: return new Color(0.55f, 0.75f, 1.00f);
-            case EquipmentGrade.C: return new Color(0.55f, 0.85f, 0.60f);
-            case EquipmentGrade.D: return new Color(0.75f, 0.75f, 0.75f);
-            default:                       return BattleHudPalette.PanelText;
-        }
-    }
+    private static Color GradeColor(EquipmentGrade grade) => EquipmentGradeNames.ColorOf(grade);
 
     // ---- 자리 잡기 ------------------------------------------------------------
 

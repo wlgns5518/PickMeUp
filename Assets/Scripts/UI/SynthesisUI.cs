@@ -716,13 +716,13 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         return Builder.ToString();
     }
 
+    // 직업은 적지 않는다. 플레이어는 초상화로만 짐작한다(ArmoryUI 주석 참조).
     private static void AppendHeadline(CharacterSO character)
     {
         Builder.Append(string.IsNullOrEmpty(character.characterName) ? "이름 없음" : character.characterName);
         Builder.Append('\n');
         Builder.Append("Lv.").Append(character.Level)
-            .Append("  ").Append(character.starCount).Append('성')
-            .Append("  ").Append(CharacterRules.Korean(character.job));
+            .Append("  ").Append(character.starCount).Append('성');
     }
 
     private static string SkillList(CharacterSO character)
