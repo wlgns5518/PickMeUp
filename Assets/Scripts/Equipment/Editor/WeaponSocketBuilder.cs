@@ -68,7 +68,8 @@ public static class WeaponSocketBuilder
 
     // 프리팹 에셋. 뼈 자세는 살아 있는 Animator에서만 읽히므로,
     // 임시 씬에 한 번 세워 재어 두고 그 값을 프리팹에 옮겨 적는다.
-    private static bool AddToPrefab(string path)
+    // 새로 구운 캐릭터 프리팹에도 같은 손을 달아 준다(CharacterModelBuilder).
+    public static bool AddToPrefab(string path)
     {
         GameObject asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
         if (asset == null) return false;

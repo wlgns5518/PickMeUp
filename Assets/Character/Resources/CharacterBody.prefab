@@ -1,0 +1,412 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &7709177016731238395
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4765055768176572897}
+  - component: {fileID: 297068983630262517}
+  - component: {fileID: 7958821819041947224}
+  - component: {fileID: 2723157800757543683}
+  - component: {fileID: 8081895008780912051}
+  - component: {fileID: 2852107638610789347}
+  - component: {fileID: 8163705513176925038}
+  - component: {fileID: 4116191302638315253}
+  m_Layer: 0
+  m_Name: CharacterBody
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4765055768176572897
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7709177016731238395}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!95 &297068983630262517
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7709177016731238395}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: f39d937098bc76040a32eedb61ebec9d, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
+--- !u!195 &7958821819041947224
+NavMeshAgent:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7709177016731238395}
+  m_Enabled: 1
+  m_AgentTypeID: 0
+  m_Radius: 0.5
+  m_Speed: 3.5
+  m_Acceleration: 8
+  avoidancePriority: 50
+  m_AngularSpeed: 120
+  m_StoppingDistance: 0
+  m_AutoTraverseOffMeshLink: 1
+  m_AutoBraking: 1
+  m_AutoRepath: 1
+  m_Height: 2
+  m_BaseOffset: 0
+  m_WalkableMask: 4294967295
+  m_ObstacleAvoidanceType: 4
+--- !u!114 &2723157800757543683
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7709177016731238395}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5be340707a5c4b03b37972c8bbd1a54f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  scanInterval: 0.2
+  viewAngle: 120
+  closeVisibleRange: 2
+  eyeHeight: 1.2
+  obstacleMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  allyGroupingBonusPerAlly: 3
+  threatBonusScale: 1.5
+  currentTargetStickiness: 5
+  maxAttackersPerAlly: 2
+  crowdingPenalty: 10
+  aggroReviewInterval: 2.5
+--- !u!114 &8081895008780912051
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7709177016731238395}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 67f8771370cf6cd4780f894f49dbc223, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hitFrontStateName: HitFront
+  hitBackStateName: HitBack
+  hitLeftStateName: HitLeft
+  hitRightStateName: HitRight
+  blockHitStateName: BlockHit
+  blockBreakStateName: BlockBreak
+  staggerStateName: Stagger
+  strafeLeftStateName: StrafeLeft
+  strafeRightStateName: StrafeRight
+  strafeBackStateName: StrafeBack
+  combatIdleStateName: CombatIdle
+  clingToNeckDuringSkill: 0
+  clingDistance: 0.42
+  clingMouthHeight: 1.2
+  clingSnapTime: 0.25
+  leapAttackStateName: 
+  leapAttackHeight: 0.5
+  leapLaunchRatio: 0.15
+  leapLandRatio: 0.45
+  separationMargin: 0.15
+  attackFacingTolerance: 35
+  minFootworkWindow: 0.35
+  footworkAcceleration: 6
+  movingAvoidanceQuality: 3
+  engagedAvoidancePriority: 35
+  movingAvoidancePriority: 60
+  avoidancePrioritySpread: 8
+  castStateName: Cast
+  spellAimSampleLimit: 12
+  spellRetryDelay: 0.8
+  team: 0
+  stats:
+    maxHp: 100
+    currentHp: 100
+    maxMana: 50
+    currentMana: 50
+    skillManaCost: 0
+    potionCount: 0
+    potionHealHpRatio: 0.4
+    potionHealManaRatio: 0.5
+    potionHpThreshold: 0.35
+    potionManaTriggerHpRatio: 0.8
+    potionCooldown: 6
+    walkSpeed: 2
+    runSpeed: 4.5
+    jumpPower: 5
+    moveStopDistance: 0.25
+    attackRange: 1.6
+    detectRange: 8
+    role: 0
+    guardStyle: 0
+    isTank: 0
+    threatWeight: 1
+    backlinePreference: 0
+    peelBonus: 0
+    focusBonus: 0
+    engageAngle: 0
+    keepDistanceRange: 0
+    fleeByRunning: 0
+    viewAngle: 0
+    affinity: 0
+    castSpeedMultiplier: 1
+    attackDamage: 8
+    skillDamage: 24
+    kickDamageMultiplier: 0.6
+    bleedChanceOnHit: 0
+    slowOnHitDuration: 0
+    slowOnHitMultiplier: 1
+    skillCooldown: 5
+    skillUseCount: -1
+    evadeRange: 2.5
+    blockDuration: 0.8
+    blockCooldown: 1.5
+    knockbackDistance: 0.6
+    knockbackDuration: 0.12
+    blockDamageReduction: 1
+    damageReduction: 0
+    guardArcAngle: 180
+    counterAfterPerfectGuard: 0
+    maxPoise: 100
+    currentPoise: 100
+    poiseDamagePerHit: 15
+    poiseDamageComboFinisherBonus: 25
+    poiseDamageSkill: 60
+    poiseDamageKick: 45
+    poiseBreakImmunity: 2.5
+    skillStaggerDuration: 0
+    skillEngageDelay: 0
+    skillVictimImmunity: 0
+    poiseHitPushback: 0.15
+    attackArcAngle: 130
+    attackHitTolerance: 0.4
+    cleaveOffTarget: 1
+    attackRecoveryTime: 0
+    attackRecoveryRandomness: 0.4
+    comboFinisherRecoveryTime: 0
+    lungeSpeed: 2.4
+    lungeMaxDistance: 0.8
+    leapAttackRange: 0
+    leapAttackCooldown: 7
+    combatSpacingRatio: 0.82
+    footworkSpeedRatio: 0.65
+    strafeFlipInterval: 1.8
+    backstabDamageMultiplier: 1.6
+    backstabPoiseMultiplier: 2
+    recoveryVulnerabilityMultiplier: 1.35
+    castVulnerabilityMultiplier: 1
+    blockReactionTime: 0.18
+    perfectGuardWindow: 0.2
+    perfectGuardChance: 0.35
+    perfectGuardStaggerDuration: 0.9
+    staggerDuration: 1.2
+    staggerDamageMultiplier: 1.4
+    hitStopDuration: 0.06
+    hitStopScale: 0.12
+    retreatHpThreshold: 0.25
+    canHealAllies: 0
+    healAmount: 25
+    healRange: 8
+    healCooldown: 6
+    healManaCost: 15
+    healTargetHpRatio: 0.7
+    dispelOnHeal: 1
+    dispelPriorityBonus: 0.2
+    canStealth: 0
+    stealthDelay: 0.8
+    stealthDamageMultiplier: 0.35
+    stealthRevealRange: 2.2
+    stalkAfterCombo: 0
+    stalkDistance: 6
+    stalkMinDuration: 0.7
+    stalkMaxDuration: 2.5
+    stalkSkipHpRatio: 0.3
+    canShieldAllies: 0
+    shieldAmount: 45
+    shieldDuration: 6
+    shieldCooldown: 7
+    shieldManaCost: 18
+    shieldThreatCount: 2
+    currentShield: 0
+  agent: {fileID: 0}
+  animator: {fileID: 0}
+  scanner: {fileID: 0}
+  bodyCollider: {fileID: 0}
+  emotion: {fileID: 0}
+  equipment: {fileID: 8163705513176925038}
+  bloodEffectPrefabs:
+  - {fileID: 2656253210798625995, guid: a78e9ef18b366424b84e0c7410d2fe72, type: 3}
+  - {fileID: 5865290276592450837, guid: 42a28376f729c864a81abf66add7a418, type: 3}
+  - {fileID: 4288107571095694937, guid: c3f8938673a07704e93ac52eee18f410, type: 3}
+  - {fileID: 1165703760847671896, guid: bb596cd440832554089a7125852e836f, type: 3}
+  - {fileID: 4152240900433254336, guid: 6d3629f845b40e24fb51d381e84bbc77, type: 3}
+  - {fileID: 6463355840203370170, guid: 70ead61ff20b23b4e97b90d8e8997ecd, type: 3}
+  - {fileID: 5170585893340993107, guid: 7b88f11816abaa34c9e02cbaa8485321, type: 3}
+  - {fileID: 2629016494315086251, guid: 5776aed3bb070e54cb09a11c8a6a5831, type: 3}
+  - {fileID: 3034872428933141512, guid: 52d94bfe44b09ff4b9e9788e9a86a778, type: 3}
+  - {fileID: 2360933683143488451, guid: 730678b8a5330c449ada55bde83402ce, type: 3}
+  - {fileID: 5016170632959171363, guid: c3ed06559a66b724b91c3124e75ddec9, type: 3}
+  - {fileID: 8859926575668995837, guid: 097a30048e9007141899f834041a5ac7, type: 3}
+  - {fileID: 5936082179827903908, guid: cb58ece77d11ef945aecd072f2e46a8d, type: 3}
+  - {fileID: 5494213943435191861, guid: db51fe09adf27d640b4e10018c2d76ba, type: 3}
+  - {fileID: 5371219466416337994, guid: f9e099178c81bee439a79eecec91dacb, type: 3}
+  bloodEffectOffset: {x: 0, y: 1, z: 0}
+  bloodColor: {r: 0.6, g: 0, b: 0, a: 1}
+  runDistance: 4
+  destinationUpdateInterval: 0.15
+  chasePredictionTime: 0.25
+  rotationSpeed: 720
+  blockTurnSpeed: 240
+  attackTurnSpeed: 120
+  minKeepDistanceRange: 4
+  keepDistanceRatio: 0.3
+  regroupDistance: 8
+  survivalFleeDistance: 12
+  targetChangeInterval: 0.5
+  targetSwitchDistanceRatio: 0.75
+  roamWhenSearching: 1
+  roamRadius: 5
+  roamInterval: 2
+  roamDirectionWeight: 0.7
+  idleStateName: Idle
+  walkStateName: Walk
+  runStateName: Run
+  jumpStateName: Jump
+  attackStateName: Attack
+  attackComboLength: 6
+  skillStateName: 
+  kickStateName: Kick
+  blockStateName: Block
+  potionStateName: Potion
+  healStateName: Cast
+  dodgeStateName: Dodge
+  hitStateName: Hit
+  deathStateName: Death
+  animationFadeDuration: 0.08
+  moveSpeedParameterName: MoveSpeedMultiplier
+  walkClipSpeed: 1.99
+  runClipSpeed: 4.2
+  strafeClipSpeed: 1.92
+  strafeBackClipSpeed: 2.19
+  backpedalSpeed: 3.3
+  dodgeClipSpeed: 4.08
+  moveSpeedMultiplierRange: {x: 0.6, y: 2.2}
+  moveSpeedDampTime: 0.15
+  animatorCullingMode: 1
+  disableAnimatorAfterDeath: 1
+  debugLogs: 0
+  currentBehaviorName: 
+  currentTargetName: 
+  retreatDirectionHold: 1.5
+--- !u!114 &2852107638610789347
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7709177016731238395}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b8d062d72a487ef4e8f014b4f8053158, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UnitEmotion
+  profile:
+    mental: 10
+    mentalResistPerPoint: 0.04
+    minFearScale: 0.3
+    fearThreshold: 40
+    panicThreshold: 85
+    fearStatMultiplier: 0.7
+    fearClearThreshold: 25
+    fearRecoveryPerSecond: 6
+    fearPerHpPercentLost: 0.8
+    fearOnAllyDeath: 25
+    allyDeathWitnessRange: 12
+    lowHpFearPerSecond: 10
+    lowHpRatio: 0.3
+    panicDuration: 2.5
+    panicExitFear: 55
+    bleedTickInterval: 1
+    bleedDamageRatio: 0.03
+    bleedDuration: 6
+    bleedChanceOnSkillHit: 0.5
+    dyingHpRatio: 0.03
+    stress: 0
+    stressLimit: 100
+    brokenDuration: 8
+    brokenExitStress: 70
+    stressPerPanic: 12
+    stressPerAllyDeath: 8
+    fragileFirstBattle: 0
+  currentEmotion: 
+  fearGaugeDebug: 0
+--- !u!114 &8163705513176925038
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7709177016731238395}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2896bb6335b9f7c4fb9083fcabd4be5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponEquipper
+  animator: {fileID: 297068983630262517}
+  rightHandSocket: {fileID: 0}
+  leftHandSocket: {fileID: 0}
+  palmGripRatio: 0.6
+  defaultMainHand: {fileID: 11400000, guid: df9ba5e658c010c4fbbf04705fa5fdba, type: 2}
+  defaultOffHand: {fileID: 0}
+  drawTime: 0.35
+  releaseTime: 0.12
+  debugLogs: 0
+--- !u!114 &4116191302638315253
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7709177016731238395}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 69673abb3d7b3884b8e788f78d48d4cc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PickMeUp::WeaponHandIK
+  equipment: {fileID: 8163705513176925038}
+  secondaryGripWeight: 1
+  secondaryGripRotationWeight: 0
+  stringHandWeight: 1
+  stringHandRotationWeight: 0
+  blendSpeed: 8

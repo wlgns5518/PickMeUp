@@ -103,15 +103,25 @@ public class CardSpawner : MonoBehaviour
 
     private IEnumerator SpawnRoutine(CharacterCard card, string presetName, int forcedStars)
     {
+        CharacterSO summoned = null;
+
         yield return generator.GenerateCharacter(so =>
         {
             // 뽑은 캐릭터는 보유 명단에 들어간다. 명단에 없으면 편성에도 합성에도 쓸 수 없다.
             // onUpdate는 메타데이터와 이미지 완료 때 두 번 불리는데 Add가 중복을 걸러 준다.
             OwnedRoster.Add(so);
+            summoned = so;
 
             // 이미지가 오기 전에 카드가 치워질 수 있다. 지워진 카드에 값을 쓰면 예외가 난다.
             if (card != null) card.Apply(so);
         }, presetName, forcedStars);
+
+        // 카드가 나왔으면 그 캐릭터의 몸을 뒤에서 굽기 시작한다.
+        //
+        // 기다리지 않는다. 몸 하나에 3분 넘게 걸리므로 소환 연출을 붙잡아 둘 수 없다 —
+        // 다 구워지기 전에 전투에 나가면 그 판은 공용 몸으로 싸우고, 다음 판부터 제 몸으로 나온다.
+        // 초상화가 도착한 뒤라야 그 그림을 읽어 외형을 뽑을 수 있으므로 여기가 가장 이른 시점이다.
+        if (summoned != null) MeshyBodyService.Request(summoned);
     }
 
     private bool IsReady()

@@ -1,12 +1,18 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
-// 로스터의 CharacterSO 스탯을 UnitController 전투 유닛에 적용해 씬에 배치하는 테스트용 스포너.
-// Y Bot(아군)/Goblin(더미 적) 프리팹에는 이미 UnitController/TargetScanner가 붙어 있음.
+// 로스터의 CharacterSO 스탯을 UnitController 전투 유닛에 적용해 씬에 배치하는 스포너.
+//
+// 아군은 캐릭터마다 제 몸을 입고 나간다 — 초상화에서 구운 3D 모델이다(AllyBody 참조).
+// 아직 몸이 없는 캐릭터만 인스펙터의 공용 프리팹(Y Bot)을 빌려 입는다.
+// 적은 이 경로를 타지 않는다. 전부 엔티티로 뜬다(SpawnEnemyEntities).
 public class CharacterBattleSpawner : MonoBehaviour
 {
     [Header("Ally (Character Roster)")]
+    [Tooltip("제 몸(CharacterSO.battlePrefab)이 없는 캐릭터가 빌려 쓰는 공용 몸. " +
+             "캐릭터마다 3D 모델을 구워 두면 이 프리팹은 쓰이지 않는다.")]
     [SerializeField] private UnitController allyUnitPrefab;
     [SerializeField] private CharacterSO[] allyCharacters;
     [SerializeField] private Transform[] allySpawnPoints;
@@ -39,6 +45,10 @@ public class CharacterBattleSpawner : MonoBehaviour
     [Tooltip("같은 팀 유닛 사이의 간격. 중심을 둘러싸는 고리의 반지름이 이 값의 배수로 커진다.")]
     [SerializeField] private float clusterSpacing = 1.6f;
 
+    [Tooltip("디스크에 받아 둔 몸(GLB)을 세우는 데 기다려 주는 시간(초). 이 시간을 넘기면 " +
+             "아직 안 선 캐릭터는 공용 몸으로 출전시키고 전투를 시작한다.")]
+    [SerializeField, Min(0f)] private float bodyLoadTimeout = 20f;
+
     [Header("Stat Mapping (임시 공식 — 추후 밸런싱 예정)")]
     [SerializeField] private int baseHp = 60;
     [SerializeField] private int hpPerVitality = 6;
@@ -61,19 +71,27 @@ public class CharacterBattleSpawner : MonoBehaviour
              "맡아야 하므로, 확인이 끝나면 1로 되돌린다.")]
     [SerializeField, Min(0.01f)] private float debugHealthMultiplier = 100f;
 
-    private void Start()
+    // 아군을 세우기 전에 몸부터 챙긴다.
+    //
+    // 빌드에서 소환한 캐릭터는 프리팹이 아니라 디스크의 GLB로 존재한다(CharacterModelStore).
+    // 그걸 읽어 세우는 데 몇 초가 걸리므로, 스폰을 그 뒤로 미룬다. 아직 굽는 중이라 파일조차
+    // 없는 캐릭터는 기다리지 않는다 — 그 캐릭터만 이번 판을 공용 몸으로 싸운다.
+    private IEnumerator Start()
     {
-        SpawnAllies();
+        IReadOnlyList<CharacterSO> lineup = Lineup();
+        yield return MeshyBodyService.WaitUntilReady(lineup, bodyLoadTimeout);
+
+        SpawnAllies(lineup);
         SpawnEnemies();
     }
 
-    private void SpawnAllies()
-    {
-        if (allyUnitPrefab == null) return;
+    // 메인 씬에서 카드로 고른 편성이 있으면 그쪽이 이번 출전 명단이다.
+    // 인스펙터 배열은 편성 화면을 거치지 않고 전투 씬을 바로 재생할 때의 대비책으로 남는다.
+    private IReadOnlyList<CharacterSO> Lineup() =>
+        PartyDeck.Count > 0 ? PartyDeck.Members : allyCharacters;
 
-        // 메인 씬에서 카드로 고른 편성이 있으면 그쪽이 이번 출전 명단이다.
-        // 인스펙터 배열은 편성 화면을 거치지 않고 전투 씬을 바로 재생할 때의 대비책으로 남는다.
-        IReadOnlyList<CharacterSO> lineup = PartyDeck.Count > 0 ? PartyDeck.Members : allyCharacters;
+    private void SpawnAllies(IReadOnlyList<CharacterSO> lineup)
+    {
         if (lineup == null) return;
 
         for (int i = 0; i < lineup.Count; i++)
@@ -88,8 +106,11 @@ public class CharacterBattleSpawner : MonoBehaviour
                 continue;
             }
 
+            GameObject body = AllyBody(so);
+            if (body == null) continue;
+
             Vector3 position = GetSpawnPosition(allySpawnPoints, i, allySpawnFallbackOffset);
-            UnitController unit = SpawnUnit(allyUnitPrefab, UnitTeam.Ally, MapStats(so), position, so.characterName, so);
+            UnitController unit = SpawnUnit(body, UnitTeam.Ally, MapStats(so, body), position, so.characterName, so);
 
             // HP와 마나는 Configure가 만회복시키지만 스트레스만은 이어진다.
             // Configure가 hiddenStats 값으로 되돌려 놓으므로 반드시 그 뒤에 덮어써야 한다.
@@ -215,28 +236,71 @@ public class CharacterBattleSpawner : MonoBehaviour
         return origin + FormationOffset(index, clusterSpacing);
     }
 
-    private UnitController SpawnUnit(UnitController prefab, UnitTeam team, UnitStats stats, Vector3 position, string unitName, CharacterSO source = null)
+    // 몸이 프리팹 에셋이든 런타임에 세워 둔 것이든 여기서는 똑같이 다룬다 — 둘 다 Instantiate하면
+    // 부모 없는 활성 오브젝트가 나온다. 세워 둔 몸은 꺼진 부모 밑에서 자고 있었으므로
+    // 복사본이 처음 깨어나는 순간이 여기고, 그때는 이미 아바타가 물려 있다.
+    private UnitController SpawnUnit(GameObject body, UnitTeam team, UnitStats stats, Vector3 position, string unitName, CharacterSO source = null)
     {
         if (NavMesh.SamplePosition(position, out NavMeshHit hit, 5f, NavMesh.AllAreas))
             position = hit.position;
 
-        UnitController instance = Instantiate(prefab, position, FacingOpposingSide(team, position));
+        GameObject spawned = Instantiate(body, position, FacingOpposingSide(team, position));
+        var instance = spawned.GetComponent<UnitController>();
+        if (instance == null)
+        {
+            Debug.LogWarning("[CharacterBattleSpawner] " + spawned.name + "에 UnitController가 없다.", spawned);
+            Destroy(spawned);
+            return null;
+        }
+
         instance.Configure(team, stats, source);
         if (!string.IsNullOrEmpty(unitName)) instance.name = unitName;
         return instance;
     }
 
+    // 이 캐릭터가 입고 나갈 몸. 순서대로 찾는다.
+    //
+    //  1. 에디터에서 미리 구워 프리팹으로 만들어 둔 몸(CharacterSO.battlePrefab).
+    //     임포터가 아바타까지 세워 둔 완성품이라 가장 확실하다.
+    //  2. 빌드에서 소환한 캐릭터의 몸. 디스크의 GLB에서 방금 세운 것(CharacterBodyFactory).
+    //  3. 공용 몸. 아직 굽는 중이거나 굽기에 실패한 캐릭터가 이번 판만 빌려 입는다.
+    //
+    // 셋 다 없으면 이번 판에는 나가지 못한다.
+    private GameObject AllyBody(CharacterSO so)
+    {
+        if (so.battlePrefab != null)
+        {
+            if (so.battlePrefab.GetComponent<UnitController>() != null) return so.battlePrefab;
+
+            Debug.LogWarning("[CharacterBattleSpawner] " + so.characterName +
+                             "의 전투 모델 프리팹 루트에 UnitController가 없어 공용 몸으로 대신한다: " +
+                             so.battlePrefab.name, so.battlePrefab);
+        }
+
+        GameObject built = CharacterBodyFactory.Ready(so);
+        if (built != null) return built;
+
+        if (allyUnitPrefab == null)
+        {
+            Debug.LogWarning("[CharacterBattleSpawner] " + so.characterName +
+                             "은 제 전투 모델도 없고 공용 프리팹도 지정되지 않아 출전하지 못한다.", this);
+            return null;
+        }
+        return allyUnitPrefab.gameObject;
+    }
+
     // 아군이 실제로 손에 들고 나갈 무기의 분류.
     //
-    // 장비를 하나도 고르지 않은 캐릭터는 아군 프리팹의 기본 무기(낡은 철검)를 쥐고 나간다(WeaponEquipper).
+    // 장비를 하나도 고르지 않은 캐릭터는 제 몸의 기본 무기(낡은 철검)를 쥐고 나간다(WeaponEquipper).
     // 수치를 so.MainHandType 그대로 뽑으면 검을 든 채로 맨손 배율을 맞게 되므로 여기서 같은 무기를 본다.
+    // 몸마다 기본 무기가 다를 수 있으므로 공용 프리팹이 아니라 이번에 실제로 입는 몸을 본다.
     // 적은 이 경로를 타지 않는다(BuildEnemyStats) — 맨손 고블린은 그대로 맨손이다.
-    private WeaponType AllyMainHandType(CharacterSO so)
+    private WeaponType AllyMainHandType(CharacterSO so, GameObject body)
     {
         WeaponType type = so.MainHandType;
-        if (type != WeaponType.None || allyUnitPrefab == null) return type;
+        if (type != WeaponType.None || body == null) return type;
 
-        var equipment = allyUnitPrefab.GetComponent<WeaponEquipper>();
+        var equipment = body.GetComponent<WeaponEquipper>();
         WeaponDefinition fallback = equipment != null ? equipment.DefaultMainHand : null;
         return fallback != null ? fallback.type : type;
     }
@@ -244,10 +308,10 @@ public class CharacterBattleSpawner : MonoBehaviour
     // CharacterSO 스탯 → UnitStats 매핑.
     // 기본 능력치를 먼저 뽑고, 그 위에 직업과 장비 보정을 얹는다.
     // 이 순서 덕분에 같은 지능이라도 마법사가 든 마나가 더 크고, 같은 힘이라도 두손검이 더 아프다.
-    private UnitStats MapStats(CharacterSO so)
+    private UnitStats MapStats(CharacterSO so, GameObject body)
     {
         JobCombatProfile job = JobProfile.For(so.job);
-        WeaponCombatProfile weapon = JobProfile.For(AllyMainHandType(so));
+        WeaponCombatProfile weapon = JobProfile.For(AllyMainHandType(so, body));
         bool hasShield = so.HasShield;
 
         var stats = new UnitStats
