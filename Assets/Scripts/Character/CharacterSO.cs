@@ -39,6 +39,23 @@ public class CharacterSO : ScriptableObject
     }
 #endif
 
+    /// 태어나는 순간에 식별자를 박는다. 소환처럼 런타임에 만들어지는 캐릭터는 반드시 이것부터 부른다.
+    ///
+    /// Id 게터의 지연 부여에만 맡기면 안 된다. 소환은 에셋을 먼저 저장하고(id가 빈 채로)
+    /// 몸 굽기가 나중에 Id를 처음 읽으며 GUID를 붙이는데, 그 GUID는 메모리에만 있고 다시
+    /// 저장되지 않는다. 에디터를 껐다 켜면 새 GUID가 붙어, 그 id로 저장해 둔 몸(GLB)과
+    /// 세이브의 진행도가 통째로 남의 것이 된다(실제로 일라리스가 그렇게 됐다).
+    /// 빌드에서는 더 나쁘다 — 게터가 GUID를 붙이지 않고 에셋 이름("일라리스 (2★)")으로
+    /// 떨어지므로, 등급이 오르는 순간 이름이 바뀌어 몸을 잃는다.
+    public void EnsureId()
+    {
+        if (!string.IsNullOrEmpty(id)) return;
+        id = System.Guid.NewGuid().ToString("N");
+#if UNITY_EDITOR
+        UnityEditor.EditorUtility.SetDirty(this);
+#endif
+    }
+
     public string characterName;
     [TextArea] public string description;
     public Sprite portrait;
