@@ -113,18 +113,8 @@ public class CharacterSO : ScriptableObject
     [Header("Hidden Stats")]
     public HiddenStats hiddenStats = new HiddenStats();
 
-    // Battle Model ------------------------------------------------------
-    // 카드에 걸리는 초상화(portrait)와 전투에 나가는 몸(battlePrefab)은 같은 캐릭터의 다른 표현이다.
-    // 초상화는 상반신 회화풍이라 그대로 3D에 넣을 수 없어서, 그 그림을 읽어 쓴 전신 시트를
-    // 따로 한 장 굽고(modelSheetAssetPath) 그쪽을 3D의 원본으로 삼는다 — MeshyModelPipeline 참조.
-    [Header("Battle Model")]
-    [Tooltip("전투에 나가는 이 캐릭터의 몸. 비워 두면 스포너의 공용 프리팹으로 떨어진다. " +
-             "초상화에서 구워 여기에 꽂는 것은 메뉴 PickMeUp/Character/3D 모델 굽기다. " +
-             "프리팹 루트에 UnitController가 붙어 있어야 전투에 나갈 수 있다.")]
-    public GameObject battlePrefab;
-
-    [Tooltip("3D의 원본이 된 A포즈 전신 시트. 다시 구울 때 같은 그림에서 출발하려고 남긴다.")]
-    public string modelSheetAssetPath;
+    // 전투에 나가는 몸은 이 에셋에 없다. 초상화에서 구운 GLB가 id로 이름 붙어
+    // 런타임 몸 저장소에 있다(CharacterModelStore). 그래서 id가 흔들리면 몸을 잃는다 — EnsureId 참조.
 
     // Equipment ---------------------------------------------------------
     [Header("Equipment")]
@@ -264,17 +254,11 @@ public class CharacterSO : ScriptableObject
                 portrait = null;
             }
 
-            // 몸은 폴더 하나를 통째로 쓴다(FBX, 텍스처, 재질, 프리팹, 전신 시트).
-            // 초상화만 지우고 두면 30만 면짜리 메시가 주인 없이 남는다.
-            if (battlePrefab != null)
-            {
-                string modelFolder = System.IO.Path.GetDirectoryName(AssetDatabase.GetAssetPath(battlePrefab))
-                                              ?.Replace('\\', '/');
-                battlePrefab = null;
-                modelSheetAssetPath = null;
-                if (!string.IsNullOrEmpty(modelFolder) && AssetDatabase.IsValidFolder(modelFolder))
-                    AssetDatabase.DeleteAsset(modelFolder);
-            }
+            // 몸(GLB)도 같이 지운다. 초상화만 지우고 두면 6MB짜리 몸이 주인 없이 남는다.
+            // 에셋을 지우기 전에 id를 읽어야 한다 — 지운 뒤에는 이 캐릭터가 누구였는지 알 수 없다.
+            string bodyId = Id;
+            CharacterBodyFactory.Forget(bodyId);
+            CharacterModelStore.Delete(bodyId);
 
             string soPath = AssetDatabase.GetAssetPath(this);
             if (!string.IsNullOrEmpty(soPath))

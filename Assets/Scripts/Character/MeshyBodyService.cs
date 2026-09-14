@@ -66,7 +66,6 @@ public class MeshyBodyService : MonoBehaviour
     public static BodyState StateOf(CharacterSO character)
     {
         if (character == null) return BodyState.None;
-        if (character.battlePrefab != null) return BodyState.Ready;
         if (CharacterBodyFactory.Ready(character) != null) return BodyState.Ready;
 
         return instance != null && instance.states.TryGetValue(character.Id, out BodyState state)
@@ -86,9 +85,6 @@ public class MeshyBodyService : MonoBehaviour
     public static void Request(CharacterSO character)
     {
         if (character == null) return;
-
-        // 에디터에서 구워 둔 프리팹이 있으면 그게 이미 답이다.
-        if (character.battlePrefab != null) return;
 
         BodyState state = StateOf(character);
         if (state == BodyState.Ready || state == BodyState.Queued || state == BodyState.Working) return;
@@ -116,7 +112,7 @@ public class MeshyBodyService : MonoBehaviour
     /// 굽기를 시작하는 것은 소환하는 순간뿐이어야 한다.
     public static void RebuildIfDownloaded(CharacterSO character)
     {
-        if (character == null || character.battlePrefab != null) return;
+        if (character == null) return;
         if (!CharacterModelStore.Exists(character.Id)) return;
 
         BodyState state = StateOf(character);

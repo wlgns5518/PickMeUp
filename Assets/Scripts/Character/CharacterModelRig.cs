@@ -4,8 +4,8 @@ using UnityEngine;
 // 어디서 굴러온 스켈레톤이든 Unity가 사람으로 읽게 만드는 곳.
 //
 // 전투 동작 한 벌이 전부 휴머노이드로 굽혀 있어서, 새 몸이 싸울 수 있느냐는 결국 이 한 줄로 갈린다 —
-// 아바타가 서느냐 마느냐. 에디터에서는 FBX 임포터가 알아서 세워 주지만(CharacterModelBuilder),
-// 빌드에서 내려받은 GLB에는 임포터가 없다. 그래서 뼈 이름과 계층만 보고 직접 세운다.
+// 아바타가 서느냐 마느냐. FBX라면 임포터가 알아서 세워 주지만, 몸은 GLB로 받고
+// 런타임에 세우므로 임포터가 없다. 그래서 뼈 이름과 계층만 보고 직접 세운다.
 //
 // 이름표는 Meshy의 자동 리깅이 내놓는 규약을 기준으로 삼는다 — 믹사모 이름에서 접두사만 뺀 꼴이다.
 //
@@ -88,15 +88,32 @@ public static class CharacterModelRig
             return false;
         }
 
-        HumanDescription description = Describe(root.transform, bones, out problem);
-        if (problem != null) return false;
+        // 기준 자세는 T포즈여야 한다. 팔이 조금이라도 내려와 있으면 잠깐 T포즈로 펴서 설명서를 적고,
+        // 아바타를 세운 뒤에는 원래 자세로 되돌린다(EnforceTPose 참조).
+        Transform[] all = root.GetComponentsInChildren<Transform>(true);
+        var restPose = new Quaternion[all.Length];
+        for (int i = 0; i < all.Length; i++) restPose[i] = all[i].localRotation;
 
-        // 아바타 세우기는 네이티브로 내려가고, 값이 이상하면 예외를 내는 대신 에디터째 멈추는 일이 있다.
-        // 무엇을 넘겼는지 미리 남겨 두면 멈췄을 때 로그만 보고 원인을 좁힐 수 있다.
-        Debug.Log($"[CharacterModelRig] {root.name}: 뼈 {description.human.Length}개 매핑, " +
-                  $"스켈레톤 {description.skeleton.Length}개 — 아바타를 세운다.");
+        HumanDescription description;
+        try
+        {
+            EnforceTPose(root.transform, bones);
+            description = Describe(root.transform, bones, out problem);
+            if (problem != null) return false;
 
-        avatar = AvatarBuilder.BuildHumanAvatar(root, description);
+            // 아바타 세우기는 네이티브로 내려가고, 값이 이상하면 예외를 내는 대신 에디터째 멈추는 일이 있다.
+            // 무엇을 넘겼는지 미리 남겨 두면 멈췄을 때 로그만 보고 원인을 좁힐 수 있다.
+            Debug.Log($"[CharacterModelRig] {root.name}: 뼈 {description.human.Length}개 매핑, " +
+                      $"스켈레톤 {description.skeleton.Length}개 — 아바타를 세운다.");
+
+            avatar = AvatarBuilder.BuildHumanAvatar(root, description);
+        }
+        finally
+        {
+            // 스킨은 원래 자세에 묶여 있다. 펴 둔 채로 두면 애니메이터가 처음 돌기 전 한 프레임 동안
+            // T포즈가 비치고, 애니메이터가 건드리지 않는 뼈(머리 끝 등)는 영영 틀어진 채로 남는다.
+            for (int i = 0; i < all.Length; i++) all[i].localRotation = restPose[i];
+        }
         if (avatar == null || !avatar.isValid)
         {
             problem = "AvatarBuilder가 아바타를 세우지 못했다(자세가 사람 범위를 벗어났을 수 있다).";
@@ -106,6 +123,61 @@ public static class CharacterModelRig
 
         avatar.name = root.name + "Avatar";
         return true;
+    }
+
+    // ── 기준 자세 ────────────────────────────────────────────────────────
+
+    // 아바타의 기준 자세를 T포즈로 편다.
+    //
+    // 휴머노이드 애니메이션은 "T포즈에서 근육을 얼마나 틀었는가"로 저장돼 있다. 그래서 아바타가
+    // 기준으로 삼는 자세가 T포즈가 아니면, 모든 동작이 그 차이만큼 틀어져서 재생된다.
+    // 예전 Meshy 몸은 A포즈(팔을 45도쯤 내린 자세)로 받았는데, 그걸 그대로 기준으로 넣었더니
+    // 전투 대기 자세에서 오른손이 에디터판보다 34cm 몸 쪽으로 오그라들어 있었다 —
+    // 같은 라엘을 두 경로로 세워 같은 프레임에서 잰 값이다.
+    //
+    // 지금은 몸을 처음부터 T포즈로 받는다(MeshyBodyRecipe.PoseMode). 그래도 이 보정은 남긴다 —
+    // 생성기가 팔을 완전히 수평으로 뽑아 준다는 보장이 없고, A포즈 시절에 받아 둔 몸
+    // (라엘, 일라리스)도 저장소에 그대로 있다. 이미 수평인 팔에는 아무 일도 하지 않는다.
+    //
+    // FBX 임포터는 아바타를 자동으로 만들 때 이 보정을 해 준다. 같은 라엘에서 임포터가 적은
+    // 기준 자세를 뼈 방향으로 견주면, 크게 돌린 것은 팔뿐이다 — 위팔 52~53도, 아래팔 36도를
+    // 돌려 수평으로 폈다. 빌드에는 임포터가 없으니 같은 일을 여기서 한다.
+    //
+    // 다리와 발은 건드리지 않는다. 처음에는 다리를 수직으로 세우고 발등을 수평으로 눕혔는데,
+    // 임포터는 그러지 않았다. 벌어진 다리(약 6도)와 발목에서 발가락으로 내려가는 기울기를
+    // 그대로 두었고, 원래 A포즈의 다리·발 방향이 임포터 결과와 0.6~3.1도밖에 차이 나지 않는다.
+    // 억지로 편 쪽이 오히려 6~27도 어긋나서 발이 바닥 아래로 5cm 박혔다.
+    // 척추도 원래 거의 수직이라(1.4도) 그대로 둔다.
+    //
+    // 회전만 바꾼다. 위치(뼈 길이)는 그대로라, 설명서와 살아 있는 계층이 단위까지 어긋나지 않는다.
+    private static void EnforceTPose(Transform root, Dictionary<HumanBodyBones, Transform> bones)
+    {
+        Vector3 up = root.up;
+
+        // 왼쪽이 어디인지는 뼈 위치에서 읽는다. 모델이 어느 쪽을 보고 서 있든
+        // 왼팔이 뻗을 곳은 왼어깨 쪽이다.
+        Vector3 left = Vector3.ProjectOnPlane(
+            bones[HumanBodyBones.LeftUpperArm].position - bones[HumanBodyBones.RightUpperArm].position, up).normalized;
+        if (left.sqrMagnitude < 0.0001f) return;
+
+        // 부모부터 편다. 위팔을 돌리면 아래팔과 손이 따라 움직이므로, 자식은 그 다음에 겨눈다.
+        Aim(bones, HumanBodyBones.LeftUpperArm, HumanBodyBones.LeftLowerArm, left);
+        Aim(bones, HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand, left);
+
+        Aim(bones, HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, -left);
+        Aim(bones, HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand, -left);
+    }
+
+    // bone에서 child로 가는 방향이 direction을 향하도록 bone을 돌린다.
+    private static void Aim(Dictionary<HumanBodyBones, Transform> bones,
+                            HumanBodyBones bone, HumanBodyBones child, Vector3 direction)
+    {
+        if (!bones.TryGetValue(bone, out Transform b) || !bones.TryGetValue(child, out Transform c)) return;
+
+        Vector3 current = c.position - b.position;
+        if (current.sqrMagnitude < 0.000001f) return;
+
+        b.rotation = Quaternion.FromToRotation(current.normalized, direction) * b.rotation;
     }
 
     // ── 뼈 짚기 ──────────────────────────────────────────────────────────
@@ -172,18 +244,12 @@ public static class CharacterModelRig
     // 지금 서 있는 자세가 곧 기준 자세다. 모델을 세우자마자(애니메이터가 한 번도 돌기 전에) 부르면
     // 그게 바인드 포즈라, 여기서 읽는 트랜스폼이 그대로 아바타의 기준이 된다.
     //
-    // 로컬 값을 그대로 적어야 한다. 고쳐 적으면 안 된다.
+    // 로컬 값을 그대로 적어야 한다. 설명서에서만 고쳐 적으면 안 된다.
     //
-    // Meshy의 GLB는 센티미터로 만들어져 있어서 Armature 노드에 0.01 배율이 걸려 있고, 그 아래
-    // 뼈들의 로컬 위치는 87.8 같은 센티미터 값이다. 그래서 Unity가 이 값들만 보고 계산하는
-    // 사람의 크기(humanScale)가 FBX 임포터의 값과 조금 어긋난다 — 실측으로 0.9312 대 0.9585였고,
-    // 그 차이만큼(약 5%) 런타임 몸이 에디터에서 구운 몸보다 낮게 선다.
-    //
-    // 그렇다고 여기서 배율을 없앤 값으로 고쳐 적으면 안 된다. 아바타의 기준 골격은 살아 있는
-    // 계층을 그대로 가리켜야 해서, 미터로 적어 두면 센티미터 계층에 그 값이 실리며 뼈가 100배로
-    // 쪼그라든다(실측: 머리 높이가 1.27m에서 0.013m가 됐다). 제대로 고치려면 계층 자체의 배율을
-    // 없애고 스킨의 바인드 포즈까지 같이 고쳐야 하는데, 5%는 고블린 옆에 세워 놓고 분간이
-    // 되지 않는 차이라 그대로 둔다.
+    // 아바타의 기준 골격은 살아 있는 계층을 그대로 가리켜야 한다. 한때 Meshy GLB의 0.01 배율을
+    // 여기서만 없앤 값(미터)으로 적어 봤더니, 센티미터로 서 있는 계층에 그 값이 실리며 뼈가
+    // 100배로 쪼그라들었다(머리 높이 1.27m → 0.013m). 배율은 계층 쪽에서 스킨 바인드 포즈와
+    // 함께 없앤다(CharacterBodyFactory.BakeOutScale). 여기로 넘어올 때는 이미 미터다.
     private static HumanDescription Describe(Transform root,
                                              Dictionary<HumanBodyBones, Transform> bones,
                                              out string problem)

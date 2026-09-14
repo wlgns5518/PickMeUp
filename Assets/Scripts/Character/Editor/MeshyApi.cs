@@ -21,7 +21,7 @@ public static class MeshyApi
 
     // ── 태스크 만들기 ────────────────────────────────────────────────────
 
-    /// 전신 A포즈 시트. 3D의 원본이 될 그림이다.
+    /// 전신 T포즈 시트. 3D의 원본이 될 그림이다.
     public static Task<string> CreateModelSheet(string appearance) =>
         CreateTask(MeshyBodyRecipe.SheetEndpoint,
                    MeshyBodyRecipe.SheetBody(MeshyBodyRecipe.SheetPrompt(appearance)));

@@ -42,9 +42,6 @@ MonoBehaviour:
     skill: 7
     body: 6
     sanity: 9
-  battlePrefab: {fileID: 4814648826376397347, guid: 160ad0a3dff9b124a860d7159668c3ff,
-    type: 3}
-  modelSheetAssetPath: "Assets/Character/CharacterModel/\uB77C\uC5D8/\uB77C\uC5D8_Sheet0.png"
   mainHand: 0
   offHand: 0
   mainHandWeapon: {fileID: 0}

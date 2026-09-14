@@ -2,8 +2,7 @@
     "name": "PickMeUp.Editor.Character",
     "rootNamespace": "",
     "references": [
-        "PickMeUp",
-        "PickMeUp.Editor"
+        "PickMeUp"
     ],
     "includePlatforms": [
         "Editor"

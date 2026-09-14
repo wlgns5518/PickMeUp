@@ -5,11 +5,11 @@ using System.Threading.Tasks;
 using GLTFast;
 using UnityEngine;
 
-// 저장해 둔 GLB를 읽어 "싸울 수 있는 몸"으로 세우는 곳. 빌드에서 쓰는 길이다.
+// 저장해 둔 GLB를 읽어 "싸울 수 있는 몸"으로 세우는 곳. 캐릭터의 몸은 전부 이 길로 선다.
 //
-// 에디터에서 구워 둔 프리팹(CharacterSO.battlePrefab)이 있으면 그쪽이 언제나 우선이다.
-// 그건 임포터가 아바타까지 만들어 둔 완성품이라 여기서 할 일이 없다.
-// 여기는 빌드에서 소환한 캐릭터 — 프리팹이 있을 수 없는 캐릭터 — 를 위한 길이다.
+// 소환으로 구운 몸이든 에디터 메뉴로 구운 몸이든 결과물은 같은 GLB 한 장이고(CharacterModelStore),
+// 에디터와 빌드가 같은 코드로 세운다. 예전에는 에디터에서 FBX로 프리팹을 따로 만들었는데,
+// 같은 캐릭터가 두 모습을 갖고 한쪽만 이상하게 보이는 일이 생겨 이 길 하나로 합쳤다.
 //
 // 세우는 순서가 중요하다.
 //   1. 전투 부품만 든 템플릿을 꺼내되, Awake가 돌지 않게 꺼진 부모 아래에 만든다.
@@ -95,7 +95,13 @@ public static class CharacterBodyFactory
         // 에디터가 통째로 멈추고 CPU는 0인 채로 예외도 남지 않는다(실제로 두 번 겪었다).
         // 어차피 몸 굽기는 뒤에서 도는 일이라 프레임 몇 개를 한 번에 먹어도 상관없다.
         var import = new GltfImport(deferAgent: new UninterruptedDeferAgent());
-        Task<bool> loading = import.LoadFile(CharacterModelStore.PathFor(id));
+
+        // 밉맵을 반드시 만든다. glTFast는 기본값이 꺼져 있어서, 2048 텍스처가 밉맵 한 장으로만
+        // 올라왔다. 전투 카메라(10m 거리)에서는 그게 화면 몇십 픽셀로 줄어드는데 밉맵이 없으면
+        // 픽셀을 건너뛰며 찍어 옷 무늬가 자글자글 깨지고 반짝거린다. 에디터판은 12단계가 있다.
+        // GLB 자체도 샘플러에 밉맵 필터(LINEAR_MIPMAP_LINEAR)를 적어 두었다 — 원래 있어야 했던 것이다.
+        var settings = new ImportSettings { GenerateMipMaps = true, AnisotropicFilterLevel = 1 };
+        Task<bool> loading = import.LoadFile(CharacterModelStore.PathFor(id), importSettings: settings);
         while (!loading.IsCompleted) yield return null;
 
         Trace(character, "GLB 읽기 끝 (" + (loading.IsFaulted ? "실패" : loading.Result.ToString()) + ")");
@@ -121,6 +127,10 @@ public static class CharacterBodyFactory
             yield break;
         }
         Trace(character, "장면 꺼내기 끝, 뼈 " + body.GetComponentsInChildren<Transform>(true).Length + "개");
+
+        // 아바타를 세우기 전에 해야 한다. 아바타는 이 순간의 뼈 값을 기준으로 삼는다.
+        BakeOutScale(body);
+        ApplyBodyMaterial(body);
 
         // 한 프레임 쉬어 준다. 여기까지가 무거워서, 아바타 세우기와 같은 프레임에 몰면
         // 에디터가 오래 멈춘 것처럼 보인다.
@@ -148,6 +158,133 @@ public static class CharacterBodyFactory
 
     // 꺼내 놓는 일은 여기서 하지 않는다. 세워 둔 몸은 프리팹 에셋과 똑같이 Instantiate하면 되고
     // (부모 없는 활성 복사본이 나온다), 꺼낸 뒤에 전투 수치를 물리는 일까지는 스포너의 몫이다.
+
+    // 뼈대에 걸린 배율을 없애고 그 크기를 뼈 위치에 녹여 넣는다. 보이는 모습은 한 치도 바뀌지 않는다.
+    //
+    // Meshy GLB는 센티미터로 만들어져 있어서 Armature 노드에 0.01 배율이 걸려 있고, 그 아래 뼈는
+    // 87.8 같은 센티미터 값으로 서 있다. 겉보기 크기는 맞는데, 이 배율이 뼈에 매다는 모든 것에 번진다 —
+    //   · 손 소켓에 무기를 배율 1로 붙이면 0.01을 물려받아, 76cm짜리 칼이 7mm가 됐다.
+    //     일라리스는 보이지 않는 칼을 휘두르고 있었다(에디터판 라엘은 멀쩡했다).
+    //   · 아바타가 사람 크기(humanScale)를 뼈의 로컬 값으로 재기 때문에 0.9312로 잡혀
+    //     임포터판(0.9585)보다 몸이 낮게 섰다.
+    // FBX 임포터는 단위를 변환하면서 이 배율을 뼈 위치에 녹여 넣는다(라엘의 골반 배율은 1이다).
+    // 같은 일을 한다.
+    //
+    // 뼈만 옮기면 스킨이 터진다. 스킨은 "그 뼈가 원래 어디 있었나(바인드 포즈)"를 행렬로 들고 있어서,
+    // 뼈의 배율이 바뀌면 메시가 100배로 부풀거나 쪼그라든다. 그래서 바인드 포즈도 같이 고쳐 적는다 —
+    // 뼈의 새 행렬과 새 바인드 포즈를 곱한 값이 예전 둘을 곱한 값과 같게.
+    private static void BakeOutScale(GameObject body)
+    {
+        Transform[] all = body.GetComponentsInChildren<Transform>(true);
+
+        bool scaled = false;
+        for (int i = 1; i < all.Length; i++)
+            if ((all[i].localScale - Vector3.one).sqrMagnitude > 0.000001f) { scaled = true; break; }
+        if (!scaled) return;
+
+        // 뼈마다 지금의 월드 행렬을 적어 둔다. 바인드 포즈를 고칠 때 "예전 값"으로 쓴다.
+        SkinnedMeshRenderer[] skins = body.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+        var before = new Matrix4x4[skins.Length][];
+        var rootBefore = new Matrix4x4[skins.Length];
+        for (int s = 0; s < skins.Length; s++)
+        {
+            Transform[] bones = skins[s].bones;
+            before[s] = new Matrix4x4[bones.Length];
+            for (int b = 0; b < bones.Length; b++)
+                before[s][b] = bones[b] != null ? bones[b].localToWorldMatrix : Matrix4x4.identity;
+            rootBefore[s] = skins[s].rootBone != null ? skins[s].rootBone.localToWorldMatrix : Matrix4x4.identity;
+        }
+
+        // 부모부터 배율을 1로 만들고, 월드 위치·회전은 적어 둔 값으로 되돌린다.
+        // GetComponentsInChildren는 부모를 먼저 돌려주므로, 자식을 놓을 때는 부모가 이미 정리돼 있다.
+        var positions = new Vector3[all.Length];
+        var rotations = new Quaternion[all.Length];
+        for (int i = 0; i < all.Length; i++) { positions[i] = all[i].position; rotations[i] = all[i].rotation; }
+        for (int i = 1; i < all.Length; i++)
+        {
+            // 스킨이 아닌 메시는 배율이 곧 크기라 건드리지 않는다(Meshy 몸에는 없지만).
+            if (all[i].GetComponent<MeshFilter>() != null) continue;
+            all[i].localScale = Vector3.one;
+            all[i].SetPositionAndRotation(positions[i], rotations[i]);
+        }
+
+        for (int s = 0; s < skins.Length; s++)
+        {
+            SkinnedMeshRenderer skin = skins[s];
+            Mesh mesh = skin.sharedMesh;
+            if (mesh == null) continue;
+
+            Transform[] bones = skin.bones;
+            Matrix4x4[] bindposes = mesh.bindposes;
+            for (int b = 0; b < bones.Length && b < bindposes.Length; b++)
+            {
+                if (bones[b] == null) continue;
+                bindposes[b] = bones[b].worldToLocalMatrix * before[s][b] * bindposes[b];
+            }
+            mesh.bindposes = bindposes;
+
+            // 경계 상자는 루트 뼈 기준으로 적혀 있어서 같이 옮겨 적는다(화면 밖 판정에 쓰인다).
+            if (skin.rootBone != null)
+            {
+                Bounds old = skin.localBounds;
+                Matrix4x4 toNew = skin.rootBone.worldToLocalMatrix * rootBefore[s];
+                Vector3 center = toNew.MultiplyPoint3x4(old.center);
+                Vector3 extents = toNew.MultiplyVector(old.extents);
+                skin.localBounds = new Bounds(center, new Vector3(Mathf.Abs(extents.x), Mathf.Abs(extents.y), Mathf.Abs(extents.z)) * 2f);
+            }
+        }
+    }
+
+    // glTFast가 만든 재질을 버리고 게임용 재질로 갈아 끼운다.
+    //
+    // Meshy GLB의 재질은 게임에 그대로 쓰기 곤란하다. 예전 에디터판(FBX 프리팹) 라엘과 견줘 보니 —
+    //   · 베이스컬러 텍스처를 발광(emissive) 슬롯에 세기 1.0으로 한 번 더 걸어 두었다.
+    //     조명과 상관없이 텍스처가 제 빛을 내서, 그늘이 지지 않는 납작하고 허옇게 뜬 몸이 된다.
+    //   · metallic을 적지 않았다. glTF 규약의 기본값은 1(완전 금속)이라, 옷과 피부가 금속처럼
+    //     제 색 대신 주변을 비춘다.
+    // 그 에디터판이 정상으로 보였던 재질(금속 0, 매끄러움 0.15짜리 URP Lit)을 에셋으로 떠 두었다
+    // (Resources/CharacterBodyMaterial). 그걸 복제해 같은 텍스처를 올린다.
+    // Shader.Find 대신 에셋을 복제하는 것은, 에셋이 셰이더와 그 변형을 빌드에 끌고 들어가기 때문이다.
+    public const string MaterialResourceName = "CharacterBodyMaterial";
+
+    private static readonly string[] BaseColorProperties = { "baseColorTexture", "_BaseMap", "_MainTex" };
+
+    private static void ApplyBodyMaterial(GameObject body)
+    {
+        var template = Resources.Load<Material>(MaterialResourceName);
+        if (template == null)
+        {
+            Debug.LogWarning($"[CharacterBodyFactory] 몸 재질 템플릿이 없다: Resources/{MaterialResourceName}. " +
+                             "GLB에 딸려 온 재질을 그대로 쓴다 — 발광·금속으로 떠서 에디터판과 달라 보인다.");
+            return;
+        }
+
+        foreach (Renderer renderer in body.GetComponentsInChildren<Renderer>(true))
+        {
+            Material[] source = renderer.sharedMaterials;
+            var replaced = new Material[source.Length];
+            for (int i = 0; i < source.Length; i++)
+            {
+                var material = new Material(template) { name = body.name + "_Body" };
+                Texture baseColor = BaseColorOf(source[i]);
+                if (baseColor != null) material.SetTexture("_BaseMap", baseColor);
+                replaced[i] = material;
+            }
+            renderer.sharedMaterials = replaced;
+        }
+    }
+
+    private static Texture BaseColorOf(Material material)
+    {
+        if (material == null) return null;
+        foreach (string property in BaseColorProperties)
+        {
+            if (!material.HasProperty(property)) continue;
+            Texture texture = material.GetTexture(property);
+            if (texture != null) return texture;
+        }
+        return null;
+    }
 
     // 네이티브 단계 사이사이에 발자국을 남긴다. 로그가 어디서 끊겼는지가 곧 어디서 멈췄는지다.
     private static void Trace(CharacterSO character, string step)

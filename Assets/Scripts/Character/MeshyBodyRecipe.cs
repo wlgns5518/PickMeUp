@@ -4,13 +4,10 @@ using UnityEngine;
 
 // Meshy에게 "무엇을 만들어 달라"고 말하는 내용 한 벌.
 //
-// 몸을 굽는 길이 둘이라서 여기에 모아 둔다 — 에디터에서 미리 구워 프리팹으로 만드는 길
-// (MeshyModelPipeline)과, 빌드에서 소환 직후에 굽는 길(MeshyBodyService). 두 길은 통신 방식이
-// 다를 뿐(Task와 코루틴) 주문 내용은 같아야 한다. 프롬프트가 갈리면 같은 캐릭터인데도
-// 에디터에서 구운 몸과 빌드에서 구운 몸이 다른 사람이 된다.
-//
-// 받아 가는 결과물만 다르다. 에디터는 FBX(임포터가 아바타를 세워 준다), 빌드는 GLB
-// (런타임에 읽을 수 있는 유일한 형식이고 텍스처까지 한 파일에 들어 있다).
+// 몸을 굽는 입구가 둘이라서 여기에 모아 둔다 — 기존 캐릭터를 에디터 메뉴로 굽는 입구
+// (MeshyModelPipeline)와, 소환 직후에 뒤에서 굽는 입구(MeshyBodyService). 두 입구는 통신 방식이
+// 다를 뿐(Task와 코루틴) 주문 내용도 결과물(GLB 한 장)도 같다. 프롬프트가 갈리면 같은 직업인데도
+// 어느 입구로 구웠느냐에 따라 다른 모습이 나온다.
 public static class MeshyBodyRecipe
 {
     public const string BaseUrl = "https://api.meshy.ai/openapi/v1";
@@ -25,6 +22,10 @@ public static class MeshyBodyRecipe
 
     // 리깅은 30만 면을 넘는 메시를 받지 않는다. 게임에 쓸 것이므로 훨씬 아래로 잡는다.
     public const int TargetPolycount = 30000;
+
+    // 시트 그림과 메시에 같은 자세를 건다. 둘이 다르면 메시 생성기가 그림을 자세에 맞춰
+    // 억지로 비틀어 팔다리가 뭉개진다. 이유는 SheetPrompt 위 주석 참조.
+    public const string PoseMode = "t-pose";
 
     // 굽기 한 번에 드는 크레딧. 실측값(시트 9 + 메시 30 + 리깅 5 = 44)에 여유를 붙였다.
     public const int CreditsPerCharacter = 60;
@@ -51,6 +52,12 @@ public static class MeshyBodyRecipe
     // 된다 — 그림자와 연출은 그대로 메시에 눌러붙기 때문에 오히려 방해가 된다.
     // 그래서 조명은 평평하게, 배경은 없이, 팔다리는 몸통에서 떼어 놓게 시킨다.
     //
+    // 자세는 T포즈다. 전투 동작은 전부 휴머노이드라 "T포즈에서 근육을 얼마나 틀었는가"로 저장돼
+    // 있어서, 몸이 T포즈로 태어나야 아바타의 기준 자세와 모델이 처음부터 일치한다.
+    // 예전에는 A포즈로 받고 아바타를 세울 때 팔을 펴서 맞췄는데(CharacterModelRig.EnforceTPose),
+    // 펴는 각도가 어긋나면 모든 팔 동작이 그만큼 틀어진다 — 한 번은 50도 접힌 채로 싸웠다.
+    // 겨드랑이와 옆구리가 떨어져 있어 메시가 붙어 나오지 않고 리깅도 팔을 가려내기 쉽다.
+    //
     // 손에는 아무것도 들리지 않게 한다. 무기는 손뼈 소켓에 따로 걸리므로(WeaponEquipper),
     // 메시에 칼이 붙어 나오면 칼을 두 자루 든 캐릭터가 된다.
     //
@@ -64,7 +71,8 @@ public static class MeshyBodyRecipe
                (appearance ?? "").TrimEnd() + " " +
                "Both hands are clenched into tight fists, fingers fully curled into the palm, " +
                "thumb folded over the fingers, as if gripping an invisible handle. " +
-               "Standing upright and symmetrical, arms lowered away from the torso, " +
+               "T-pose: standing upright and symmetrical, both arms stretched straight out to the sides " +
+               "at shoulder height, perfectly horizontal, elbows straight, palms facing down, " +
                "both legs straight and slightly apart, both feet flat on the ground and fully visible. " +
                "No weapon, no props, nothing held. " +
                "Clean even neutral lighting, no cast shadows, no background scenery. " +
@@ -105,7 +113,7 @@ public static class MeshyBodyRecipe
     public static string SheetBody(string prompt) =>
         "{\"ai_model\":\"nano-banana-pro\"" +
         ",\"prompt\":" + EscapeJson(prompt) +
-        ",\"pose_mode\":\"a-pose\"" +
+        ",\"pose_mode\":\"" + PoseMode + "\"" +
         ",\"generate_multi_view\":true" +
         ",\"remove_background\":true}";
 
@@ -117,7 +125,7 @@ public static class MeshyBodyRecipe
     public static string MeshBody(string sheetTaskId) =>
         "{\"input_task_id\":" + EscapeJson(sheetTaskId) +
         ",\"ai_model\":\"meshy-7\"" +
-        ",\"pose_mode\":\"a-pose\"" +
+        ",\"pose_mode\":\"" + PoseMode + "\"" +
         ",\"should_texture\":true" +
         ",\"texture_resolution\":\"2k\"" +
         ",\"enable_pbr\":false" +

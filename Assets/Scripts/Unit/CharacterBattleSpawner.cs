@@ -11,7 +11,7 @@ using UnityEngine.AI;
 public class CharacterBattleSpawner : MonoBehaviour
 {
     [Header("Ally (Character Roster)")]
-    [Tooltip("제 몸(CharacterSO.battlePrefab)이 없는 캐릭터가 빌려 쓰는 공용 몸. " +
+    [Tooltip("제 몸(초상화에서 구운 GLB)이 아직 없는 캐릭터가 빌려 쓰는 공용 몸. " +
              "캐릭터마다 3D 모델을 구워 두면 이 프리팹은 쓰이지 않는다.")]
     [SerializeField] private UnitController allyUnitPrefab;
     [SerializeField] private CharacterSO[] allyCharacters;
@@ -260,23 +260,13 @@ public class CharacterBattleSpawner : MonoBehaviour
 
     // 이 캐릭터가 입고 나갈 몸. 순서대로 찾는다.
     //
-    //  1. 에디터에서 미리 구워 프리팹으로 만들어 둔 몸(CharacterSO.battlePrefab).
-    //     임포터가 아바타까지 세워 둔 완성품이라 가장 확실하다.
-    //  2. 빌드에서 소환한 캐릭터의 몸. 디스크의 GLB에서 방금 세운 것(CharacterBodyFactory).
-    //  3. 공용 몸. 아직 굽는 중이거나 굽기에 실패한 캐릭터가 이번 판만 빌려 입는다.
+    //  1. 초상화에서 구운 제 몸. 디스크의 GLB에서 방금 세운 것(CharacterBodyFactory).
+    //     소환으로 굽든 에디터 메뉴로 굽든 같은 파일, 같은 길이다.
+    //  2. 공용 몸. 아직 굽는 중이거나 굽기에 실패한 캐릭터가 이번 판만 빌려 입는다.
     //
-    // 셋 다 없으면 이번 판에는 나가지 못한다.
+    // 둘 다 없으면 이번 판에는 나가지 못한다.
     private GameObject AllyBody(CharacterSO so)
     {
-        if (so.battlePrefab != null)
-        {
-            if (so.battlePrefab.GetComponent<UnitController>() != null) return so.battlePrefab;
-
-            Debug.LogWarning("[CharacterBattleSpawner] " + so.characterName +
-                             "의 전투 모델 프리팹 루트에 UnitController가 없어 공용 몸으로 대신한다: " +
-                             so.battlePrefab.name, so.battlePrefab);
-        }
-
         GameObject built = CharacterBodyFactory.Ready(so);
         if (built != null) return built;
 

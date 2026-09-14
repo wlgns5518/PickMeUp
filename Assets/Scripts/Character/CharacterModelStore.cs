@@ -4,12 +4,13 @@ using UnityEngine;
 
 // 굽은 몸이 디스크에 눕는 자리.
 //
-// 빌드에는 AssetDatabase가 없다. 소환한 캐릭터의 몸을 프리팹으로 저장할 수 없으므로,
+// 빌드에는 AssetDatabase가 없다. 캐릭터의 몸을 프리팹으로 저장할 수 없으므로,
 // 리깅까지 끝난 GLB 파일 자체를 저장해 두고 다음에 켤 때 다시 읽어 세운다(CharacterBodyFactory).
 // 이게 없으면 게임을 껐다 켤 때마다 같은 캐릭터를 44크레딧씩 다시 굽게 된다.
+// 에디터 메뉴로 구운 몸도 여기로 온다 — 에디터와 빌드가 같은 파일, 같은 길을 쓴다.
 //
 // GLB인 이유: 텍스처까지 파일 하나에 들어 있고, 런타임에 읽을 수 있는 형식이 이것뿐이다.
-// FBX는 임포터가 있는 에디터에서만 읽힌다 — 그쪽은 CharacterModelBuilder가 맡는다.
+// FBX는 임포터가 있는 에디터에서만 읽힌다.
 public static class CharacterModelStore
 {
     private const string FolderName = "CharacterModels";
