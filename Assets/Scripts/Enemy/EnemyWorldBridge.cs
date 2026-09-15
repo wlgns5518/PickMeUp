@@ -354,29 +354,6 @@ public static class EnemyWorldBridge
     // 표를 세울 때 함께 센 값이라 훑지 않는다. 겨눌 상대가 없는 아군이 매 틱 묻는 질문이다.
     public static bool HasLivingEnemy() => IsReady && aliveEnemyCount > 0;
 
-    // 가장 가까운 적. 시야 판정(레이캐스트)은 부르는 쪽이 후보를 받고 나서 한다 —
-    // 여기서 매번 쏘면 1000마리에서 그대로 무너진다.
-    public static bool TryFindNearestEnemy(float3 from, float range, out int index)
-    {
-        index = -1;
-        if (!IsReady) return false;
-
-        float bestSqr = range * range;
-        for (int i = 0; i < EnemyStates.Length; i++)
-        {
-            EnemyState enemy = EnemyStates[i];
-            if (!enemy.IsAlive) continue;
-
-            float sqr = math.distancesq(enemy.position, from);
-            if (sqr > bestSqr) continue;
-
-            bestSqr = sqr;
-            index = i;
-        }
-
-        return index >= 0;
-    }
-
     // 아군이 겨눌 적을 고른다. 거리만 보지 않고 이미 붙은 아군 수도 함께 본다 —
     // 그러지 않으면 파티 전원이 같은 한 마리에 달라붙고 나머지는 그 뒤에서 겉돈다.
     // 적 쪽 표적 선택(EnemyTargetingSystem.PickTargetJob)과 같은 모양의 점수다.
@@ -587,29 +564,6 @@ public static class EnemyWorldBridge
         }
 
         return false;
-    }
-
-    // 싸움이 벌어지고 있는 자리. 시야에 적이 없을 때 걸어갈 곳을 찾는다
-    // (예전 UnitRegistry.FindRallyEnemy).
-    public static bool TryFindRallyEnemy(float3 from, out int index)
-    {
-        index = -1;
-        if (!IsReady) return false;
-
-        float bestSqr = float.MaxValue;
-        for (int i = 0; i < EnemyStates.Length; i++)
-        {
-            EnemyState enemy = EnemyStates[i];
-            if (!enemy.IsAlive || enemy.targetAllyIndex < 0) continue;
-
-            float sqr = math.distancesq(enemy.position, from);
-            if (sqr >= bestSqr) continue;
-
-            bestSqr = sqr;
-            index = i;
-        }
-
-        return index >= 0;
     }
 
     // ---------------------------------------------------------------- 피해 전달

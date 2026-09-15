@@ -175,17 +175,6 @@ public static class PartyDeck
         return true;
     }
 
-    // 카드 클릭 한 번으로 넣고 뺀다. 반환값은 클릭 뒤에 활성 파티에 들어 있는지 여부다.
-    // public static bool Toggle(CharacterSO character)
-    // {
-    //     if (Contains(character))
-    //     {
-    //         Remove(character);
-    //         return false;
-    //     }
-    //     return Add(character);
-    // }
-
     // 활성 파티만 비운다.
     public static void Clear()
     {
@@ -193,18 +182,6 @@ public static class PartyDeck
 
         parties[ActiveIndex].Clear();
         Changed?.Invoke();
-    }
-
-    public static void ClearAll()
-    {
-        bool changed = false;
-        for (int i = 0; i < parties.Length; i++)
-        {
-            if (parties[i].Count == 0) continue;
-            parties[i].Clear();
-            changed = true;
-        }
-        if (changed) Changed?.Invoke();
     }
 
     // 어느 파티에 있든 통째로 뺀다. 합성 재료처럼 캐릭터 자체가 사라질 때 쓴다 —

@@ -25,8 +25,6 @@ public static class MiniGameWorldView
     private static int savedCullingMask = -1;
     private static CameraClearFlags savedClearFlags = CameraClearFlags.Skybox;
 
-    public static bool IsHidden => screens.Count > 0;
-
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetOnPlay()
     {

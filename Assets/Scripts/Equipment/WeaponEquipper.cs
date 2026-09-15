@@ -189,26 +189,7 @@ public class WeaponEquipper : MonoBehaviour
         AfterHandsChanged();
     }
 
-    // 한 손만 따로 갈아 끼운다. 반대 손이 든 것은 건드리지 않는다.
-    public void EquipToHand(EquipHand hand, WeaponDefinition definition)
-    {
-        appliedOnce = true;
-        ResolveSockets();
-
-        SetHand(hand, definition);
-        RefreshLogicalSlots();
-        AfterHandsChanged();
-    }
-
-    public void EquipRightHand(WeaponDefinition definition) => EquipToHand(EquipHand.Right, definition);
-    public void EquipLeftHand(WeaponDefinition definition) => EquipToHand(EquipHand.Left, definition);
-
-    public void Unequip() => Equip(null, null);
-
-    public WeaponDefinition WeaponIn(EquipHand hand) => Of(hand).Definition;
     public Transform SocketOf(EquipHand hand) => Of(hand).Socket;
-    public WeaponGrip GripIn(EquipHand hand) => Of(hand).Grip;
-    public bool IsHandEmpty(EquipHand hand) => Of(hand).Definition == null;
 
     // 반대 손이 따라가야 할 지점이 있는가. 양손 무기를 들었고 그 반대 손이 비어 있을 때만이다 —
     // 방패를 들고 있는 손을 자루로 끌어오면 방패가 몸을 가로질러 날아간다.
@@ -254,20 +235,6 @@ public class WeaponEquipper : MonoBehaviour
         hand.Definition = definition;
         hand.Instance = Respawn(hand.Instance, definition, hand.Socket);
         hand.Grip = hand.Instance != null ? hand.Instance.GetComponent<WeaponGrip>() : null;
-    }
-
-    // 어느 손에 들렸든, 그 장비가 스스로 말하는 자리(EquipSlot)가 곧 전투에서의 역할이다.
-    private void RefreshLogicalSlots()
-    {
-        MainHand = WeaponForSlot(EquipSlot.MainHand);
-        OffHand = WeaponForSlot(EquipSlot.OffHand);
-    }
-
-    private WeaponDefinition WeaponForSlot(EquipSlot slot)
-    {
-        if (right.Definition != null && right.Definition.slot == slot) return right.Definition;
-        if (left.Definition != null && left.Definition.slot == slot) return left.Definition;
-        return null;
     }
 
     private void AfterHandsChanged()

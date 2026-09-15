@@ -272,7 +272,6 @@ public partial class UnitController : MonoBehaviour
     private float hitAnimationDuration;
     private float deathAnimationDuration;
 
-    public float AttackAnimationDuration => attackAnimationDuration;
     public float SkillAnimationDuration => skillAnimationDuration;
     public float PotionAnimationDuration => potionAnimationDuration;
     public float HealAnimationDuration => healAnimationDuration;
@@ -684,11 +683,6 @@ public partial class UnitController : MonoBehaviour
 #endif
     }
 
-    public void SetTarget(UnitController target)
-    {
-        TrySetTarget(target);
-    }
-
     public void ClearTarget()
     {
         ReleaseTargetCount();
@@ -895,15 +889,6 @@ public partial class UnitController : MonoBehaviour
     public bool IsTargetValid()
     {
         return CurrentTarget.IsAlive;
-    }
-
-    public bool IsTargetVisible()
-    {
-        // 엔티티 표적은 시야 판정을 하지 않는다. 레이캐스트를 1000마리분 쏘면 그것만으로
-        // 프레임이 끝나서, 적 쪽 탐지도 같은 이유로 시야각까지만 본다(EnemyTargetingSystem).
-        if (CurrentTarget.IsEntity) return true;
-
-        return scanner != null && CurrentTarget.IsUnit && scanner.IsVisible(CurrentTarget.Unit);
     }
 
     public float SqrDistanceToTarget()

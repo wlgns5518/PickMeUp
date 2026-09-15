@@ -25,9 +25,6 @@ public static class ApiKeys
     /// Gemini (이름 생성) 키. 없으면 빈 문자열.
     public static string Gemini => Get(Environment.GetEnvironmentVariable("GEMINI_API_KEY"), f => f.gemini);
 
-    /// 파일을 고쳐도 에디터 재시작 없이 다시 읽게 한다.
-    public static void Reload() { loaded = false; cache = null; }
-
     /// 파일 경로 — 어디에 키를 넣어야 하는지 로그로 안내할 때 쓴다.
     public static string FilePath => Path.GetFullPath(Path.Combine(Application.dataPath, FileRelativePath));
 

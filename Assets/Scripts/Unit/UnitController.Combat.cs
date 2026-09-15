@@ -141,7 +141,6 @@ public partial class UnitController
     private bool footworkThisGap;
 
     private float blockHitAnimationDuration;
-    private float staggerAnimationDuration;
 
     // --- 스윙 페이즈 ---
     // 이번 스윙의 타격 이벤트가 이미 지나갔는가. 준비 동작(아직 안 지나감)과 회수 동작(지나감)을
@@ -181,12 +180,8 @@ public partial class UnitController
     // 칼을 돌리는 기계처럼 보인다.
     public bool IsSwingReady => Time.time >= nextSwingReadyTime;
 
-    // 옆걸음 클립을 하나라도 갖고 있는가. 없으면 발놀림이 간격 조절만 한다.
-    public bool HasStrafeAnimation => strafeLeftAnimationHash != 0 || strafeRightAnimationHash != 0;
-
     public bool IsStaggered => Time.time < staggerEndTime;
     public float PendingStaggerDuration => pendingStaggerDuration;
-    public float StaggerAnimationDuration => staggerAnimationDuration;
 
     // 히트스톱으로 애니메이션이 느려진 만큼 상태 타이머도 같이 느려져야 한다.
     // 그러지 않으면 모션은 아직 절반인데 상태가 먼저 끝나 다음 동작으로 튄다.
@@ -213,9 +208,6 @@ public partial class UnitController
         blockHitAnimationDuration = blockHitAnimationHash != 0
             ? GetAnimationClipDuration(blockHitStateName, 0.3f)
             : 0f;
-        staggerAnimationDuration = staggerAnimationHash != 0
-            ? GetAnimationClipDuration(staggerStateName, 1f)
-            : hitAnimationDuration;
 
         // 옆으로 도는 방향은 유닛마다 다르게 시작한다. 전부 같은 방향으로 돌면
         // 난전이 통째로 한쪽으로 흘러가 버린다.
@@ -402,9 +394,8 @@ public partial class UnitController
 
     public float LeapAttackAnimationDuration => leapAttackAnimationDuration;
 
-    // 클립 전체에서 몸이 실제로 떠 있는 구간. 앞뒤로 남는 시간이 웅크림과 착지가 된다.
+    // 클립에서 발이 땅을 떠나는 지점. 그 앞은 웅크림이라 LeapAttackBehavior가 그동안만 상대를 본다.
     public float LeapLaunchRatio => leapLaunchRatio;
-    public float LeapLandRatio => leapLandRatio;
 
     public void TriggerLeapAttack()
     {
@@ -503,8 +494,6 @@ public partial class UnitController
     //
     // 끝나면 반드시 NavMesh 위로 되돌려 놓아야 한다 — 공중에 뜬 좌표에서 에이전트를 다시
     // 켜면 그 자리에서 굳거나 엉뚱한 곳으로 튄다. EndCling이 그 일을 한다.
-    public bool ClingsWhileUsingSkill => clingToNeckDuringSkill;
-
     public void BeginCling()
     {
         if (!clingToNeckDuringSkill) return;
@@ -1110,30 +1099,6 @@ public partial class UnitController
     // 이 유닛이 적의 좌우 중 어느 쪽으로 도는가. 유닛마다 스폰 시 한 번 정해진다 —
     // 전원이 같은 쪽으로 돌면 난전이 통째로 한 방향으로 흘러간다.
     private float flankSign = 1f;
-
-    // 적의 정면을 0도로 보고, 지금 내가 서 있는 방위(도). 부호는 좌우.
-    private float CurrentEngageAngle(UnitController other)
-    {
-        Vector3 toMe = transform.position - other.transform.position;
-        toMe.y = 0f;
-        if (toMe.sqrMagnitude <= 0.0001f) return 0f;
-
-        Vector3 theirForward = other.transform.forward;
-        theirForward.y = 0f;
-        if (theirForward.sqrMagnitude <= 0.0001f) return 0f;
-
-        return Vector3.SignedAngle(theirForward, toMe, Vector3.up);
-    }
-
-    // 지금 방위에서 목표 방위까지 남은 각도. 양수면 왼쪽(반시계)으로 더 돌아야 한다.
-    // 목표 방위가 0(정면)인 역할은 항상 0을 돌려주므로 아무것도 하지 않는다.
-    public float EngageAngleError(UnitController other)
-    {
-        // HasEngagePreference와 같은 조건을 쓴다 — 나를 노려보는 적에게는 사각지대가 없다.
-        if (other == null || !HasEngagePreference) return 0f;
-
-        return Mathf.DeltaAngle(CurrentEngageAngle(other), stats.engageAngle * flankSign);
-    }
 
     // 파고들 방위를 가진 직군인가. 접근 방식이 갈리는 분기점이라 부르는 쪽이 먼저 묻는다.
     //

@@ -154,6 +154,4 @@ public class EnemyHordeSpawner : MonoBehaviour
         EnemyStats stats = BuildStats(level, healthMultiplier);
         return EnemyHorde.Spawn(stats, count, center, spread, seed);
     }
-
-    public EnemyAnimationLibrary AnimationLibrary => animationLibrary;
 }

@@ -257,6 +257,4 @@ public static class EnemyHorde
         using var query = manager.CreateEntityQuery(typeof(EnemyTag));
         manager.DestroyEntity(query);
     }
-
-    public static int AliveCount => EnemyWorldBridge.EnemyCount;
 }

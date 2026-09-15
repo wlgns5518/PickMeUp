@@ -28,8 +28,6 @@ public class CardSpawner : MonoBehaviour
     // 화면에 그대로 쌓여 마을이 보이지 않게 된다. 소환소가 결과를 확인하면 ClearCards로 치운다.
     private readonly List<CharacterCard> spawned = new List<CharacterCard>();
 
-    public int SpawnedCount => spawned.Count;
-
     private void Start()
     {
         if (spawnCountOnStart > 0) StartCoroutine(SpawnBatch(spawnCountOnStart));

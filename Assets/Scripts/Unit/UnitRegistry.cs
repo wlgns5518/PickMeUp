@@ -19,7 +19,6 @@ public static class UnitRegistry
 
     public static IReadOnlyList<UnitController> Allies => allies;
     public static IReadOnlyList<UnitController> Enemies => enemies;
-    public static IReadOnlyList<UnitController> Neutrals => neutrals;
 
     // 다른 정적 저장소(PartyDeck, CharacterStress...)와 같은 이유로 플레이 시작마다 비운다.
     // 여기만 빠져 있었다: 도메인 리로드를 끄면 이전 플레이에서 파괴된 유닛이 리스트에 남고,

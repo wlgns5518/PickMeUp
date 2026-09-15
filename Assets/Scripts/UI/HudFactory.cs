@@ -38,19 +38,6 @@ public static class HudFactory
         return text;
     }
 
-    // 좌측 기준으로 늘어나는 게이지(HP/공포 바)의 채움 부분.
-    public static Image CreateFillBar(RectTransform parent, string name, Color color, Vector2 size, float yOffset)
-    {
-        Image image = CreateImage(parent, name, color);
-        RectTransform rect = image.rectTransform;
-        rect.anchorMin = new Vector2(0f, 0.5f);
-        rect.anchorMax = new Vector2(0f, 0.5f);
-        rect.pivot = new Vector2(0f, 0.5f);
-        rect.sizeDelta = size;
-        rect.anchoredPosition = new Vector2(-size.x * 0.5f, yOffset);
-        return image;
-    }
-
     public static RectTransform CreateGroup(RectTransform parent, string name)
     {
         var go = new GameObject(name, typeof(RectTransform));
@@ -62,8 +49,6 @@ public static class HudFactory
         return rect;
     }
 
-    // 한국어 폰트가 지정되지 않았을 때의 대비책. 기본 폰트에는 한글 글리프가 없어
-    // 라벨이 네모(두부)로 보이므로, 조용히 넘어가지 않고 경고를 남긴다.
     // 화면을 덮는 UI 캔버스 한 장.
     // 창마다 다른 것은 이름과 정렬 순서뿐이고 나머지 설정은 전부 같다 —
     // 1920x1080 기준으로 늘어나고, 클릭을 받을 수 있도록 레이캐스터를 붙인다.
@@ -108,6 +93,8 @@ public static class HudFactory
         rect.anchoredPosition = offset;
     }
 
+    // 한국어 폰트가 지정되지 않았을 때의 대비책. 기본 폰트에는 한글 글리프가 없어
+    // 라벨이 네모(두부)로 보이므로, 조용히 넘어가지 않고 경고를 남긴다.
     public static TMP_FontAsset ResolveFont(TMP_FontAsset preferred, Object context)
     {
         if (preferred != null) return preferred;

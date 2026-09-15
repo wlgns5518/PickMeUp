@@ -149,9 +149,5 @@ public static class CharacterRules
 
     public static string Korean(JobType t) => JobKr.TryGetValue(t, out var v) ? v : t.ToString();
     public static string Korean(WeaponType t) => WeaponKr.TryGetValue(t, out var v) ? v : t.ToString();
-
-    // 생산 계열인지 판별
-    public static bool IsCraftJob(JobType t) =>
-        t == JobType.Carpenter || t == JobType.Cook || t == JobType.Blacksmith || t == JobType.Tanner;
 }
 

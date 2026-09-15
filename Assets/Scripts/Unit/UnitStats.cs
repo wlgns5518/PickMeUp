@@ -490,7 +490,6 @@ public class UnitStats
     private float shieldExpireTime;
 
     public bool HasShield => currentShield > 0 && Time.time < shieldExpireTime;
-    public int CurrentShield => HasShield ? currentShield : 0;
 
     public void ApplyShield(int amount, float duration)
     {
@@ -499,12 +498,6 @@ public class UnitStats
         // 겹쳐 걸면 더 두꺼운 쪽이 남는다. 더하면 사제 하나로 무적이 만들어진다.
         currentShield = HasShield ? Mathf.Max(currentShield, amount) : amount;
         shieldExpireTime = Time.time + duration;
-    }
-
-    public void ClearShield()
-    {
-        currentShield = 0;
-        shieldExpireTime = 0f;
     }
 
     // 보호막으로 받아내고 남은 피해를 돌려준다.

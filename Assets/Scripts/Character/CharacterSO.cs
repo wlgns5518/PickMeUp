@@ -146,49 +146,8 @@ public class CharacterSO : ScriptableObject
 
     public bool HasShield => CanEquipShield && (offHandWeapon != null || offHand == OffHandType.Shield);
 
-    // Change equipment. Equipping a two-handed weapon automatically removes the shield.
-    public void EquipMainHand(WeaponType w)
-    {
-        mainHand = w;
-        // 종류를 직접 바꾸면 들고 있던 모델과 어긋난다. 같은 종류가 아니면 모델을 내려놓는다.
-        if (mainHandWeapon != null && mainHandWeapon.type != w) mainHandWeapon = null;
-        if (CharacterRules.IsTwoHanded(w)) UnequipOffHand();
-    }
-
-    // 무기 에셋을 그대로 장착한다. 전투 수치용 enum도 함께 맞춰 둔다.
-    public bool EquipMainHand(WeaponDefinition weapon)
-    {
-        if (weapon == null) { mainHandWeapon = null; mainHand = WeaponType.None; return true; }
-        if (weapon.slot != EquipSlot.MainHand) return false;
-
-        mainHandWeapon = weapon;
-        mainHand = weapon.type;
-        if (weapon.IsTwoHanded) UnequipOffHand();
-        return true;
-    }
-
-    public bool EquipShield()
-    {
-        if (!CanEquipShield) return false;
-        offHand = OffHandType.Shield;
-        return true;
-    }
-
-    public bool EquipOffHand(WeaponDefinition shield)
-    {
-        if (shield == null) { UnequipOffHand(); return true; }
-        if (shield.slot != EquipSlot.OffHand || !CanEquipShield) return false;
-
-        offHandWeapon = shield;
-        offHand = OffHandType.Shield;
-        return true;
-    }
-
-    public void UnequipOffHand()
-    {
-        offHand = OffHandType.None;
-        offHandWeapon = null;
-    }
+    // 장비를 바꾸는 메서드는 여기 없다. 에셋의 칸은 기본 장비일 뿐이고, 실제로 드는 것은
+    // 무기창고(EquipmentInventory)가 정한다(CharacterLoadout).
 
     // Progression / Skills ----------------------------------------------
     // 실제 계산과 저장은 전부 CharacterProgress가 한다. 여기 남은 것은 부르는 쪽이

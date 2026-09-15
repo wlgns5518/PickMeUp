@@ -38,8 +38,6 @@ public class Forge : MonoBehaviour
     private PuzzleDifficulty pendingDifficulty;
     private bool awaitingPuzzle;
 
-    public bool IsAwaitingPuzzle => awaitingPuzzle;
-
     private void Awake()
     {
         if (puzzle == null) puzzle = FindAnyObjectByType<PuzzleGame>(FindObjectsInactive.Include);

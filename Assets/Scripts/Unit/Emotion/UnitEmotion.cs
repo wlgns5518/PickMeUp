@@ -31,11 +31,7 @@ public class UnitEmotion : MonoBehaviour
     public event Action<UnitEmotion> OnStateChanged;
 
     public EmotionProfile Profile => profile;
-    public UnitController Owner => owner;
     public EmotionState State => state;
-    public float FearGauge => fearGauge;
-    public float FearRatio => Mathf.Clamp01(fearGauge / Mathf.Max(1f, profile.panicThreshold));
-    public float StressRatio => Mathf.Clamp01(profile.stress / Mathf.Max(1f, profile.stressLimit));
 
     public bool Has(EmotionState flag) => (state & flag) != 0;
 

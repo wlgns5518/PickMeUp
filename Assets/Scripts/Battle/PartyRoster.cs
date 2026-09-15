@@ -15,8 +15,6 @@ public static class PartyRoster
     // 죽은 순서대로. UI가 "이번 층에서 잃은 캐릭터"를 보여줄 때 순서가 의미를 가진다.
     public static IReadOnlyList<CharacterSO> Fallen => fallenOrder;
 
-    public static int FallenCount => fallenOrder.Count;
-
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetOnPlay()
     {

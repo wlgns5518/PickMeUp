@@ -62,11 +62,6 @@ public partial class UnitController
     // 광역 판정에 쓰는 공용 버퍼. 마법 한 번에 리스트를 새로 만들지 않는다.
     private static readonly List<TargetRef> SpellVictims = new List<TargetRef>(16);
 
-    public bool HasCastAnimation => castAnimationHash != 0;
-
-    // 지금 영창 중인 마법의 이름. 로그와 UI 표시용.
-    public string CastingSpellName => hasCastingSpell ? castingSpell.Name : "";
-
     private void CacheMagicAnimationHashes()
     {
         castAnimationHash = ResolveStateHash(castStateName);
