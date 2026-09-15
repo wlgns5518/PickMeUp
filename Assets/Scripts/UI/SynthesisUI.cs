@@ -36,8 +36,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
     [SerializeField] private bool openOnStart;
 
     [Header("Warning Banner")]
-    [Tooltip("경고를 띄울 장식 배너(Assets/Image/UI.png). 비워두면 금색 테두리에 검은 판으로 그린다.")]
-    [SerializeField] private Sprite bannerSprite;
+    [Tooltip("경고 배너가 넘지 않을 가로 길이. 모양은 킷의 장식 메시지 박스다.")]
     [SerializeField] private float bannerWidth = 900f;
 
     [Header("Layout")]
@@ -51,7 +50,6 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
     private const float PanelPadding = 28f;
     private const float FramePadding = 5f;
     private const float HeaderHeight = 52f;
-    private const float CloseSize = 52f;
     private const float SlotTitleHeight = 34f;   // 자리 이름표가 테두리 위쪽 바깥에 붙는 높이
     private const float InfoHeight = 104f;
     private const float PlusWidth = 90f;
@@ -71,10 +69,9 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
     private const int MainSlotIndex = 0;
     private const int MaterialSlotIndex = 1;
 
-    private static readonly Color MainFrame = new Color(0.42f, 0.34f, 0.12f, 0.96f);
-    private static readonly Color MaterialFrame = new Color(0.44f, 0.18f, 0.20f, 0.96f);
-    private static readonly Color HintText = new Color(0.62f, 0.62f, 0.66f);
-    private static readonly Color WarnText = new Color(0.95f, 0.62f, 0.35f);
+    // 카드를 두르는 얇은 테두리 색. 주 카드는 남는 쪽이라 강조색, 재료는 태워 없어지는 쪽이라 경고색이다.
+    private static readonly Color MainFrame = BattleHudPalette.Accent;
+    private static readonly Color MaterialFrame = BattleHudPalette.Danger;
 
     private static readonly Vector2 ReferenceResolution = new Vector2(1920f, 1080f);
 
@@ -89,7 +86,6 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         public CardDragSource Drag;
         public TMP_Text EmptyLabel;
         public TMP_Text Info;
-        public Color IdleColor;
         public Color FilledColor;
     }
 
@@ -106,7 +102,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
 
     private CardSlot mainSlot;
     private CardSlot materialSlot;
-    private Button synthesizeButton;
+    private NeonButton synthesizeButton;
     private TMP_Text resultText;
     private readonly List<RosterSlot> rosterSlots = new List<RosterSlot>();
 
@@ -302,7 +298,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
 
         // 결과 문구는 목록이 다시 그려진 뒤에 적는다. 순서가 반대면 새로 그린 화면이 문구를 지운다.
         // 낫표(「」)는 NotoSansKR 아틀라스에 없어 네모로 그려진다. 대괄호를 쓴다.
-        SetResult($"{consumedName}을(를) 합성해 [{SkillCatalog.NameOf(skillId)}]을(를) 배웠습니다.", BattleHudPalette.Mvp);
+        SetResult($"{consumedName}을(를) 합성해 [{SkillCatalog.NameOf(skillId)}]을(를) 배웠습니다.", BattleHudPalette.Accent);
     }
 
     // ---- 만들기 ---------------------------------------------------------
@@ -342,7 +338,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         HudFactory.Stretch(dragLayer);
 
         // 경고 배너는 팝업 밖(캔버스 직속)에 둔다. 창이 닫혀도 같은 자리에 뜬다.
-        warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, bannerSprite, null, bannerWidth);
+        warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, null, bannerWidth);
 
         RefreshSlots();
     }
@@ -351,10 +347,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
     {
         RectTransform popup = BuildPopupRoot();
 
-        Image panel = HudFactory.CreateImage(popup, "Panel", BattleHudPalette.PanelBody);
-        // 창 안을 누른 클릭이 배경막으로 내려가지 않도록 여기서 받아 둔다.
-        panel.raycastTarget = true;
-        RectTransform panelRect = panel.rectTransform;
+        RectTransform panelRect = HudFactory.CreatePanel(popup, "Panel").rectTransform;
         HudFactory.Stretch(panelRect);
         panelRect.offsetMin = new Vector2(screenMargin, screenMargin);
         panelRect.offsetMax = new Vector2(-screenMargin, -screenMargin);
@@ -396,7 +389,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         materialSlot = BuildCardSlot(panel, "MaterialSlot", MaterialSlotIndex, "재료 카드", "재료 카드를 끌어다 놓으세요",
             slotSize, slotCardScale, halfStep, y, infoWidth, MaterialFrame, ClearMaterial);
 
-        TMP_Text plus = HudFactory.CreateText(panel, "Plus", resolvedFont, 64f, HintText);
+        TMP_Text plus = HudFactory.CreateText(panel, "Plus", resolvedFont, 64f, BattleHudPalette.TextMuted);
         SetTopCenter(plus.rectTransform, new Vector2(PlusWidth, slotSize.y), 0f, y);
         plus.text = "+";
 
@@ -405,11 +398,11 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         BuildSynthesizeButton(panel, y);
         y += ButtonHeight + 8f;
 
-        resultText = HudFactory.CreateText(panel, "Result", resolvedFont, 26f, HintText);
+        resultText = HudFactory.CreateText(panel, "Result", resolvedFont, 26f, BattleHudPalette.TextMuted);
         SetTopCenter(resultText.rectTransform, new Vector2(availableWidth, ResultHeight), 0f, y);
         y += ResultHeight + 10f;
 
-        TMP_Text label = HudFactory.CreateText(panel, "RosterLabel", resolvedFont, 28f, BattleHudPalette.PanelText);
+        TMP_Text label = HudFactory.CreateText(panel, "RosterLabel", resolvedFont, 28f, BattleHudPalette.TextPrimary);
         label.alignment = TextAlignmentOptions.Left;
         HudFactory.SetTopLeft(label.rectTransform, new Vector2(availableWidth, SectionLabelHeight), new Vector2(PanelPadding, -y));
         label.text = "보유 영웅";
@@ -421,31 +414,15 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
 
     private void BuildHeader(RectTransform panel, float width, float y)
     {
-        TMP_Text title = HudFactory.CreateText(panel, "Title", resolvedFont, 40f, BattleHudPalette.PanelText);
-        title.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(title.rectTransform, new Vector2(width - CloseSize, HeaderHeight), new Vector2(PanelPadding, -y));
-        title.text = "합성소";
-
-        Image close = HudFactory.CreateImage(panel, "Close", BattleHudPalette.PanelBackdrop);
-        close.raycastTarget = true;
-        HudFactory.SetTopLeft(close.rectTransform, new Vector2(CloseSize, CloseSize),
-            new Vector2(PanelPadding + width - CloseSize, -y));
-
-        var button = close.gameObject.AddComponent<Button>();
-        button.targetGraphic = close;
-        button.onClick.AddListener(Hide);
-
-        TMP_Text closeLabel = HudFactory.CreateText(close.rectTransform, "Label", resolvedFont, 24f, BattleHudPalette.PanelText);
-        HudFactory.Stretch(closeLabel.rectTransform);
-        // 곱셈 기호(U+2715 등)는 NotoSansKR 아틀라스에 없어 네모로 그려진다. 알파벳 X를 쓴다.
-        closeLabel.text = "X";
+        BuildTitleBar(panel, "합성소", PanelPadding, y, width, HeaderHeight);
     }
 
     private CardSlot BuildCardSlot(RectTransform panel, string name, int slotIndex, string title, string emptyText,
         Vector2 slotSize, float cardScale, float offsetX, float y, float infoWidth, Color filledColor,
         UnityEngine.Events.UnityAction onClick)
     {
-        Image frame = HudFactory.CreateImage(panel, name, BattleHudPalette.PortraitFrame);
+        // 빈 자리는 킷의 옅은 판(btn_ghost)으로, 카드가 올라가면 카드를 두르는 단색 테두리로 바뀐다(ApplySlot).
+        Image frame = HudFactory.CreateSkinnedImage(panel, name, null, BattleHudPalette.PortraitFrame);
         // 끌어다 놓은 카드를 받으려면 테두리가 레이캐스트 대상이어야 한다.
         frame.raycastTarget = true;
         SetTopCenter(frame.rectTransform, slotSize, offsetX, y);
@@ -457,7 +434,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
 
         frame.gameObject.AddComponent<CardDropTarget>().Bind(this, slotIndex);
 
-        TMP_Text titleLabel = HudFactory.CreateText(frame.rectTransform, "Title", resolvedFont, 24f, HintText);
+        TMP_Text titleLabel = HudFactory.CreateText(frame.rectTransform, "Title", resolvedFont, 24f, BattleHudPalette.TextMuted);
         titleLabel.rectTransform.anchorMin = new Vector2(0.5f, 1f);
         titleLabel.rectTransform.anchorMax = new Vector2(0.5f, 1f);
         titleLabel.rectTransform.pivot = new Vector2(0.5f, 0f);
@@ -465,7 +442,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         titleLabel.rectTransform.anchoredPosition = new Vector2(0f, 4f);
         titleLabel.text = title;
 
-        TMP_Text empty = HudFactory.CreateText(frame.rectTransform, "Empty", resolvedFont, 24f, HintText);
+        TMP_Text empty = HudFactory.CreateText(frame.rectTransform, "Empty", resolvedFont, 24f, BattleHudPalette.TextMuted);
         // 기본은 줄바꿈 없음이라 안내 문구가 자리 밖으로 삐져나와 가운데 "+"를 덮는다.
         empty.textWrappingMode = TextWrappingModes.Normal;
         HudFactory.Stretch(empty.rectTransform);
@@ -478,7 +455,6 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
             Index = slotIndex,
             Frame = frame,
             EmptyLabel = empty,
-            IdleColor = BattleHudPalette.PortraitFrame,
             FilledColor = filledColor,
             // 자리에 올라간 카드도 다시 집어 들 수 있다. 무엇이 올라가 있는지는 ApplySlot이 다시 알려준다.
             Drag = frame.gameObject.AddComponent<CardDragSource>(),
@@ -498,7 +474,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
             slot.Card.gameObject.SetActive(false);
         }
 
-        slot.Info = HudFactory.CreateText(panel, name + "Info", resolvedFont, 23f, BattleHudPalette.PanelText);
+        slot.Info = HudFactory.CreateText(panel, name + "Info", resolvedFont, 23f, BattleHudPalette.TextPrimary);
         slot.Info.alignment = TextAlignmentOptions.Top;
         slot.Info.textWrappingMode = TextWrappingModes.Normal;
         SetTopCenter(slot.Info.rectTransform, new Vector2(infoWidth, InfoHeight), offsetX, y + slotSize.y + 8f);
@@ -508,22 +484,15 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
 
     private void BuildSynthesizeButton(RectTransform panel, float y)
     {
-        Image background = HudFactory.CreateImage(panel, "Synthesize", MainFrame);
-        background.raycastTarget = true;
-        SetTopCenter(background.rectTransform, new Vector2(ButtonWidth, ButtonHeight), 0f, y);
-
-        synthesizeButton = background.gameObject.AddComponent<Button>();
-        synthesizeButton.targetGraphic = background;
-        synthesizeButton.onClick.AddListener(Synthesize);
-
-        TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 28f, BattleHudPalette.Mvp);
-        HudFactory.Stretch(label.rectTransform);
-        label.text = "합성하기";
+        // 두 자리가 다 차기 전에는 누를 수 없다(RefreshSlots). 그동안은 NeonButton이 비활성 판으로 그린다.
+        synthesizeButton = HudFactory.CreateButton(panel, "Synthesize", NeonButtonStyle.Primary,
+            resolvedFont, "합성하기", 28f, Synthesize);
+        SetTopCenter(synthesizeButton.Rect, new Vector2(ButtonWidth, ButtonHeight), 0f, y);
     }
 
     private void BuildRosterArea(RectTransform panel, float width, float height, float y)
     {
-        Image area = HudFactory.CreateImage(panel, "RosterArea", new Color(1f, 1f, 1f, 0.03f));
+        Image area = HudFactory.CreateImage(panel, "RosterArea", BattleHudPalette.ListGround);
         // 카드 사이 빈 곳에 놓아도 받아야 하므로 바닥 전체가 레이캐스트 대상이어야 한다.
         area.raycastTarget = true;
         HudFactory.SetTopLeft(area.rectTransform, new Vector2(width, height), new Vector2(PanelPadding, -y));
@@ -536,7 +505,7 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
 
         if (members.Count == 0)
         {
-            TMP_Text empty = HudFactory.CreateText(area.rectTransform, "Empty", resolvedFont, 22f, HintText);
+            TMP_Text empty = HudFactory.CreateText(area.rectTransform, "Empty", resolvedFont, 22f, BattleHudPalette.TextMuted);
             HudFactory.Stretch(empty.rectTransform);
             empty.text = "보유한 영웅이 없습니다. 소환소에서 먼저 영웅을 뽑아주세요.";
             return;
@@ -637,7 +606,10 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         if (slot == null) return;
 
         bool filled = character != null;
-        slot.Frame.color = filled ? slot.FilledColor : slot.IdleColor;
+        NeonUISkin skin = NeonUISkin.Current;
+        // 카드가 판을 거의 다 덮으므로 올라간 뒤에는 킷 판이 아니라 드러나는 테두리만 단색으로 칠한다.
+        HudFactory.ApplySkin(slot.Frame, !filled && skin != null ? skin.buttonGhost : null,
+            filled ? slot.FilledColor : BattleHudPalette.PortraitFrame);
         slot.EmptyLabel.gameObject.SetActive(!filled);
         slot.Info.text = info;
         // 비어 있으면 Character가 null이라 드래그가 시작되지 않는다.
@@ -660,29 +632,29 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
 
         if (main == null)
         {
-            SetResult("아래 목록에서 스킬을 배울 주 카드를 끌어다 놓으세요.", HintText);
+            SetResult("아래 목록에서 스킬을 배울 주 카드를 끌어다 놓으세요.", BattleHudPalette.TextMuted);
             return;
         }
 
         if (material == null)
         {
-            SetResult("태워 넣을 재료 카드를 끌어다 놓으세요. 재료는 사라집니다.", HintText);
+            SetResult("태워 넣을 재료 카드를 끌어다 놓으세요. 재료는 사라집니다.", BattleHudPalette.TextMuted);
             return;
         }
 
         if (main.IsSkillFull)
         {
-            SetResult($"주 카드가 이미 스킬 {SkillCatalog.MaxSkillsPerCharacter}개를 배웠습니다.", WarnText);
+            SetResult($"주 카드가 이미 스킬 {SkillCatalog.MaxSkillsPerCharacter}개를 배웠습니다.", BattleHudPalette.Warn);
             return;
         }
 
         if (!SkillCatalog.HasCandidate(main, material.starCount))
         {
-            SetResult("이 재료로 배울 수 있는 스킬이 남아 있지 않습니다.", WarnText);
+            SetResult("이 재료로 배울 수 있는 스킬이 남아 있지 않습니다.", BattleHudPalette.Warn);
             return;
         }
 
-        SetResult($"합성하면 {material.starCount}등급까지의 스킬 하나를 배웁니다.", HintText);
+        SetResult($"합성하면 {material.starCount}등급까지의 스킬 하나를 배웁니다.", BattleHudPalette.TextMuted);
     }
 
     private void SetResult(string message, Color color)

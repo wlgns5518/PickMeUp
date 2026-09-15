@@ -91,6 +91,33 @@ public abstract class FacilityWindow : MonoBehaviour, IFacilityWindow
         return popup;
     }
 
+    // 창의 제목줄 — 왼쪽에 제목, 오른쪽 끝에 정사각 닫기(X), 그 아래 구분선. 창마다 같은 모양이어야 한다.
+    // 구분선은 제목줄 바로 아래의 틈에 걸치므로 제목줄 뒤에 조금이라도 간격을 두고 다음 줄을 놓는다.
+    protected TMP_Text BuildTitleBar(RectTransform panel, string title, float x, float y, float width, float height)
+    {
+        TMP_Text label = HudFactory.CreateText(panel, "Title", resolvedFont, 40f, BattleHudPalette.TextPrimary);
+        label.alignment = TextAlignmentOptions.Left;
+        HudFactory.SetTopLeft(label.rectTransform, new Vector2(width - height, height), new Vector2(x, -y));
+        label.text = title;
+
+        BuildCloseButton(panel, x + width - height, y, height);
+
+        Image divider = HudFactory.CreateDivider(panel, "TitleDivider");
+        HudFactory.SetTopLeft(divider.rectTransform, new Vector2(width, DividerHeight), new Vector2(x, -(y + height - 2f)));
+        return label;
+    }
+
+    // 정사각 닫기 버튼. (x, y)는 창 왼쪽 위에서 버튼 왼쪽 위까지.
+    protected NeonButton BuildCloseButton(RectTransform panel, float x, float y, float size)
+    {
+        NeonButton close = HudFactory.CreateCloseButton(panel, resolvedFont, size, Hide);
+        HudFactory.SetTopLeft(close.Rect, new Vector2(size, size), new Vector2(x, -y));
+        return close;
+    }
+
+    // divider.png는 32px 높이 안에 가는 선이 위쪽에 그어져 있다. 절반으로 줄여 2px 선으로 쓴다.
+    protected const float DividerHeight = 16f;
+
     // ---- 보유 명단이 바뀌었을 때 ------------------------------------------
     //
     // 카드를 늘어놓는 창(편성·합성)은 인원이 바뀌면 칸 수도 카드 크기도 달라져 통째로 다시 지어야 한다.

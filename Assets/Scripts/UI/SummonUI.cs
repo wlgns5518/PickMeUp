@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Text;
 using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 
 // 마을 소환소에서 여는 창.
 //
@@ -31,19 +30,18 @@ public class SummonUI : FacilityWindow
     [SerializeField] private bool openOnStart;
 
     [Header("Warning Banner")]
-    [Tooltip("경고를 띄울 장식 배너(Assets/Image/UI.png). 비워두면 금색 테두리에 검은 판으로 그린다.")]
-    [SerializeField] private Sprite bannerSprite;
+    [Tooltip("경고 배너가 넘지 않을 가로 길이. 모양은 킷의 장식 메시지 박스다.")]
     [SerializeField] private float bannerWidth = 900f;
 
     private const float PanelWidth = 820f;
-    private const float TitleHeight = 62f;
-    private const float TabHeight = 78f;
+    private const float TitleHeight = 60f;
+    private const float TabHeight = 72f;
     private const float RateHeaderHeight = 38f;
     private const float RateRowHeight = 50f;
-    private const float DrawHeight = 100f;
+    private const float DrawHeight = 96f;
     private const float HintHeight = 36f;
-    private const float CloseSize = 56f;
     private const float Gap = 14f;
+    private const float TitleGap = 22f;
 
     // 확률표 아래에 통째로 붙어 다니는 부분(뽑기 버튼 + 안내)의 높이.
     private const float LowerHeight = DrawHeight + Gap + HintHeight;
@@ -61,8 +59,6 @@ public class SummonUI : FacilityWindow
     private static readonly int RateRowCount =
         Mathf.Max(SummonTable.MaxStars(SummonKind.Free), SummonTable.MaxStars(SummonKind.Paid));
 
-    private static readonly Color TabSelected = new Color(0.38f, 0.31f, 0.12f, 0.96f);
-    private static readonly Color HintText = new Color(0.62f, 0.62f, 0.66f);
     private static readonly Color RareText = new Color(0.55f, 0.75f, 1.00f);   // 3성
     private static readonly Color EpicText = new Color(0.80f, 0.55f, 1.00f);   // 4성
 
@@ -75,15 +71,15 @@ public class SummonUI : FacilityWindow
     private float contentWidth;
     private float tableTop;
 
-    private readonly List<Image> tabBackgrounds = new List<Image>();
-    private readonly List<Button> drawButtons = new List<Button>();
+    private readonly List<NeonButton> tabs = new List<NeonButton>();
+    private readonly List<NeonButton> drawButtons = new List<NeonButton>();
     private readonly List<RectTransform> rateRows = new List<RectTransform>();
     private readonly List<TMP_Text> rateGradeLabels = new List<TMP_Text>();
     private readonly List<TMP_Text> ratePercentLabels = new List<TMP_Text>();
 
     private GameObject resultBar;
     private TMP_Text resultText;
-    private readonly List<Button> barButtons = new List<Button>();
+    private readonly List<NeonButton> barButtons = new List<NeonButton>();
 
     private SummonKind selected = SummonKind.Free;
     private bool summoning;
@@ -147,7 +143,7 @@ public class SummonUI : FacilityWindow
     {
         summoning = true;
         RefreshInteractable();
-        ShowBar(SummonTable.Korean(selected) + " " + count + "회 소환 중...", BattleHudPalette.PanelText);
+        ShowBar(SummonTable.Korean(selected) + " " + count + "회 소환 중...", BattleHudPalette.TextPrimary);
 
         // 등급별로 몇 장 나왔는지. 0번 칸은 쓰지 않고 별 수를 그대로 색인으로 쓴다.
         var counts = new int[RateRowCount + 1];
@@ -207,7 +203,7 @@ public class SummonUI : FacilityWindow
 
     protected override void BuildWindow()
     {
-        tabBackgrounds.Clear();
+        tabs.Clear();
         drawButtons.Clear();
         rateRows.Clear();
         rateGradeLabels.Clear();
@@ -221,7 +217,7 @@ public class SummonUI : FacilityWindow
         BuildResultBar();
 
         // 경고 배너는 팝업 밖(캔버스 직속)에 둔다. 창이 닫혀도 같은 자리에 뜬다.
-        warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, bannerSprite, null, bannerWidth);
+        warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, null, bannerWidth);
 
         RefreshRates();
         RefreshInteractable();
@@ -236,10 +232,7 @@ public class SummonUI : FacilityWindow
     {
         contentWidth = PanelWidth - panelPadding.x * 2f;
 
-        Image panel = HudFactory.CreateImage(popup, "Panel", BattleHudPalette.PanelBody);
-        // 창 안을 누른 클릭이 배경막으로 내려가지 않도록 여기서 받아 둔다.
-        panel.raycastTarget = true;
-        panelRect = panel.rectTransform;
+        panelRect = HudFactory.CreatePanel(popup, "Panel").rectTransform;
         panelRect.anchorMin = new Vector2(0.5f, 0.5f);
         panelRect.anchorMax = new Vector2(0.5f, 0.5f);
         panelRect.pivot = new Vector2(0.5f, 0.5f);
@@ -248,13 +241,8 @@ public class SummonUI : FacilityWindow
 
         float y = panelPadding.y;
 
-        TMP_Text title = HudFactory.CreateText(panelRect, "Title", resolvedFont, 42f, BattleHudPalette.PanelText);
-        title.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(title.rectTransform, new Vector2(contentWidth, TitleHeight), new Vector2(panelPadding.x, -y));
-        title.text = "소환소";
-
-        BuildCloseButton(y);
-        y += TitleHeight + Gap;
+        BuildTitleBar(panelRect, "소환소", panelPadding.x, y, contentWidth, TitleHeight);
+        y += TitleHeight + TitleGap;
 
         BuildTabs(y);
         y += TabHeight + Gap;
@@ -267,23 +255,6 @@ public class SummonUI : FacilityWindow
         BuildLowerSection(lowerSection);
     }
 
-    private void BuildCloseButton(float y)
-    {
-        Image background = HudFactory.CreateImage(panelRect, "Close", BattleHudPalette.PanelBackdrop);
-        background.raycastTarget = true;
-        HudFactory.SetTopLeft(background.rectTransform, new Vector2(CloseSize, CloseSize),
-            new Vector2(panelPadding.x + contentWidth - CloseSize, -y));
-
-        var button = background.gameObject.AddComponent<Button>();
-        button.targetGraphic = background;
-        button.onClick.AddListener(Hide);
-
-        TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 28f, BattleHudPalette.PanelText);
-        HudFactory.Stretch(label.rectTransform);
-        // 곱셈 기호(U+2715 등)는 NotoSansKR 아틀라스에 없어 네모로 그려진다. 알파벳 X를 쓴다.
-        label.text = "X";
-    }
-
     private void BuildTabs(float y)
     {
         float tabWidth = (contentWidth - Gap) * 0.5f;
@@ -293,26 +264,18 @@ public class SummonUI : FacilityWindow
             // 클로저가 반복 변수를 붙잡지 않도록 지역 변수에 복사해 넘긴다.
             var kind = (SummonKind)i;
 
-            Image background = HudFactory.CreateImage(panelRect, "Tab_" + kind, BattleHudPalette.PortraitFrame);
-            background.raycastTarget = true;
-            HudFactory.SetTopLeft(background.rectTransform, new Vector2(tabWidth, TabHeight),
+            NeonButton tab = HudFactory.CreateButton(panelRect, "Tab_" + kind, NeonButtonStyle.Ghost,
+                resolvedFont, SummonTable.Korean(kind), 32f, () => SelectKind(kind));
+            HudFactory.SetTopLeft(tab.Rect, new Vector2(tabWidth, TabHeight),
                 new Vector2(panelPadding.x + i * (tabWidth + Gap), -y));
 
-            var button = background.gameObject.AddComponent<Button>();
-            button.targetGraphic = background;
-            button.onClick.AddListener(() => SelectKind(kind));
-
-            TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 32f, BattleHudPalette.PanelText);
-            HudFactory.Stretch(label.rectTransform);
-            label.text = SummonTable.Korean(kind);
-
-            tabBackgrounds.Add(background);
+            tabs.Add(tab);
         }
     }
 
     private void BuildRateTable(float y)
     {
-        TMP_Text header = HudFactory.CreateText(panelRect, "RateHeader", resolvedFont, 26f, HintText);
+        TMP_Text header = HudFactory.CreateText(panelRect, "RateHeader", resolvedFont, 26f, BattleHudPalette.TextMuted);
         header.alignment = TextAlignmentOptions.Left;
         HudFactory.SetTopLeft(header.rectTransform, new Vector2(contentWidth, RateHeaderHeight), new Vector2(panelPadding.x, -y));
         header.text = "등급별 확률";
@@ -324,11 +287,11 @@ public class SummonUI : FacilityWindow
             RectTransform row = HudFactory.CreateGroup(panelRect, "Rate_" + (i + 1));
             HudFactory.SetTopLeft(row, new Vector2(contentWidth, RateRowHeight), new Vector2(panelPadding.x, -rowY));
 
-            TMP_Text grade = HudFactory.CreateText(row, "Grade", resolvedFont, 29f, BattleHudPalette.PanelText);
+            TMP_Text grade = HudFactory.CreateText(row, "Grade", resolvedFont, 29f, BattleHudPalette.TextPrimary);
             grade.alignment = TextAlignmentOptions.Left;
             HudFactory.Stretch(grade.rectTransform);
 
-            TMP_Text percent = HudFactory.CreateText(row, "Percent", resolvedFont, 29f, BattleHudPalette.PanelText);
+            TMP_Text percent = HudFactory.CreateText(row, "Percent", resolvedFont, 29f, BattleHudPalette.TextPrimary);
             percent.alignment = TextAlignmentOptions.Right;
             HudFactory.Stretch(percent.rectTransform);
 
@@ -343,7 +306,7 @@ public class SummonUI : FacilityWindow
     {
         BuildDrawButtons(lower);
 
-        TMP_Text hint = HudFactory.CreateText(lower, "Hint", resolvedFont, 24f, HintText);
+        TMP_Text hint = HudFactory.CreateText(lower, "Hint", resolvedFont, 24f, BattleHudPalette.TextMuted);
         HudFactory.SetTopLeft(hint.rectTransform, new Vector2(contentWidth, HintHeight), new Vector2(0f, -(DrawHeight + Gap)));
         hint.text = "누르면 창이 닫히고 뽑은 영웅 카드가 화면에 나타납니다.";
     }
@@ -358,18 +321,11 @@ public class SummonUI : FacilityWindow
             // 클로저가 반복 변수를 붙잡지 않도록 지역 변수에 복사해 넘긴다.
             int count = counts[i];
 
-            Image background = HudFactory.CreateImage(lower, "Draw_" + count, BattleHudPalette.PortraitFrame);
-            background.raycastTarget = true;
-            HudFactory.SetTopLeft(background.rectTransform, new Vector2(buttonWidth, DrawHeight),
-                new Vector2(i * (buttonWidth + Gap), 0f));
-
-            var button = background.gameObject.AddComponent<Button>();
-            button.targetGraphic = background;
-            button.onClick.AddListener(() => Draw(count));
-
-            TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 36f, BattleHudPalette.Mvp);
-            HudFactory.Stretch(label.rectTransform);
-            label.text = count + "회 소환";
+            // 10회가 이 창의 주된 행동이라 밝은 판으로, 1회는 보조 버튼으로 둔다.
+            NeonButton button = HudFactory.CreateButton(lower, "Draw_" + count,
+                count > 1 ? NeonButtonStyle.Primary : NeonButtonStyle.Secondary,
+                resolvedFont, count + "회 소환", 36f, () => Draw(count));
+            HudFactory.SetTopLeft(button.Rect, new Vector2(buttonWidth, DrawHeight), new Vector2(i * (buttonWidth + Gap), 0f));
 
             drawButtons.Add(button);
         }
@@ -379,44 +335,33 @@ public class SummonUI : FacilityWindow
 
     private void BuildResultBar()
     {
-        Image bar = HudFactory.CreateImage(canvasRect, "ResultBar", BattleHudPalette.PanelBody);
-        // 띠 위를 누른 클릭이 뒤쪽 세계로 새지 않게 여기서 받아 둔다.
-        bar.raycastTarget = true;
-        RectTransform barRect = bar.rectTransform;
+        // 띠 위를 누른 클릭이 뒤쪽 세계로 새지 않게 판이 클릭을 받아 둔다.
+        RectTransform barRect = HudFactory.CreateHudStrip(canvasRect, "ResultBar").rectTransform;
         barRect.anchorMin = new Vector2(0.5f, 1f);
         barRect.anchorMax = new Vector2(0.5f, 1f);
         barRect.pivot = new Vector2(0.5f, 1f);
         barRect.sizeDelta = new Vector2(BarWidth, BarHeight);
         barRect.anchoredPosition = new Vector2(0f, -BarTopMargin);
-        resultBar = bar.gameObject;
+        resultBar = barRect.gameObject;
 
         float buttonsWidth = BarButtonWidth * 2f + Gap;
         float textWidth = BarWidth - BarPadding * 2f - buttonsWidth - Gap;
 
-        resultText = HudFactory.CreateText(barRect, "Result", resolvedFont, 30f, BattleHudPalette.PanelText);
+        resultText = HudFactory.CreateText(barRect, "Result", resolvedFont, 30f, BattleHudPalette.TextPrimary);
         resultText.alignment = TextAlignmentOptions.Left;
         SetLeftMiddle(resultText.rectTransform, new Vector2(textWidth, BarHeight), BarPadding);
 
         float againX = BarWidth - BarPadding - buttonsWidth;
-        barButtons.Add(BuildBarButton(barRect, "다시 소환", againX, BattleHudPalette.PortraitFrame, SummonAgain));
-        barButtons.Add(BuildBarButton(barRect, "확인", againX + BarButtonWidth + Gap, TabSelected, Confirm));
+        barButtons.Add(BuildBarButton(barRect, "다시 소환", againX, NeonButtonStyle.Secondary, SummonAgain));
+        barButtons.Add(BuildBarButton(barRect, "확인", againX + BarButtonWidth + Gap, NeonButtonStyle.Primary, Confirm));
 
         resultBar.SetActive(false);
     }
 
-    private Button BuildBarButton(RectTransform barRect, string text, float x, Color color, UnityEngine.Events.UnityAction onClick)
+    private NeonButton BuildBarButton(RectTransform barRect, string text, float x, NeonButtonStyle style, UnityEngine.Events.UnityAction onClick)
     {
-        Image background = HudFactory.CreateImage(barRect, "Bar_" + text, color);
-        background.raycastTarget = true;
-        SetLeftMiddle(background.rectTransform, new Vector2(BarButtonWidth, BarButtonHeight), x);
-
-        var button = background.gameObject.AddComponent<Button>();
-        button.targetGraphic = background;
-        button.onClick.AddListener(onClick);
-
-        TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 28f, BattleHudPalette.PanelText);
-        HudFactory.Stretch(label.rectTransform);
-        label.text = text;
+        NeonButton button = HudFactory.CreateButton(barRect, "Bar_" + text, style, resolvedFont, text, 28f, onClick);
+        SetLeftMiddle(button.Rect, new Vector2(BarButtonWidth, BarButtonHeight), x);
         return button;
     }
 
@@ -462,8 +407,8 @@ public class SummonUI : FacilityWindow
             ratePercentLabels[i].color = GradeColor(stars);
         }
 
-        for (int i = 0; i < tabBackgrounds.Count; i++)
-            tabBackgrounds[i].color = (SummonKind)i == selected ? TabSelected : BattleHudPalette.PortraitFrame;
+        for (int i = 0; i < tabs.Count; i++)
+            tabs[i].SetStyle((SummonKind)i == selected ? NeonButtonStyle.Primary : NeonButtonStyle.Ghost);
 
         LayoutPanel(shown);
     }
@@ -492,7 +437,7 @@ public class SummonUI : FacilityWindow
         if (stars >= 5) return BattleHudPalette.Mvp;
         if (stars == 4) return EpicText;
         if (stars == 3) return RareText;
-        return BattleHudPalette.PanelText;
+        return BattleHudPalette.TextPrimary;
     }
 
     // ---- 자리 잡기 ------------------------------------------------------

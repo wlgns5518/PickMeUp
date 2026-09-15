@@ -34,16 +34,15 @@ public class EquipmentWorkshopUI : FacilityWindow
     [SerializeField] private bool openOnStart;
 
     [Header("Warning Banner")]
-    [Tooltip("경고를 띄울 장식 배너(Assets/Image/UI.png). 비워두면 금색 테두리에 검은 판으로 그린다.")]
-    [SerializeField] private Sprite bannerSprite;
+    [Tooltip("경고 배너가 넘지 않을 가로 길이. 모양은 킷의 장식 메시지 박스다.")]
     [SerializeField] private float bannerWidth = 900f;
 
     // 오른쪽 칸(넣은 재료·제작 방식) 너비. 왼쪽 재료 칸은 그 앞에 붙는다.
     private const float ControlColumnWidth = 748f;
     private static readonly Vector2 PanelPadding = new Vector2(36f, 30f);
-    private const float TitleHeight = 62f;
-    private const float TabHeight = 78f;
-    private const float CloseSize = 56f;
+    private const float TitleHeight = 60f;
+    private const float TitleGap = 22f;
+    private const float TabHeight = 72f;
     private const float Gap = 14f;
     private const float LabelHeight = 30f;
 
@@ -87,15 +86,10 @@ public class EquipmentWorkshopUI : FacilityWindow
     private const float BarButtonWidth = 160f;
     private const float BarButtonHeight = 60f;
 
-    private static readonly Color TabSelected = new Color(0.38f, 0.31f, 0.12f, 0.96f);
-    private static readonly Color HintText = new Color(0.62f, 0.62f, 0.66f);
-    private static readonly Color EmptyCell = new Color(0.11f, 0.11f, 0.14f, 0.95f);
-
     private class MaterialCell
     {
         public CraftMaterial Material;
-        public Image Frame;
-        public TMP_Text Count;
+        public NeonButton Button;
     }
 
     private AnnouncementBanner warningBanner;
@@ -104,12 +98,11 @@ public class EquipmentWorkshopUI : FacilityWindow
     private RectTransform autoSection;
     private RectTransform manualSection;
 
-    private readonly List<Image> modeTabBackgrounds = new List<Image>();
-    private readonly List<Image> diffTabBackgrounds = new List<Image>();
+    private readonly List<NeonButton> modeTabs = new List<NeonButton>();
+    private readonly List<NeonButton> diffTabs = new List<NeonButton>();
     private readonly List<TMP_Text> ratePercentLabels = new List<TMP_Text>();
     private readonly List<MaterialCell> materialCells = new List<MaterialCell>();
-    private readonly List<Image> slotFrames = new List<Image>();
-    private readonly List<TMP_Text> slotLabels = new List<TMP_Text>();
+    private readonly List<NeonButton> slotButtons = new List<NeonButton>();
 
     private GameObject resultBar;
     private TMP_Text resultText;
@@ -303,18 +296,17 @@ public class EquipmentWorkshopUI : FacilityWindow
 
     protected override void BuildWindow()
     {
-        modeTabBackgrounds.Clear();
-        diffTabBackgrounds.Clear();
+        modeTabs.Clear();
+        diffTabs.Clear();
         ratePercentLabels.Clear();
         materialCells.Clear();
-        slotFrames.Clear();
-        slotLabels.Clear();
+        slotButtons.Clear();
 
         BuildCanvas();
         BuildPopup();
         BuildResultBar();
 
-        warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, bannerSprite, null, bannerWidth);
+        warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, null, bannerWidth);
 
         RefreshAll();
     }
@@ -330,9 +322,7 @@ public class EquipmentWorkshopUI : FacilityWindow
         float panelWidth = controlX + ControlColumnWidth + PanelPadding.x;
         float contentWidth = panelWidth - PanelPadding.x * 2f;
 
-        Image panel = HudFactory.CreateImage(popup, "Panel", BattleHudPalette.PanelBody);
-        panel.raycastTarget = true;
-        panelRect = panel.rectTransform;
+        panelRect = HudFactory.CreatePanel(popup, "Panel").rectTransform;
         panelRect.anchorMin = new Vector2(0.5f, 0.5f);
         panelRect.anchorMax = new Vector2(0.5f, 0.5f);
         panelRect.pivot = new Vector2(0.5f, 0.5f);
@@ -340,13 +330,8 @@ public class EquipmentWorkshopUI : FacilityWindow
 
         float y = PanelPadding.y;
 
-        TMP_Text title = HudFactory.CreateText(panelRect, "Title", resolvedFont, 42f, BattleHudPalette.PanelText);
-        title.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(title.rectTransform, new Vector2(contentWidth, TitleHeight), new Vector2(PanelPadding.x, -y));
-        title.text = "장비제작소";
-
-        BuildCloseButton(y, contentWidth);
-        y += TitleHeight + Gap;
+        BuildTitleBar(panelRect, "장비제작소", PanelPadding.x, y, contentWidth, TitleHeight);
+        y += TitleHeight + TitleGap;
 
         float columnTop = y;
 
@@ -369,27 +354,13 @@ public class EquipmentWorkshopUI : FacilityWindow
         float columnBottom = y + Mathf.Max(autoSection.sizeDelta.y, manualSection.sizeDelta.y);
         BuildMaterialColumn(PanelPadding.x, columnTop, columnBottom);
 
-        Image divider = HudFactory.CreateImage(panelRect, "Divider", BattleHudPalette.PortraitFrame);
+        // 두 칸을 가르는 세로선. 킷 구분선은 가로로 옅어지는 그림이라 세로로는 쓸 수 없어 옅은 강조색 선을 긋는다.
+        Image divider = HudFactory.CreateImage(panelRect, "Divider",
+            new Color(BattleHudPalette.Accent.r, BattleHudPalette.Accent.g, BattleHudPalette.Accent.b, 0.18f));
         HudFactory.SetTopLeft(divider.rectTransform, new Vector2(2f, columnBottom - columnTop),
             new Vector2(PanelPadding.x + MaterialColumnWidth + ColumnGap * 0.5f - 1f, -columnTop));
 
         panelRect.sizeDelta = new Vector2(panelWidth, columnBottom + PanelPadding.y);
-    }
-
-    private void BuildCloseButton(float y, float contentWidth)
-    {
-        Image background = HudFactory.CreateImage(panelRect, "Close", BattleHudPalette.PanelBackdrop);
-        background.raycastTarget = true;
-        HudFactory.SetTopLeft(background.rectTransform, new Vector2(CloseSize, CloseSize),
-            new Vector2(PanelPadding.x + contentWidth - CloseSize, -y));
-
-        var button = background.gameObject.AddComponent<Button>();
-        button.targetGraphic = background;
-        button.onClick.AddListener(Hide);
-
-        TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 28f, BattleHudPalette.PanelText);
-        HudFactory.Stretch(label.rectTransform);
-        label.text = "X";
     }
 
     // 왼쪽 — 등급(행) x 종류(열) 재료 칸과, 무엇을 넣으면 무엇이 나오는지 안내.
@@ -397,7 +368,7 @@ public class EquipmentWorkshopUI : FacilityWindow
     {
         float y = top;
 
-        materialLabel = HudFactory.CreateText(panelRect, "MaterialLabel", resolvedFont, 24f, HintText);
+        materialLabel = HudFactory.CreateText(panelRect, "MaterialLabel", resolvedFont, 24f, BattleHudPalette.TextMuted);
         materialLabel.alignment = TextAlignmentOptions.Left;
         HudFactory.SetTopLeft(materialLabel.rectTransform, new Vector2(MaterialColumnWidth, LabelHeight), new Vector2(x, -y));
         y += LabelHeight;
@@ -407,7 +378,7 @@ public class EquipmentWorkshopUI : FacilityWindow
 
         for (int k = 0; k < kinds.Length; k++)
         {
-            TMP_Text header = HudFactory.CreateText(panelRect, "Kind_" + kinds[k], resolvedFont, 24f, BattleHudPalette.PanelText);
+            TMP_Text header = HudFactory.CreateText(panelRect, "Kind_" + kinds[k], resolvedFont, 24f, BattleHudPalette.TextPrimary);
             HudFactory.SetTopLeft(header.rectTransform, new Vector2(cellWidth, GridHeaderHeight),
                 new Vector2(x + GradeColumnWidth + CellGap + k * (cellWidth + CellGap), -y));
             header.text = MaterialNames.KindName(kinds[k]);
@@ -427,24 +398,17 @@ public class EquipmentWorkshopUI : FacilityWindow
             {
                 var material = new CraftMaterial(kinds[k], grade);
 
-                Image frame = HudFactory.CreateImage(panelRect, "Cell_" + kinds[k] + "_" + grade, BattleHudPalette.PortraitFrame);
-                frame.raycastTarget = true;
-                HudFactory.SetTopLeft(frame.rectTransform, new Vector2(cellWidth, CellHeight),
+                NeonButton cell = HudFactory.CreateButton(panelRect, "Cell_" + kinds[k] + "_" + grade, NeonButtonStyle.Ghost,
+                    resolvedFont, string.Empty, 26f, () => ClickMaterial(material));
+                HudFactory.SetTopLeft(cell.Rect, new Vector2(cellWidth, CellHeight),
                     new Vector2(x + GradeColumnWidth + CellGap + k * (cellWidth + CellGap), -rowY));
 
-                var button = frame.gameObject.AddComponent<Button>();
-                button.targetGraphic = frame;
-                button.onClick.AddListener(() => ClickMaterial(material));
-
-                TMP_Text count = HudFactory.CreateText(frame.rectTransform, "Count", resolvedFont, 26f, GradeColor(grade));
-                HudFactory.Stretch(count.rectTransform);
-
-                materialCells.Add(new MaterialCell { Material = material, Frame = frame, Count = count });
+                materialCells.Add(new MaterialCell { Material = material, Button = cell });
             }
         }
         y += Grades.Length * CellHeight + (Grades.Length - 1) * CellGap + Gap * 2f;
 
-        TMP_Text guide = HudFactory.CreateText(panelRect, "Guide", resolvedFont, 21f, HintText);
+        TMP_Text guide = HudFactory.CreateText(panelRect, "Guide", resolvedFont, 21f, BattleHudPalette.TextMuted);
         guide.alignment = TextAlignmentOptions.TopLeft;
         guide.textWrappingMode = TextWrappingModes.Normal;
         HudFactory.SetTopLeft(guide.rectTransform, new Vector2(MaterialColumnWidth, Mathf.Max(0f, bottom - y)), new Vector2(x, -y));
@@ -462,7 +426,7 @@ public class EquipmentWorkshopUI : FacilityWindow
     // 오른쪽 위 — 넣은 재료 세 칸과, 세 칸이 차면 무엇이 나올지.
     private void BuildSlots(float x, float y, float contentWidth)
     {
-        TMP_Text label = HudFactory.CreateText(panelRect, "SlotLabel", resolvedFont, 24f, HintText);
+        TMP_Text label = HudFactory.CreateText(panelRect, "SlotLabel", resolvedFont, 24f, BattleHudPalette.TextMuted);
         label.alignment = TextAlignmentOptions.Left;
         HudFactory.SetTopLeft(label.rectTransform, new Vector2(contentWidth, LabelHeight), new Vector2(x, -y));
         label.text = "넣은 재료 — 누르면 뺍니다";
@@ -474,22 +438,14 @@ public class EquipmentWorkshopUI : FacilityWindow
         {
             int index = i;
 
-            Image frame = HudFactory.CreateImage(panelRect, "Slot_" + i, BattleHudPalette.PortraitFrame);
-            frame.raycastTarget = true;
-            HudFactory.SetTopLeft(frame.rectTransform, new Vector2(slotWidth, SlotRowHeight), new Vector2(x + i * (slotWidth + Gap), -rowY));
+            NeonButton slot = HudFactory.CreateButton(panelRect, "Slot_" + i, NeonButtonStyle.Ghost,
+                resolvedFont, string.Empty, 28f, () => ClickSlot(index));
+            HudFactory.SetTopLeft(slot.Rect, new Vector2(slotWidth, SlotRowHeight), new Vector2(x + i * (slotWidth + Gap), -rowY));
 
-            var button = frame.gameObject.AddComponent<Button>();
-            button.targetGraphic = frame;
-            button.onClick.AddListener(() => ClickSlot(index));
-
-            TMP_Text slotLabel = HudFactory.CreateText(frame.rectTransform, "Label", resolvedFont, 28f, HintText);
-            HudFactory.Stretch(slotLabel.rectTransform);
-
-            slotFrames.Add(frame);
-            slotLabels.Add(slotLabel);
+            slotButtons.Add(slot);
         }
 
-        previewText = HudFactory.CreateText(panelRect, "Preview", resolvedFont, 26f, HintText);
+        previewText = HudFactory.CreateText(panelRect, "Preview", resolvedFont, 26f, BattleHudPalette.TextMuted);
         previewText.alignment = TextAlignmentOptions.Left;
         HudFactory.SetTopLeft(previewText.rectTransform, new Vector2(contentWidth, PreviewHeight),
             new Vector2(x, -(rowY + SlotRowHeight + 8f)));
@@ -504,40 +460,23 @@ public class EquipmentWorkshopUI : FacilityWindow
         {
             var thisMode = (Mode)i;
 
-            Image background = HudFactory.CreateImage(panelRect, "ModeTab_" + thisMode, BattleHudPalette.PortraitFrame);
-            background.raycastTarget = true;
-            HudFactory.SetTopLeft(background.rectTransform, new Vector2(tabWidth, TabHeight),
-                new Vector2(x + i * (tabWidth + Gap), -y));
+            NeonButton tab = HudFactory.CreateButton(panelRect, "ModeTab_" + thisMode, NeonButtonStyle.Ghost,
+                resolvedFont, labels[i], 30f, () => SelectMode(thisMode));
+            HudFactory.SetTopLeft(tab.Rect, new Vector2(tabWidth, TabHeight), new Vector2(x + i * (tabWidth + Gap), -y));
 
-            var button = background.gameObject.AddComponent<Button>();
-            button.targetGraphic = background;
-            button.onClick.AddListener(() => SelectMode(thisMode));
-
-            TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 30f, BattleHudPalette.PanelText);
-            HudFactory.Stretch(label.rectTransform);
-            label.text = labels[i];
-
-            modeTabBackgrounds.Add(background);
+            modeTabs.Add(tab);
         }
     }
 
     private void BuildAutoSection(RectTransform section, float contentWidth)
     {
-        autoDescText = HudFactory.CreateText(section, "Desc", resolvedFont, 26f, HintText);
+        autoDescText = HudFactory.CreateText(section, "Desc", resolvedFont, 26f, BattleHudPalette.TextMuted);
         autoDescText.alignment = TextAlignmentOptions.TopLeft;
         HudFactory.SetTopLeft(autoDescText.rectTransform, new Vector2(contentWidth, DescHeight), Vector2.zero);
 
-        Image background = HudFactory.CreateImage(section, "CraftButton", BattleHudPalette.PortraitFrame);
-        background.raycastTarget = true;
-        HudFactory.SetTopLeft(background.rectTransform, new Vector2(contentWidth, CraftButtonHeight), new Vector2(0f, -(DescHeight + Gap)));
-
-        var button = background.gameObject.AddComponent<Button>();
-        button.targetGraphic = background;
-        button.onClick.AddListener(CraftAuto);
-
-        TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 34f, BattleHudPalette.Mvp);
-        HudFactory.Stretch(label.rectTransform);
-        label.text = "제작하기";
+        NeonButton craft = HudFactory.CreateButton(section, "CraftButton", NeonButtonStyle.Primary,
+            resolvedFont, "제작하기", 34f, CraftAuto);
+        HudFactory.SetTopLeft(craft.Rect, new Vector2(contentWidth, CraftButtonHeight), new Vector2(0f, -(DescHeight + Gap)));
     }
 
     private void BuildManualSection(RectTransform section, float contentWidth)
@@ -549,25 +488,16 @@ public class EquipmentWorkshopUI : FacilityWindow
         {
             var difficulty = Difficulties[i];
 
-            Image background = HudFactory.CreateImage(section, "DiffTab_" + difficulty, BattleHudPalette.PortraitFrame);
-            background.raycastTarget = true;
-            HudFactory.SetTopLeft(background.rectTransform, new Vector2(diffTabWidth, DiffTabHeight),
-                new Vector2(i * (diffTabWidth + Gap), 0f));
+            NeonButton tab = HudFactory.CreateButton(section, "DiffTab_" + difficulty, NeonButtonStyle.Ghost,
+                resolvedFont, diffLabels[i], 26f, () => SelectDifficulty(difficulty));
+            HudFactory.SetTopLeft(tab.Rect, new Vector2(diffTabWidth, DiffTabHeight), new Vector2(i * (diffTabWidth + Gap), 0f));
 
-            var button = background.gameObject.AddComponent<Button>();
-            button.targetGraphic = background;
-            button.onClick.AddListener(() => SelectDifficulty(difficulty));
-
-            TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 26f, BattleHudPalette.PanelText);
-            HudFactory.Stretch(label.rectTransform);
-            label.text = diffLabels[i];
-
-            diffTabBackgrounds.Add(background);
+            diffTabs.Add(tab);
         }
 
         float y = DiffTabHeight + Gap;
 
-        rateHeaderText = HudFactory.CreateText(section, "RateHeader", resolvedFont, 24f, HintText);
+        rateHeaderText = HudFactory.CreateText(section, "RateHeader", resolvedFont, 24f, BattleHudPalette.TextMuted);
         rateHeaderText.alignment = TextAlignmentOptions.Left;
         HudFactory.SetTopLeft(rateHeaderText.rectTransform, new Vector2(contentWidth, RateHeaderHeight), new Vector2(0f, -y));
         y += RateHeaderHeight;
@@ -577,14 +507,14 @@ public class EquipmentWorkshopUI : FacilityWindow
             RectTransform row = HudFactory.CreateGroup(section, "Rate_" + Grades[i]);
             HudFactory.SetTopLeft(row, new Vector2(contentWidth, RateRowHeight), new Vector2(0f, -y));
 
-            TMP_Text grade = HudFactory.CreateText(row, "Grade", resolvedFont, 27f, BattleHudPalette.PanelText);
+            TMP_Text grade = HudFactory.CreateText(row, "Grade", resolvedFont, 27f, BattleHudPalette.TextPrimary);
             grade.alignment = TextAlignmentOptions.Left;
             HudFactory.Stretch(grade.rectTransform);
             // 등급 글자만으로는 무엇이 달라지는지 알 수 없다. 이름에 붙는 말과 배율을 같이 적는다.
             grade.text = $"{EquipmentGradeNames.NameOf(Grades[i])}  {EquipmentGradeNames.PrefixOf(Grades[i])} · x{EquipmentGradeRules.PowerOf(Grades[i]):0.00}";
             grade.color = GradeColor(Grades[i]);
 
-            TMP_Text percent = HudFactory.CreateText(row, "Percent", resolvedFont, 27f, BattleHudPalette.PanelText);
+            TMP_Text percent = HudFactory.CreateText(row, "Percent", resolvedFont, 27f, BattleHudPalette.TextPrimary);
             percent.alignment = TextAlignmentOptions.Right;
             HudFactory.Stretch(percent.rectTransform);
             percent.color = GradeColor(Grades[i]);
@@ -596,20 +526,12 @@ public class EquipmentWorkshopUI : FacilityWindow
 
         y += Gap;
 
-        Image startBackground = HudFactory.CreateImage(section, "StartButton", BattleHudPalette.PortraitFrame);
-        startBackground.raycastTarget = true;
-        HudFactory.SetTopLeft(startBackground.rectTransform, new Vector2(contentWidth, StartButtonHeight), new Vector2(0f, -y));
-
-        var startButton = startBackground.gameObject.AddComponent<Button>();
-        startButton.targetGraphic = startBackground;
-        startButton.onClick.AddListener(StartManual);
-
-        TMP_Text startLabel = HudFactory.CreateText(startBackground.rectTransform, "Label", resolvedFont, 34f, BattleHudPalette.Mvp);
-        HudFactory.Stretch(startLabel.rectTransform);
-        startLabel.text = "제작 시작 (퍼즐)";
+        NeonButton start = HudFactory.CreateButton(section, "StartButton", NeonButtonStyle.Primary,
+            resolvedFont, "제작 시작 (퍼즐)", 34f, StartManual);
+        HudFactory.SetTopLeft(start.Rect, new Vector2(contentWidth, StartButtonHeight), new Vector2(0f, -y));
         y += StartButtonHeight + Gap;
 
-        TMP_Text hint = HudFactory.CreateText(section, "Hint", resolvedFont, 22f, HintText);
+        TMP_Text hint = HudFactory.CreateText(section, "Hint", resolvedFont, 22f, BattleHudPalette.TextMuted);
         hint.alignment = TextAlignmentOptions.TopLeft;
         HudFactory.SetTopLeft(hint.rectTransform, new Vector2(contentWidth, HintHeight), new Vector2(0f, -y));
         hint.text = "퍼즐을 맞추면 장비가 나옵니다. 시간 안에 못 맞추면 재료만 잃습니다.";
@@ -619,19 +541,17 @@ public class EquipmentWorkshopUI : FacilityWindow
 
     private void BuildResultBar()
     {
-        Image bar = HudFactory.CreateImage(canvasRect, "ResultBar", BattleHudPalette.PanelBody);
-        bar.raycastTarget = true;
-        RectTransform barRect = bar.rectTransform;
+        RectTransform barRect = HudFactory.CreateHudStrip(canvasRect, "ResultBar").rectTransform;
         barRect.anchorMin = new Vector2(0.5f, 1f);
         barRect.anchorMax = new Vector2(0.5f, 1f);
         barRect.pivot = new Vector2(0.5f, 1f);
         barRect.sizeDelta = new Vector2(BarWidth, BarHeight);
         barRect.anchoredPosition = new Vector2(0f, -BarTopMargin);
-        resultBar = bar.gameObject;
+        resultBar = barRect.gameObject;
 
         float textWidth = BarWidth - BarPadding * 2f - BarButtonWidth - Gap;
 
-        resultText = HudFactory.CreateText(barRect, "Result", resolvedFont, 28f, BattleHudPalette.PanelText);
+        resultText = HudFactory.CreateText(barRect, "Result", resolvedFont, 28f, BattleHudPalette.TextPrimary);
         resultText.alignment = TextAlignmentOptions.Left;
         // 이름이 긴 무기("전설의 원형 강철 방패")면 한 줄에 다 안 들어간다. 잘리느니 글자를 줄인다.
         resultText.enableAutoSizing = true;
@@ -640,17 +560,8 @@ public class EquipmentWorkshopUI : FacilityWindow
         SetLeftMiddle(resultText.rectTransform, new Vector2(textWidth, BarHeight), BarPadding);
 
         float confirmX = BarWidth - BarPadding - BarButtonWidth;
-        Image confirmBackground = HudFactory.CreateImage(barRect, "Confirm", TabSelected);
-        confirmBackground.raycastTarget = true;
-        SetLeftMiddle(confirmBackground.rectTransform, new Vector2(BarButtonWidth, BarButtonHeight), confirmX);
-
-        var confirmButton = confirmBackground.gameObject.AddComponent<Button>();
-        confirmButton.targetGraphic = confirmBackground;
-        confirmButton.onClick.AddListener(Confirm);
-
-        TMP_Text confirmLabel = HudFactory.CreateText(confirmBackground.rectTransform, "Label", resolvedFont, 26f, BattleHudPalette.PanelText);
-        HudFactory.Stretch(confirmLabel.rectTransform);
-        confirmLabel.text = "확인";
+        NeonButton confirm = HudFactory.CreateButton(barRect, "Confirm", NeonButtonStyle.Primary, resolvedFont, "확인", 26f, Confirm);
+        SetLeftMiddle(confirm.Rect, new Vector2(BarButtonWidth, BarButtonHeight), confirmX);
 
         resultBar.SetActive(false);
     }
@@ -690,8 +601,8 @@ public class EquipmentWorkshopUI : FacilityWindow
         if (autoSection != null) autoSection.gameObject.SetActive(mode == Mode.Auto);
         if (manualSection != null) manualSection.gameObject.SetActive(mode == Mode.Manual);
 
-        for (int i = 0; i < modeTabBackgrounds.Count; i++)
-            modeTabBackgrounds[i].color = (Mode)i == mode ? TabSelected : BattleHudPalette.PortraitFrame;
+        for (int i = 0; i < modeTabs.Count; i++)
+            modeTabs[i].SetStyle((Mode)i == mode ? NeonButtonStyle.Primary : NeonButtonStyle.Ghost);
     }
 
     private void RefreshMaterialCells()
@@ -703,27 +614,30 @@ public class EquipmentWorkshopUI : FacilityWindow
             MaterialCell cell = materialCells[i];
             int available = AvailableCount(cell.Material);
 
-            cell.Count.text = available > 0 ? available.ToString() : "-";
-            cell.Count.color = available > 0 ? GradeColor(cell.Material.Grade) : HintText;
-            cell.Frame.color = available > 0 ? BattleHudPalette.PortraitFrame : EmptyCell;
+            // 남은 재료가 있는 칸만 네온 테두리로 띄운다. 빈 칸도 누를 수는 있다 — 누르면 왜 안 들어가는지 알려 준다.
+            cell.Button.Label.text = available > 0 ? available.ToString() : "-";
+            cell.Button.SetStyle(available > 0 ? NeonButtonStyle.Secondary : NeonButtonStyle.Muted);
+            cell.Button.SetLabelColor(available > 0 ? GradeColor(cell.Material.Grade) : BattleHudPalette.TextMuted);
         }
     }
 
     private void RefreshSlots()
     {
-        for (int i = 0; i < slotFrames.Count; i++)
+        for (int i = 0; i < slotButtons.Count; i++)
         {
             bool filled = i < slots.Count;
-            slotFrames[i].color = filled ? TabSelected : BattleHudPalette.PortraitFrame;
-            slotLabels[i].text = filled ? slots[i].DisplayName : "빈 칸";
-            slotLabels[i].color = filled ? GradeColor(slots[i].Grade) : HintText;
+            NeonButton slot = slotButtons[i];
+            // 넣은 재료는 등급색 글자가 읽혀야 해서 밝은 판(Primary) 대신 네온 테두리로 표시한다.
+            slot.SetStyle(filled ? NeonButtonStyle.Secondary : NeonButtonStyle.Ghost);
+            slot.Label.text = filled ? slots[i].DisplayName : "빈 칸";
+            slot.SetLabelColor(filled ? GradeColor(slots[i].Grade) : BattleHudPalette.TextMuted);
         }
 
         bool complete = CraftRecipe.IsComplete(slots);
         if (!complete)
         {
             previewText.text = $"재료를 {CraftRecipe.SlotCount - slots.Count}개 더 넣으세요.";
-            previewText.color = HintText;
+            previewText.color = BattleHudPalette.TextMuted;
             autoDescText.text = "재료 세 개를 넣으면 퍼즐 없이 바로 만듭니다.";
             return;
         }
@@ -733,7 +647,7 @@ public class EquipmentWorkshopUI : FacilityWindow
         string familyName = CraftRecipe.FamilyName(family);
 
         previewText.text = $"{familyName} ({CraftRecipe.FamilyContents(family)}) · 밑변 {EquipmentGradeNames.NameOf(baseGrade)}등급";
-        previewText.color = BattleHudPalette.PanelText;
+        previewText.color = BattleHudPalette.TextPrimary;
         autoDescText.text = $"퍼즐 없이 바로 만듭니다. {EquipmentGradeNames.NameOf(baseGrade)}등급 {familyName}{HeroLabel.SubjectParticle(familyName)} 나옵니다.";
     }
 
@@ -745,8 +659,8 @@ public class EquipmentWorkshopUI : FacilityWindow
 
     private void RefreshRates()
     {
-        for (int i = 0; i < diffTabBackgrounds.Count; i++)
-            diffTabBackgrounds[i].color = Difficulties[i] == selectedDifficulty ? TabSelected : BattleHudPalette.PortraitFrame;
+        for (int i = 0; i < diffTabs.Count; i++)
+            diffTabs[i].SetStyle(Difficulties[i] == selectedDifficulty ? NeonButtonStyle.Primary : NeonButtonStyle.Ghost);
 
         bool complete = CraftRecipe.IsComplete(slots);
         EquipmentGrade baseGrade = CraftRecipe.BaseGradeOf(slots);

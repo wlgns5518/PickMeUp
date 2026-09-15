@@ -4,13 +4,14 @@ using UnityEngine;
 
 /// <summary>
 /// Drop this in any Editor/ folder. It auto-configures every sprite inside
-/// Assets/NeonUIKit/Sprites on (re)import: Sprite type, no mipmaps, point-free
+/// Assets/UI/Sprites on (re)import: Sprite type, no mipmaps, point-free
 /// bilinear filtering, and the 9-slice borders each frame needs.
 /// Borders are in pixels: L, B, R, T.
 /// </summary>
 public class NeonUIKitImportSettings : AssetPostprocessor
 {
-    const string Root = "/NeonUIKit/Sprites/";
+    // 킷 원본은 Assets/NeonUIKit/ 설치를 전제하지만 이 프로젝트는 Assets/UI에 두었다.
+    const string Root = "/UI/Sprites/";
 
     static readonly Dictionary<string, Vector4> Borders = new Dictionary<string, Vector4>
     {
@@ -28,6 +29,7 @@ public class NeonUIKitImportSettings : AssetPostprocessor
         { "panel",             new Vector4(62, 62, 62, 62) },
         { "gauge_track",       new Vector4(30, 30, 10, 10) },
         { "namebar_frame",     new Vector4(120, 60, 220, 60) },
+        { "namebar_frame_light", new Vector4(120, 60, 220, 60) },
         // 장식 메시지 박스
         { "msgbox_frame",        new Vector4(110, 110, 110, 110) },
         { "msgbox_panel",        new Vector4(40, 40, 40, 40) },

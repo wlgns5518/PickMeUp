@@ -11,9 +11,9 @@ using UnityEngine.UI;
 public class EnemyHealthBar
 {
     private const float Width = 880f;
-    private const float Height = 24f;
-    private const float BorderThickness = 2f;
-    private const float DiamondSize = 14f;
+    private const float Height = 30f;
+    private const float DiamondSize = 12f;
+    private const float DiamondGap = 14f;
 
     private readonly RectTransform root;
     private readonly Image fill;
@@ -32,31 +32,15 @@ public class EnemyHealthBar
         root.sizeDelta = new Vector2(Width, Height);
         root.anchoredPosition = new Vector2(0f, -topOffset);
 
-        // 테두리 → 안쪽 어두운 판 → 붉은 채움 순으로 겹친다.
-        Image border = HudFactory.CreateImage(root, "Border", BattleHudPalette.Mvp);
-        HudFactory.Stretch(border.rectTransform);
+        // 킷 게이지(트랙 + 붉은 채움). 트랙이 바 전체를 차지한다.
+        Image track = HudFactory.CreateGauge(root, "Gauge", HudFactory.GaugeFill.Hp, out fill);
+        HudFactory.Stretch(track.rectTransform);
 
-        // 팔레트의 게이지 배경은 알파 0.85라 금색 테두리 위에 얹으면 금색이 배어 올라와 빈 구간이 누렇게 보인다.
-        // 이 바는 테두리를 자기 배경으로 깔고 있으므로 불투명한 판을 쓴다.
-        Image background = HudFactory.CreateImage(border.rectTransform, "Background", new Color(0.05f, 0.05f, 0.08f, 1f));
-        HudFactory.Stretch(background.rectTransform);
-        background.rectTransform.offsetMin = new Vector2(BorderThickness, BorderThickness);
-        background.rectTransform.offsetMax = new Vector2(-BorderThickness, -BorderThickness);
+        // 양 끝 장식(45도 돌린 작은 사각형). 원작 화면의 마름모를 대신한다. 게이지에 붙이면 글로우와 겹쳐 바깥에 띄운다.
+        CreateDiamond(-(Width * 0.5f + DiamondGap));
+        CreateDiamond(Width * 0.5f + DiamondGap);
 
-        fill = HudFactory.CreateImage(background.rectTransform, "Fill", BattleHudPalette.PartyHp);
-        RectTransform fillRect = fill.rectTransform;
-        fillRect.anchorMin = new Vector2(0f, 0f);
-        fillRect.anchorMax = new Vector2(0f, 1f);
-        fillRect.pivot = new Vector2(0f, 0.5f);
-        fillRect.offsetMin = Vector2.zero;
-        fillRect.offsetMax = Vector2.zero;
-        fillRect.sizeDelta = new Vector2(Width - BorderThickness * 2f, 0f);
-
-        // 양 끝 장식(45도 돌린 작은 사각형). 원작 화면의 마름모를 대신한다.
-        CreateDiamond(-Width * 0.5f);
-        CreateDiamond(Width * 0.5f);
-
-        countLabel = HudFactory.CreateText(root, "Count", font, 18f, BattleHudPalette.PanelText);
+        countLabel = HudFactory.CreateText(root, "Count", font, 18f, BattleHudPalette.TextPrimary);
         countLabel.alignment = TextAlignmentOptions.Right;
         RectTransform labelRect = countLabel.rectTransform;
         labelRect.anchorMin = new Vector2(1f, 1f);
@@ -124,7 +108,7 @@ public class EnemyHealthBar
         if (!Mathf.Approximately(ratio, appliedRatio))
         {
             appliedRatio = ratio;
-            fill.rectTransform.sizeDelta = new Vector2((Width - BorderThickness * 2f) * ratio, 0f);
+            HudFactory.SetGauge(fill, ratio);
         }
 
         if (alive != appliedAlive)
@@ -141,7 +125,7 @@ public class EnemyHealthBar
 
     private void CreateDiamond(float x)
     {
-        Image diamond = HudFactory.CreateImage(root, "Diamond", BattleHudPalette.Mvp);
+        Image diamond = HudFactory.CreateImage(root, "Diamond", BattleHudPalette.Accent);
         RectTransform rect = diamond.rectTransform;
         rect.anchorMin = new Vector2(0.5f, 0.5f);
         rect.anchorMax = new Vector2(0.5f, 0.5f);

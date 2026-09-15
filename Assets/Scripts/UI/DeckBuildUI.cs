@@ -30,10 +30,6 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
     [Tooltip("카드가 커질 수 있는 한계. 인원이 적어도 이 배율 이상으로는 키우지 않는다.")]
     [SerializeField, Range(0.2f, 1f)] private float maxCardScale = 0.55f;
 
-    [Header("Banner")]
-    [Tooltip("안내 문구가 올라갈 장식 배너(Assets/Image/UI.png). 비워두면 단색 판으로 그린다.")]
-    [SerializeField] private Sprite bannerSprite;
-
     [Header("Open Button")]
     [Tooltip("화면 아래에 편성 창을 여는 버튼을 둔다. 꺼두면 마을의 시공의 틈을 눌러야만 열린다.")]
     [SerializeField] private bool showOpenButton;
@@ -53,17 +49,18 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
     private const string OccupiedMessageFormat = "이미 {0}파티에 편성된 영웅입니다.\n{0}파티에서 먼저 빼주세요.";
 
     private const float FramePadding = 5f;   // 카드 둘레에 남기는 테두리 두께
-    private const float PanelPadding = 24f;
-    private const float HeaderHeight = 36f;
-    private const float PartyTabWidth = 96f;
+    private const float PanelPadding = 28f;
+    private const float HeaderHeight = 48f;
+    private const float PartyTabWidth = 128f;
     private const float SectionLabelHeight = 28f;
-    private const float BannerFallbackAspect = 2.46f;
     private const float OpenButtonWidth = 360f;
-    private const float DepartWidth = 180f;
+    private const float OpenButtonHeight = 100f;
+    private const float DepartWidth = 200f;
 
     private static readonly Vector2 ReferenceResolution = new Vector2(1920f, 1080f);
     private static readonly Vector2 FallbackCardSize = CardLayout.CardSize;
-    private static readonly Color SelectedRosterFrame = new Color(0.38f, 0.31f, 0.12f, 0.96f);
+    // 출전 중인 보유 카드의 테두리. 위쪽 출전 슬롯(Accent)보다 한 단계 짙게 눌러 둔다.
+    private static readonly Color SelectedRosterFrame = BattleHudPalette.AccentDeep;
 
     // 카드 한 장의 겉모습. 출전 슬롯은 카드를 만들어 두고 주인만 바꿔 끼우므로
     // 나중에 다른 캐릭터를 적용할 수 있어야 한다.
@@ -123,10 +120,8 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
     private AnnouncementBanner announcement;
 
     private TMP_Text countLabel;
-    private RectTransform openButton;
-    private TMP_Text openButtonLabel;
-    private readonly List<Image> partyTabs = new List<Image>();
-    private readonly List<TMP_Text> partyTabLabels = new List<TMP_Text>();
+    private NeonButton openButton;
+    private readonly List<NeonButton> partyTabs = new List<NeonButton>();
     private readonly List<PartySlot> partySlots = new List<PartySlot>();
     private readonly List<RosterSlot> rosterSlots = new List<RosterSlot>();
 
@@ -326,7 +321,7 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         BuildPopup();
 
         // 안내 배너는 창이 아니라 캔버스에 매단다. 창을 닫아도 같은 자리(화면 정중앙)에 뜬다.
-        announcement = AnnouncementBanner.Create(canvasRect, resolvedFont, bannerSprite, null,
+        announcement = AnnouncementBanner.Create(canvasRect, resolvedFont, null,
             Mathf.Min(900f, CanvasSize().x * 0.55f));
 
         BuildDragLayer();
@@ -360,53 +355,28 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         // 여는 자리는 마을의 시공의 틈이다. 화면에 늘 떠 있는 버튼은 기본으로 두지 않는다.
         if (!showOpenButton) return;
 
-        float height = OpenButtonWidth / BannerAspect();
-
-        RectTransform button;
-        if (bannerSprite != null)
-        {
-            Image image = HudFactory.CreateImage(canvasRect, "OpenPartyButton", Color.white);
-            image.sprite = bannerSprite;
-            image.raycastTarget = true;
-            button = image.rectTransform;
-            AttachButton(image, Show);
-        }
-        else
-        {
-            Image border = HudFactory.CreateImage(canvasRect, "OpenPartyButton", BattleHudPalette.Mvp);
-            border.raycastTarget = true;
-            Image body = HudFactory.CreateImage(border.rectTransform, "Body", new Color(0.04f, 0.04f, 0.06f, 0.97f));
-            HudFactory.Stretch(body.rectTransform);
-            body.rectTransform.offsetMin = new Vector2(3f, 3f);
-            body.rectTransform.offsetMax = new Vector2(-3f, -3f);
-            button = border.rectTransform;
-            AttachButton(border, Show);
-        }
-
+        openButton = HudFactory.CreateButton(canvasRect, "OpenPartyButton", NeonButtonStyle.Primary,
+            resolvedFont, string.Empty, 26f, Show);
+        RectTransform button = openButton.Rect;
         button.anchorMin = new Vector2(0.5f, 0f);
         button.anchorMax = new Vector2(0.5f, 0f);
         button.pivot = new Vector2(0.5f, 0f);
-        button.sizeDelta = new Vector2(OpenButtonWidth, height);
+        button.sizeDelta = new Vector2(OpenButtonWidth, OpenButtonHeight);
         button.anchoredPosition = new Vector2(0f, 24f);
-        openButton = button;
 
-        openButtonLabel = HudFactory.CreateText(button, "Label", resolvedFont, 26f, BattleHudPalette.PanelText);
-        HudFactory.Stretch(openButtonLabel.rectTransform);
-        openButtonLabel.rectTransform.offsetMin = new Vector2(OpenButtonWidth * 0.14f, height * 0.28f);
-        openButtonLabel.rectTransform.offsetMax = new Vector2(-OpenButtonWidth * 0.14f, -height * 0.28f);
-        openButtonLabel.enableAutoSizing = true;
-        openButtonLabel.fontSizeMin = 14f;
-        openButtonLabel.fontSizeMax = 26f;
+        TMP_Text label = openButton.Label;
+        label.rectTransform.offsetMin = new Vector2(24f, 12f);
+        label.rectTransform.offsetMax = new Vector2(-24f, -12f);
+        label.enableAutoSizing = true;
+        label.fontSizeMin = 14f;
+        label.fontSizeMax = 26f;
     }
 
     private void BuildPopup()
     {
         RectTransform popup = BuildPopupRoot();
 
-        Image panel = HudFactory.CreateImage(popup, "Panel", BattleHudPalette.PanelBody);
-        // 창 안을 누른 클릭이 배경막으로 내려가지 않도록 여기서 받아 둔다.
-        panel.raycastTarget = true;
-        RectTransform panelRect = panel.rectTransform;
+        RectTransform panelRect = HudFactory.CreatePanel(popup, "Panel").rectTransform;
         HudFactory.Stretch(panelRect);
         panelRect.offsetMin = new Vector2(screenMargin, screenMargin);
         panelRect.offsetMax = new Vector2(-screenMargin, -screenMargin);
@@ -434,12 +404,16 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         // 안내 문구는 창 안에 붙박이로 두지 않는다. 화면 정중앙 배너로 잠깐 떴다 사라진다.
         float y = PanelPadding;
         BuildHeader(panel, availableWidth, y);
-        y += HeaderHeight + 10f;
+        y += HeaderHeight;
+
+        Image divider = HudFactory.CreateDivider(panel, "HeaderDivider");
+        HudFactory.SetTopLeft(divider.rectTransform, new Vector2(availableWidth, DividerHeight), new Vector2(PanelPadding, -(y + 2f)));
+        y += 22f;
 
         BuildPartySlots(panel, capacity, partySlot, y);
         y += partySlot.y + 18f;
 
-        TMP_Text rosterLabel = HudFactory.CreateText(panel, "RosterLabel", resolvedFont, 24f, BattleHudPalette.PanelText);
+        TMP_Text rosterLabel = HudFactory.CreateText(panel, "RosterLabel", resolvedFont, 24f, BattleHudPalette.TextMuted);
         rosterLabel.alignment = TextAlignmentOptions.Left;
         HudFactory.SetTopLeft(rosterLabel.rectTransform, new Vector2(availableWidth, SectionLabelHeight), new Vector2(PanelPadding, -y));
         rosterLabel.text = "보유 영웅";
@@ -452,56 +426,34 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
     private void BuildHeader(RectTransform panel, float width, float y)
     {
         // 1파티 ~ 3파티 탭. 누르면 그 파티를 편성 대상으로 바꾼다.
+        const float tabGap = 8f;
         partyTabs.Clear();
-        partyTabLabels.Clear();
         for (int i = 0; i < PartyDeck.PartyCount; i++)
         {
-            Image tab = HudFactory.CreateImage(panel, "PartyTab_" + i, BattleHudPalette.PanelBackdrop);
-            // HudFactory는 표시 전용 HUD가 기본이라 레이캐스트를 꺼 둔다. 버튼은 도로 켜야 한다.
-            tab.raycastTarget = true;
-            HudFactory.SetTopLeft(tab.rectTransform, new Vector2(PartyTabWidth, HeaderHeight),
-                new Vector2(PanelPadding + i * (PartyTabWidth + 6f), -y));
-
             // 클로저가 반복 변수를 붙잡지 않도록 지역 변수에 복사해 넘긴다.
             int captured = i;
-            AttachButton(tab, () => PartyDeck.SetActive(captured));
-
-            TMP_Text label = HudFactory.CreateText(tab.rectTransform, "Label", resolvedFont, 22f, BattleHudPalette.PanelText);
-            HudFactory.Stretch(label.rectTransform);
-            label.text = (i + 1) + "파티";
+            NeonButton tab = HudFactory.CreateButton(panel, "PartyTab_" + i, NeonButtonStyle.Ghost,
+                resolvedFont, (i + 1) + "파티", 22f, () => PartyDeck.SetActive(captured));
+            HudFactory.SetTopLeft(tab.Rect, new Vector2(PartyTabWidth, HeaderHeight),
+                new Vector2(PanelPadding + i * (PartyTabWidth + tabGap), -y));
 
             partyTabs.Add(tab);
-            partyTabLabels.Add(label);
         }
 
-        float tabsWidth = PartyDeck.PartyCount * (PartyTabWidth + 6f);
-        countLabel = HudFactory.CreateText(panel, "Count", resolvedFont, 26f, BattleHudPalette.Mvp);
+        float tabsWidth = PartyDeck.PartyCount * (PartyTabWidth + tabGap);
+        countLabel = HudFactory.CreateText(panel, "Count", resolvedFont, 26f, BattleHudPalette.Accent);
         countLabel.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(countLabel.rectTransform, new Vector2(width - tabsWidth - 70f, HeaderHeight),
+        HudFactory.SetTopLeft(countLabel.rectTransform, new Vector2(width - tabsWidth - HeaderHeight - DepartWidth - 40f, HeaderHeight),
             new Vector2(PanelPadding + tabsWidth + 14f, -y));
 
-        // 닫기는 글자 대신 X 하나. 정사각형으로 두어야 X가 가운데에 온다.
-        Image closeBackground = HudFactory.CreateImage(panel, "Close", BattleHudPalette.PanelBackdrop);
-        closeBackground.raycastTarget = true;
-        HudFactory.SetTopLeft(closeBackground.rectTransform, new Vector2(HeaderHeight, HeaderHeight),
-            new Vector2(PanelPadding + width - HeaderHeight, -y));
-        AttachButton(closeBackground, Hide);
+        BuildCloseButton(panel, PanelPadding + width - HeaderHeight, y, HeaderHeight);
 
         // 편성을 마치면 여기서 바로 층을 고른다. 창을 닫고 마을에서 다시 시공의 틈을 눌러야 하면
         // 편성 → 출전이 한 흐름으로 이어지지 않는다.
-        Image departBackground = HudFactory.CreateImage(panel, "Depart", SelectedRosterFrame);
-        departBackground.raycastTarget = true;
-        HudFactory.SetTopLeft(departBackground.rectTransform, new Vector2(DepartWidth, HeaderHeight),
-            new Vector2(PanelPadding + width - HeaderHeight - 10f - DepartWidth, -y));
-        AttachButton(departBackground, Depart);
-
-        TMP_Text departLabel = HudFactory.CreateText(departBackground.rectTransform, "Label", resolvedFont, 26f, BattleHudPalette.Mvp);
-        HudFactory.Stretch(departLabel.rectTransform);
-        departLabel.text = "출전하기";
-        TMP_Text closeLabel = HudFactory.CreateText(closeBackground.rectTransform, "Label", resolvedFont, 24f, BattleHudPalette.PanelText);
-        HudFactory.Stretch(closeLabel.rectTransform);
-        // 곱셈 기호(U+2715 등)는 NotoSansKR 아틀라스에 없어 네모로 그려진다. 알파벳 X를 쓴다.
-        closeLabel.text = "X";
+        NeonButton depart = HudFactory.CreateButton(panel, "Depart", NeonButtonStyle.Primary,
+            resolvedFont, "출전하기", 26f, Depart);
+        HudFactory.SetTopLeft(depart.Rect, new Vector2(DepartWidth, HeaderHeight),
+            new Vector2(PanelPadding + width - HeaderHeight - 12f - DepartWidth, -y));
     }
 
     private void BuildPartySlots(RectTransform panel, int capacity, Vector2 slotSize, float y)
@@ -512,14 +464,15 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
 
         for (int i = 0; i < capacity; i++)
         {
-            Image frame = HudFactory.CreateImage(row, "PartySlot_" + i, BattleHudPalette.PortraitFrame);
+            // 빈 자리는 킷의 옅은 판(btn_ghost), 영웅이 올라가면 카드를 두르는 강조색 테두리(Refresh).
+            Image frame = HudFactory.CreateSkinnedImage(row, "PartySlot_" + i, null, BattleHudPalette.PortraitFrame);
             // 드롭을 받으려면 레이캐스트 대상이어야 한다.
             frame.raycastTarget = true;
             HudFactory.SetTopLeft(frame.rectTransform, slotSize, new Vector2(i * (slotSize.x + cardSpacing), 0f));
 
             frame.gameObject.AddComponent<CardDropTarget>().Bind(this, i);
 
-            TMP_Text empty = HudFactory.CreateText(frame.rectTransform, "Empty", resolvedFont, 20f, BattleHudPalette.Dying);
+            TMP_Text empty = HudFactory.CreateText(frame.rectTransform, "Empty", resolvedFont, 20f, BattleHudPalette.TextMuted);
             HudFactory.Stretch(empty.rectTransform);
             empty.text = "여기로\n드래그";
 
@@ -543,14 +496,14 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         float width, float height, float y)
     {
         // 목록 바닥 전체가 "파티에서 빼는 자리"다. 카드 위에 떨어뜨려도 이벤트가 여기까지 올라온다.
-        Image area = HudFactory.CreateImage(panel, "RosterArea", new Color(1f, 1f, 1f, 0.03f));
+        Image area = HudFactory.CreateImage(panel, "RosterArea", BattleHudPalette.ListGround);
         area.raycastTarget = true;
         HudFactory.SetTopLeft(area.rectTransform, new Vector2(width, height), new Vector2(PanelPadding, -y));
         area.gameObject.AddComponent<CardDropTarget>().Bind(this, CardDragSource.RosterSlot);
 
         if (count == 0)
         {
-            TMP_Text empty = HudFactory.CreateText(area.rectTransform, "Empty", resolvedFont, 24f, BattleHudPalette.Dying);
+            TMP_Text empty = HudFactory.CreateText(area.rectTransform, "Empty", resolvedFont, 24f, BattleHudPalette.TextMuted);
             HudFactory.Stretch(empty.rectTransform);
             empty.text = "보유한 캐릭터가 없습니다";
             return;
@@ -606,15 +559,16 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         if (group == null) group = card.Rect.gameObject.AddComponent<CanvasGroup>();
 
         // 출전 순서. 전투 씬의 스폰 자리가 이 번호를 따른다.
-        Image badge = HudFactory.CreateImage(frame.rectTransform, "Order", BattleHudPalette.Mvp);
+        Image badge = HudFactory.CreateImage(frame.rectTransform, "Order", BattleHudPalette.Accent);
         HudFactory.SetTopLeft(badge.rectTransform, new Vector2(30f, 30f), new Vector2(6f, -6f));
-        TMP_Text badgeLabel = HudFactory.CreateText(badge.rectTransform, "Label", resolvedFont, 20f, Color.black);
+        TMP_Text badgeLabel = HudFactory.CreateText(badge.rectTransform, "Label", resolvedFont, 20f, BattleHudPalette.TextOnAccent);
         HudFactory.Stretch(badgeLabel.rectTransform);
         badge.gameObject.SetActive(false);
 
-        Image deadOverlay = HudFactory.CreateImage(frame.rectTransform, "Dead", new Color(0f, 0f, 0f, 0.66f));
+        Image deadOverlay = HudFactory.CreateImage(frame.rectTransform, "Dead",
+            new Color(BattleHudPalette.BgDeep.r, BattleHudPalette.BgDeep.g, BattleHudPalette.BgDeep.b, 0.66f));
         HudFactory.Stretch(deadOverlay.rectTransform);
-        TMP_Text deadLabel = HudFactory.CreateText(deadOverlay.rectTransform, "Label", resolvedFont, 26f, BattleHudPalette.Defeat);
+        TMP_Text deadLabel = HudFactory.CreateText(deadOverlay.rectTransform, "Label", resolvedFont, 26f, BattleHudPalette.Danger);
         HudFactory.Stretch(deadLabel.rectTransform);
         deadLabel.text = "사망";
         deadOverlay.gameObject.SetActive(false);
@@ -633,6 +587,7 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
 
     private void Refresh()
     {
+        NeonUISkin skin = NeonUISkin.Current;
         for (int i = 0; i < partySlots.Count; i++)
         {
             PartySlot slot = partySlots[i];
@@ -641,7 +596,9 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
             if (member != null) slot.Card.Apply(member);
             slot.Card.Rect.gameObject.SetActive(member != null);
             slot.EmptyLabel.gameObject.SetActive(member == null);
-            slot.Frame.color = member != null ? BattleHudPalette.Mvp : BattleHudPalette.PortraitFrame;
+            // 카드가 판을 거의 다 덮으므로 올라간 뒤에는 킷 판 대신 드러나는 테두리만 단색으로 칠한다.
+            HudFactory.ApplySkin(slot.Frame, member == null && skin != null ? skin.buttonGhost : null,
+                member != null ? BattleHudPalette.Accent : BattleHudPalette.PortraitFrame);
             slot.Drag.Bind(this, member, i);
         }
 
@@ -675,11 +632,11 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
                 {
                     // 활성 파티면 출전 순서, 다른 파티면 그 파티 번호.
                     slot.BadgeLabel.text = selected ? (order + 1).ToString() : (otherParty + 1) + "P";
-                    slot.BadgeLabel.color = selected ? Color.black : BattleHudPalette.PanelText;
+                    slot.BadgeLabel.color = selected ? BattleHudPalette.TextOnAccent : BattleHudPalette.TextPrimary;
                 }
                 var badgeImage = slot.Badge.GetComponent<Image>();
                 if (badgeImage != null)
-                    badgeImage.color = selected ? BattleHudPalette.Mvp : BattleHudPalette.PanelBody;
+                    badgeImage.color = selected ? BattleHudPalette.Accent : BattleHudPalette.PanelBody;
             }
 
             if (slot.DeadOverlay != null) slot.DeadOverlay.SetActive(fallen);
@@ -687,19 +644,18 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
             if (slot.Button != null) slot.Button.interactable = !fallen;
         }
 
-        // 탭: 지금 만지는 파티만 금색으로, 나머지는 인원수만 알려준다.
+        // 탭: 지금 만지는 파티만 밝은 판으로, 나머지는 인원수만 알려준다.
         for (int i = 0; i < partyTabs.Count; i++)
         {
             bool active = i == PartyDeck.ActiveIndex;
-            partyTabs[i].color = active ? BattleHudPalette.Mvp : BattleHudPalette.PanelBackdrop;
-            partyTabLabels[i].color = active ? Color.black : BattleHudPalette.PanelText;
-            partyTabLabels[i].text = (i + 1) + "파티 " + PartyDeck.CountOf(i);
+            partyTabs[i].SetStyle(active ? NeonButtonStyle.Primary : NeonButtonStyle.Ghost);
+            partyTabs[i].Label.text = (i + 1) + "파티 " + PartyDeck.CountOf(i);
         }
 
         string count = PartyDeck.Count + " / " + PartyDeck.Capacity;
         if (countLabel != null) countLabel.text = (PartyDeck.ActiveIndex + 1) + "파티 출전 " + count;
-        if (openButtonLabel != null)
-            openButtonLabel.text = "파티 편성\n" + (PartyDeck.ActiveIndex + 1) + "파티 " + count;
+        if (openButton != null)
+            openButton.Label.text = "파티 편성\n" + (PartyDeck.ActiveIndex + 1) + "파티 " + count;
     }
 
     // ---- 카드 만들기 ------------------------------------------------------
@@ -734,11 +690,11 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         portrait.preserveAspect = true;
         HudFactory.SetTopLeft(portrait.rectTransform, new Vector2(260f, 260f), new Vector2(20f, -20f));
 
-        TMP_Text nameLabel = HudFactory.CreateText(rect, "Name", resolvedFont, 34f, BattleHudPalette.PanelText);
+        TMP_Text nameLabel = HudFactory.CreateText(rect, "Name", resolvedFont, 34f, BattleHudPalette.TextPrimary);
         HudFactory.SetTopLeft(nameLabel.rectTransform, new Vector2(260f, 48f), new Vector2(20f, -296f));
 
         // 별 기호(U+2605)는 NotoSansKR 아틀라스에 없어 네모로 그려진다. 숫자로 적는다.
-        TMP_Text rankLabel = HudFactory.CreateText(rect, "Rank", resolvedFont, 30f, BattleHudPalette.Mvp);
+        TMP_Text rankLabel = HudFactory.CreateText(rect, "Rank", resolvedFont, 30f, BattleHudPalette.Accent);
         HudFactory.SetTopLeft(rankLabel.rectTransform, new Vector2(260f, 40f), new Vector2(20f, -352f));
 
         var visual = new CardVisual
@@ -760,22 +716,6 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
     private static void CenterInSlot(RectTransform card, float scale)
     {
         CardLayout.CenterInSlot(card, scale);
-    }
-
-    private float BannerAspect()
-    {
-        if (bannerSprite == null || bannerSprite.rect.height <= 0f) return BannerFallbackAspect;
-        return bannerSprite.rect.width / bannerSprite.rect.height;
-    }
-
-    private static Button AttachButton(Image target, UnityEngine.Events.UnityAction action,
-        Selectable.Transition transition = Selectable.Transition.ColorTint)
-    {
-        var button = target.gameObject.AddComponent<Button>();
-        button.transition = transition;
-        if (transition == Selectable.Transition.ColorTint) button.targetGraphic = target;
-        button.onClick.AddListener(action);
-        return button;
     }
 
     // 화면 폭이 달라져도 가운데를 유지해야 하는 것들(배너, 출전 슬롯 줄).

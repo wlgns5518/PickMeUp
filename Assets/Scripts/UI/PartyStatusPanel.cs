@@ -16,20 +16,24 @@ using UnityEngine.UI;
 // 난전에서 바가 서로 겹쳐 아무것도 못 읽는 문제도 같이 사라진다.
 public class PartyStatusPanel
 {
-    private const float RowHeight = 78f;
-    private const float RowSpacing = 8f;
+    private const float RowHeight = 84f;
+    private const float RowSpacing = 6f;
+    private const float RowPadding = 6f;
     private const float PortraitSize = 72f;
-    private const float GaugeLeft = 80f;
-    private const float GaugeWidth = 210f;
-    private const float HpHeight = 16f;
-    private const float ManaHeight = 8f;
+    private const float GaugeLeft = 88f;
+    private const float GaugeWidth = 214f;
+    private const float RowWidth = GaugeLeft + GaugeWidth + 14f;
+    // 킷 게이지 스프라이트는 위아래로 글로우 여백이 있어 보이는 막대는 칸 높이의 3/4쯤이다.
+    private const float HpHeight = 20f;
+    private const float ManaHeight = 12f;
 
     private static readonly StringBuilder LabelBuilder = new StringBuilder(24);
 
     // 평소에는 거의 보이지 않는 판(클릭 판정을 받으려면 완전 투명이면 안 된다),
-    // 선택된 슬롯만 옅게 밝혀 지금 카메라가 누구를 보고 있는지 드러낸다.
+    // 선택된 슬롯만 네온 테두리(btn_secondary)를 둘러 지금 카메라가 누구를 보고 있는지 드러낸다.
     private static readonly Color SlotIdleColor = new Color(1f, 1f, 1f, 0.01f);
-    private static readonly Color SlotSelectedColor = new Color(1f, 0.95f, 0.6f, 0.22f);
+    private static readonly Color SlotSelectedFallback = new Color(
+        BattleHudPalette.Accent.r, BattleHudPalette.Accent.g, BattleHudPalette.Accent.b, 0.22f);
 
     // 한 명분 슬롯. 전투가 시작될 때 아군 수만큼 만들어지고 그 뒤로는 값만 갱신된다.
     private class Slot
@@ -38,6 +42,7 @@ public class PartyStatusPanel
         public RectTransform Root;
         public Image SelectionHighlight;
         public Image PortraitFrame;
+        public Color PortraitFrameColor;
         public Image Portrait;
         public Image HpFill;
         public Image ManaFill;
@@ -72,7 +77,7 @@ public class PartyStatusPanel
         root.anchorMax = new Vector2(0f, 1f);
         root.pivot = new Vector2(0f, 1f);
         root.anchoredPosition = new Vector2(margin.x, -margin.y);
-        root.sizeDelta = new Vector2(GaugeLeft + GaugeWidth, 0f);
+        root.sizeDelta = new Vector2(RowWidth, 0f);
     }
 
     public static PartyStatusPanel Create(RectTransform parent, TMP_FontAsset font, Vector2 margin)
@@ -141,7 +146,7 @@ public class PartyStatusPanel
         if (!slot.HasAppliedState || !Mathf.Approximately(hpRatio, slot.AppliedHpRatio))
         {
             slot.AppliedHpRatio = hpRatio;
-            slot.HpFill.rectTransform.sizeDelta = new Vector2(GaugeWidth * hpRatio, HpHeight);
+            HudFactory.SetGauge(slot.HpFill, hpRatio);
         }
 
         UnitEmotion emotion = unit.Emotion;
@@ -151,7 +156,7 @@ public class PartyStatusPanel
         if (!slot.HasAppliedState || !Mathf.Approximately(manaRatio, slot.AppliedManaRatio))
         {
             slot.AppliedManaRatio = manaRatio;
-            slot.ManaFill.rectTransform.sizeDelta = new Vector2(GaugeWidth * manaRatio, ManaHeight);
+            HudFactory.SetGauge(slot.ManaFill, manaRatio);
         }
 
         EmotionState state = !isDead && emotion != null ? emotion.State : EmotionState.None;
@@ -166,16 +171,18 @@ public class PartyStatusPanel
             slot.AppliedDead = isDead;
             Color tint = isDead ? BattleHudPalette.DeadTint : BattleHudPalette.AliveTint;
             slot.Portrait.color = tint;
-            slot.PortraitFrame.color = isDead
-                ? BattleHudPalette.DeadTint * BattleHudPalette.PortraitFrame
-                : BattleHudPalette.PortraitFrame;
+            // 테두리는 스프라이트가 색을 들고 있어(흰색이 원래 색) 그 위에 어둡게만 곱한다.
+            slot.PortraitFrame.color = isDead ? BattleHudPalette.DeadTint * slot.PortraitFrameColor : slot.PortraitFrameColor;
         }
 
         bool selected = unit == selectedUnit;
         if (!slot.HasAppliedState || selected != slot.AppliedSelected)
         {
             slot.AppliedSelected = selected;
-            slot.SelectionHighlight.color = selected ? SlotSelectedColor : SlotIdleColor;
+            NeonUISkin skin = NeonUISkin.Current;
+            HudFactory.ApplySkin(slot.SelectionHighlight,
+                selected && skin != null ? skin.buttonSecondary : null,
+                selected ? SlotSelectedFallback : SlotIdleColor);
         }
 
         slot.HasAppliedState = true;
@@ -247,14 +254,14 @@ public class PartyStatusPanel
         slot.Root.anchorMin = new Vector2(0f, 1f);
         slot.Root.anchorMax = new Vector2(0f, 1f);
         slot.Root.pivot = new Vector2(0f, 1f);
-        slot.Root.sizeDelta = new Vector2(GaugeLeft + GaugeWidth, RowHeight);
+        slot.Root.sizeDelta = new Vector2(RowWidth, RowHeight);
         slot.Root.anchoredPosition = new Vector2(0f, -index * (RowHeight + RowSpacing));
 
         // 선택 강조. 클릭 판정도 이 이미지가 받는다 — 행 전체를 덮으므로 초상화든 게이지든
         // 어디를 눌러도 같은 슬롯이 선택된다. HudFactory 기본값이 raycastTarget=false이므로
         // 여기서만 명시적으로 켜서, 나머지 HUD는 여전히 클릭을 가로채지 않게 둔다.
-        slot.SelectionHighlight = HudFactory.CreateImage(slot.Root, "SelectionHighlight", SlotIdleColor);
-        HudFactory.SetTopLeft(slot.SelectionHighlight.rectTransform, new Vector2(GaugeLeft + GaugeWidth, RowHeight), Vector2.zero);
+        slot.SelectionHighlight = HudFactory.CreateSkinnedImage(slot.Root, "SelectionHighlight", null, SlotIdleColor);
+        HudFactory.SetTopLeft(slot.SelectionHighlight.rectTransform, new Vector2(RowWidth, RowHeight), Vector2.zero);
         slot.SelectionHighlight.raycastTarget = true;
 
         // 클릭을 슬롯 인덱스로 되돌려 받는다. 슬롯은 재사용되므로 유닛이 아니라 인덱스를 넘긴다.
@@ -264,27 +271,28 @@ public class PartyStatusPanel
         entry.callback.AddListener(_ => HandleSlotClicked(captured));
         trigger.triggers.Add(entry);
 
-        slot.PortraitFrame = HudFactory.CreateImage(slot.Root, "PortraitFrame", BattleHudPalette.PortraitFrame);
-        HudFactory.SetTopLeft(slot.PortraitFrame.rectTransform, new Vector2(PortraitSize, PortraitSize), Vector2.zero);
+        // 초상화 테두리는 정사각 아이콘 판(icon_btn). 잘린 모서리가 초상화에 가리지 않도록 안쪽을 넉넉히 비운다.
+        NeonUISkin skin = NeonUISkin.Current;
+        slot.PortraitFrame = HudFactory.CreateSkinnedImage(slot.Root, "PortraitFrame",
+            skin != null ? skin.iconButton : null, BattleHudPalette.PortraitFrame);
+        slot.PortraitFrameColor = slot.PortraitFrame.color;
+        HudFactory.SetTopLeft(slot.PortraitFrame.rectTransform, new Vector2(PortraitSize, PortraitSize), new Vector2(RowPadding, -RowPadding));
 
+        const float portraitInset = 7f;
         slot.Portrait = HudFactory.CreateImage(slot.Root, "Portrait", BattleHudPalette.AliveTint);
-        HudFactory.SetTopLeft(slot.Portrait.rectTransform, new Vector2(PortraitSize - 6f, PortraitSize - 6f), new Vector2(3f, -3f));
+        HudFactory.SetTopLeft(slot.Portrait.rectTransform,
+            new Vector2(PortraitSize - portraitInset * 2f, PortraitSize - portraitInset * 2f),
+            new Vector2(RowPadding + portraitInset, -(RowPadding + portraitInset)));
 
-        Image hpBackground = HudFactory.CreateImage(slot.Root, "HpBackground", BattleHudPalette.GaugeBackground);
-        HudFactory.SetTopLeft(hpBackground.rectTransform, new Vector2(GaugeWidth, HpHeight), new Vector2(GaugeLeft, -8f));
+        Image hpTrack = HudFactory.CreateGauge(slot.Root, "Hp", HudFactory.GaugeFill.Hp, out slot.HpFill);
+        HudFactory.SetTopLeft(hpTrack.rectTransform, new Vector2(GaugeWidth, HpHeight), new Vector2(GaugeLeft, -10f));
 
-        slot.HpFill = HudFactory.CreateImage(slot.Root, "HpFill", BattleHudPalette.PartyHp);
-        HudFactory.SetTopLeft(slot.HpFill.rectTransform, new Vector2(GaugeWidth, HpHeight), new Vector2(GaugeLeft, -8f));
-
-        Image manaBackground = HudFactory.CreateImage(slot.Root, "ManaBackground", BattleHudPalette.GaugeBackground);
-        HudFactory.SetTopLeft(manaBackground.rectTransform, new Vector2(GaugeWidth, ManaHeight), new Vector2(GaugeLeft, -28f));
-
-        slot.ManaFill = HudFactory.CreateImage(slot.Root, "ManaFill", BattleHudPalette.Mana);
-        HudFactory.SetTopLeft(slot.ManaFill.rectTransform, new Vector2(GaugeWidth, ManaHeight), new Vector2(GaugeLeft, -28f));
+        Image manaTrack = HudFactory.CreateGauge(slot.Root, "Mana", HudFactory.GaugeFill.Mana, out slot.ManaFill);
+        HudFactory.SetTopLeft(manaTrack.rectTransform, new Vector2(GaugeWidth, ManaHeight), new Vector2(GaugeLeft, -32f));
 
         slot.EmotionLabel = HudFactory.CreateText(slot.Root, "EmotionLabel", font, 20f, BattleHudPalette.Fear);
         slot.EmotionLabel.alignment = TextAlignmentOptions.TopLeft;
-        HudFactory.SetTopLeft(slot.EmotionLabel.rectTransform, new Vector2(GaugeWidth, 26f), new Vector2(GaugeLeft, -40f));
+        HudFactory.SetTopLeft(slot.EmotionLabel.rectTransform, new Vector2(GaugeWidth, 28f), new Vector2(GaugeLeft + 4f, -48f));
         slot.EmotionLabel.text = "";
 
         return slot;

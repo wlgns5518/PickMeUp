@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e667e12c89eb5c74597d3c3ca0caccde, type: 3}
+  m_Name: NeonUISkin
+  m_EditorClassIdentifier: PickMeUp::NeonUISkin
+  buttonPrimary: {fileID: 21300000, guid: e8c1c63710cb8f740b6af7f483b8a3eb, type: 3}
+  buttonSecondary: {fileID: 21300000, guid: ec819148f433799488b85be4801ebe64, type: 3}
+  buttonGhost: {fileID: 21300000, guid: d110e0006747ab541afa2a65e40172ea, type: 3}
+  buttonDanger: {fileID: 21300000, guid: 3fdd948eddd1cc94884b26931e69102b, type: 3}
+  buttonDisabled: {fileID: 21300000, guid: 3f98958c93e8f9342a79c1eaa155e736, type: 3}
+  iconButton: {fileID: 21300000, guid: d8072551b73ac5942bd75c99198de81d, type: 3}
+  panel: {fileID: 21300000, guid: 2b3cb418a310e5b46b21ead6b0f03af6, type: 3}
+  divider: {fileID: 21300000, guid: 83081e24b9d568046a81aeb96b9f76c1, type: 3}
+  gaugeTrack: {fileID: 21300000, guid: 25bad7e7a620b394b813a344faa878a5, type: 3}
+  gaugeFillHp: {fileID: 21300000, guid: ff73abe5222e95b44accb552fcbae81f, type: 3}
+  gaugeFillMp: {fileID: 21300000, guid: 46e8fe93574872546be08a6c97fcb52f, type: 3}
+  gaugeFillXp: {fileID: 21300000, guid: a9d2c22f9a2bd094cb5c829bc7f0cb30, type: 3}
+  messageCornerTopLeft: {fileID: 21300000, guid: f0e143eb3db0eac4a812c7818f5fe5c8,
+    type: 3}
+  messageCornerTopRight: {fileID: 21300000, guid: a62c828f7205af7469822738aba80dee,
+    type: 3}
+  messageCornerBottomLeft: {fileID: 21300000, guid: 4a9e7e1ee05587c48a2c8848a3a8d903,
+    type: 3}
+  messageCornerBottomRight: {fileID: 21300000, guid: a07180ed0093798418cdbd14fbaca6e8,
+    type: 3}
+  messageEdgeTop: {fileID: 21300000, guid: 2018f54c43d455945888c08a905eb216, type: 3}
+  messageEdgeBottom: {fileID: 21300000, guid: 81f52f34a50ebe04a874db42b21845cf, type: 3}
+  messageEdgeLeft: {fileID: 21300000, guid: ff72b6f81d6f65e4daa6df9d8914c935, type: 3}
+  messageEdgeRight: {fileID: 21300000, guid: 8d4ee8c372c3ddf4a8c6580210df8806, type: 3}
+  messagePanel: {fileID: 21300000, guid: 9d9ff48d8fedd224fa6f92aaff4f3bef, type: 3}

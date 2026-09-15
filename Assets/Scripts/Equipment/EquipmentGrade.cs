@@ -46,7 +46,7 @@ public static class EquipmentGradeNames
             case EquipmentGrade.B: return new Color(0.55f, 0.75f, 1.00f);
             case EquipmentGrade.C: return new Color(0.55f, 0.85f, 0.60f);
             case EquipmentGrade.D: return new Color(0.75f, 0.75f, 0.75f);
-            default:               return BattleHudPalette.PanelText;
+            default:               return BattleHudPalette.TextPrimary;
         }
     }
 }

@@ -2,7 +2,6 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
-using UnityEngine.Serialization;
 using UnityEngine.UI;
 
 // 전투 HUD의 단일 진입점. 씬에 이 컴포넌트 하나만 올려두면
@@ -21,10 +20,8 @@ public class BattleHud : MonoBehaviour
     [Tooltip("화면 왼쪽 위 모서리로부터의 여백(px, 1920x1080 기준).")]
     [SerializeField] private Vector2 partyPanelMargin = new Vector2(28f, 28f);
 
+    // 부고와 결과창의 장식 테두리는 킷의 메시지 박스(NeonUISkin)가 그린다. 예전의 배너 그림(UI.png) 필드는 없앴다.
     [Header("Banner")]
-    [Tooltip("부고와 결과창이 함께 쓰는 장식 배너(Assets/Image/UI.png). 비워두면 금색 테두리에 검은 판으로 그린다.")]
-    [FormerlySerializedAs("deathBannerFrame")]
-    [SerializeField] private Sprite bannerFrame;
     [Tooltip("별을 찍을 TMP 스프라이트 에셋. 비워두면 Resources의 StarSprites를 쓴다.")]
     [SerializeField] private TMP_SpriteAsset starSpriteAsset;
 
@@ -48,7 +45,7 @@ public class BattleHud : MonoBehaviour
     // 새 필드는 씬에 저장된 적이 없으므로 아래 기본값이 그대로 적용된다.
     [Tooltip("[임시] 켜 두면 부고를 아예 띄우지 않는다. 전투 조정이 끝나면 꺼서 되돌릴 것.")]
     [SerializeField] private bool suppressDeathAnnouncement = true;
-    [Tooltip("배너 가로 길이(px, 1920x1080 기준). 세로는 그림 비율을 따른다.")]
+    [Tooltip("배너가 넘지 않을 가로 길이(px, 1920x1080 기준). 세로는 글 줄 수에 맞춰 늘어난다.")]
     [SerializeField] private float deathBannerWidth = 1000f;
     [Tooltip("배너가 저절로 사라지기까지의 시간(초). 누르면 그전에도 사라진다.")]
     [SerializeField] private float deathBannerHoldSeconds = 2f;
@@ -86,9 +83,9 @@ public class BattleHud : MonoBehaviour
         partyPanel = PartyStatusPanel.Create(canvasRect, resolvedFont, partyPanelMargin);
         partyPanel.UnitClicked += HandlePartySlotClicked;
         if (showEnemyHealthBar) enemyBar = EnemyHealthBar.Create(canvasRect, resolvedFont, enemyBarTopOffset);
-        resultPanel = BattleResultPanel.Create(canvasRect, resolvedFont, bannerFrame, starSpriteAsset);
-        deathBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, bannerFrame,
-            starSpriteAsset, deathBannerWidth, deathBannerHoldSeconds);
+        resultPanel = BattleResultPanel.Create(canvasRect, resolvedFont, starSpriteAsset);
+        deathBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, starSpriteAsset,
+            deathBannerWidth, deathBannerHoldSeconds);
     }
 
     // 파티 슬롯을 누르면 그 캐릭터로 시점을 옮긴다.

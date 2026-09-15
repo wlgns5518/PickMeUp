@@ -34,8 +34,7 @@ public class FloorSelectUI : FacilityWindow
     [SerializeField] private bool openOnStart;
 
     [Header("Warning Banner")]
-    [Tooltip("경고를 띄울 장식 배너(Assets/Image/UI.png). 비워두면 금색 테두리에 검은 판으로 그린다.")]
-    [SerializeField] private Sprite bannerSprite;
+    [Tooltip("경고 배너가 넘지 않을 가로 길이. 모양은 킷의 장식 메시지 박스다.")]
     [SerializeField] private float bannerWidth = 900f;
 
     // 편성이 비어 있으면 스포너가 인스펙터에 박아둔 명단으로 대신 싸운다. 그건 전투 씬을 직접
@@ -43,18 +42,14 @@ public class FloorSelectUI : FacilityWindow
     // 파티가 셋이라 어느 파티가 비었는지 짚어줘야 한다.
     private const string EmptyPartyMessageFormat = "{0}파티에 출전할 영웅이 없습니다.\n먼저 영웅을 편성해주세요.";
 
-    // 잠긴 층 칸. 열린 층(PortraitFrame)보다 한 단계 어둡게 눌러 둔다.
-    private static readonly Color LockedFrame = new Color(0.11f, 0.10f, 0.13f, 0.95f);
-
     private const float ButtonWidth = 360f;
-    private const float ButtonHeight = 150f;
+    private const float ButtonHeight = 132f;
     private const float ButtonSpacing = 20f;
-    private const float TitleHeight = 72f;
-    private const float CloseHeight = 60f;
+    private const float TitleHeight = 60f;
+    private const float TitleGap = 24f;
 
     private AnnouncementBanner warningBanner;
-    private readonly List<Button> floorButtons = new List<Button>();
-    private readonly List<TMP_Text> floorLabels = new List<TMP_Text>();
+    private readonly List<NeonButton> floorButtons = new List<NeonButton>();
 
     protected override string CanvasName => "FloorSelectCanvas";
     // 편성 카드(91)보다 위. 층을 고르는 동안에는 이 창이 가장 앞에 있어야 한다.
@@ -99,12 +94,11 @@ public class FloorSelectUI : FacilityWindow
     protected override void BuildWindow()
     {
         floorButtons.Clear();
-        floorLabels.Clear();
         BuildCanvas();
         BuildPopup();
 
         // 경고 배너는 팝업 밖(캔버스 직속)에 둔다. 창이 닫혀도 같은 자리에 뜬다.
-        warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, bannerSprite, null, bannerWidth);
+        warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, null, bannerWidth);
     }
 
     private void BuildPopup()
@@ -121,12 +115,10 @@ public class FloorSelectUI : FacilityWindow
 
         float listWidth = columns * ButtonWidth + (columns - 1) * ButtonSpacing;
         float panelWidth = listWidth + panelPadding.x * 2f;
-        // 닫기 버튼이 제목줄로 올라갔으므로 목록 아래에 따로 자리를 남기지 않는다.
-        float panelHeight = TitleHeight + rows * (ButtonHeight + ButtonSpacing) + panelPadding.y * 2f;
+        // 닫기 버튼이 제목줄에 있으므로 목록 아래에 따로 자리를 남기지 않는다.
+        float panelHeight = TitleHeight + TitleGap + rows * ButtonHeight + (rows - 1) * ButtonSpacing + panelPadding.y * 2f;
 
-        Image panel = HudFactory.CreateImage(popup, "Panel", BattleHudPalette.PanelBody);
-        // 창 안을 누른 클릭이 배경막으로 내려가지 않도록 여기서 받아 둔다.
-        panel.raycastTarget = true;
+        Image panel = HudFactory.CreatePanel(popup, "Panel");
         RectTransform panelRect = panel.rectTransform;
         panelRect.anchorMin = new Vector2(0.5f, 0.5f);
         panelRect.anchorMax = new Vector2(0.5f, 0.5f);
@@ -134,10 +126,7 @@ public class FloorSelectUI : FacilityWindow
         panelRect.sizeDelta = new Vector2(panelWidth, panelHeight);
         panelRect.anchoredPosition = Vector2.zero;
 
-        TMP_Text title = HudFactory.CreateText(panelRect, "Title", resolvedFont, 42f, BattleHudPalette.PanelText);
-        title.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(title.rectTransform, new Vector2(listWidth, TitleHeight), new Vector2(panelPadding.x, -panelPadding.y));
-        title.text = "층 선택";
+        BuildTitleBar(panelRect, "층 선택", panelPadding.x, panelPadding.y, listWidth, TitleHeight);
 
         for (int i = 0; i < count; i++)
         {
@@ -145,45 +134,17 @@ public class FloorSelectUI : FacilityWindow
             int column = i % columns;
             int row = i / columns;
             float x = panelPadding.x + column * (ButtonWidth + ButtonSpacing);
-            float y = -(panelPadding.y + TitleHeight + row * (ButtonHeight + ButtonSpacing));
-
-            Image background = HudFactory.CreateImage(panelRect, "Floor_" + floor, BattleHudPalette.PortraitFrame);
-            background.raycastTarget = true;
-            HudFactory.SetTopLeft(background.rectTransform, new Vector2(ButtonWidth, ButtonHeight), new Vector2(x, y));
-
-            var button = background.gameObject.AddComponent<Button>();
-            button.targetGraphic = background;
-            // 잠긴 층도 칸은 보여야 한다. 기본 비활성 색이 반투명이라 그대로 두면 판이 통째로
-            // 사라진 것처럼 보인다. 흐리게 만드는 일은 RefreshButtons가 색으로 직접 한다.
-            ColorBlock colors = button.colors;
-            colors.disabledColor = Color.white;
-            button.colors = colors;
-
-            TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 34f, BattleHudPalette.PanelText);
-            HudFactory.Stretch(label.rectTransform);
+            float y = panelPadding.y + TitleHeight + TitleGap + row * (ButtonHeight + ButtonSpacing);
 
             // 클로저가 반복 변수를 붙잡지 않도록 지역 변수에 복사해 넘긴다.
             int captured = floor;
-            button.onClick.AddListener(() => EnterFloor(captured));
+            // 잠긴 층은 누를 수 없게만 해 두면 NeonButton이 비활성 판(btn_disabled)과 흐린 글자로 바꾼다.
+            NeonButton button = HudFactory.CreateButton(panelRect, "Floor_" + floor, NeonButtonStyle.Secondary,
+                resolvedFont, string.Empty, 34f, () => EnterFloor(captured));
+            HudFactory.SetTopLeft(button.Rect, new Vector2(ButtonWidth, ButtonHeight), new Vector2(x, -y));
 
             floorButtons.Add(button);
-            floorLabels.Add(label);
         }
-
-        // 닫기는 글자 대신 X 하나. 목록 아래가 아니라 제목줄 오른쪽 끝에 정사각형으로 둔다.
-        Image closeBackground = HudFactory.CreateImage(panelRect, "Close", BattleHudPalette.PanelBackdrop);
-        closeBackground.raycastTarget = true;
-        HudFactory.SetTopLeft(closeBackground.rectTransform, new Vector2(CloseHeight, CloseHeight),
-            new Vector2(panelPadding.x + listWidth - CloseHeight, -panelPadding.y));
-
-        var closeButton = closeBackground.gameObject.AddComponent<Button>();
-        closeButton.targetGraphic = closeBackground;
-        closeButton.onClick.AddListener(Hide);
-
-        TMP_Text closeLabel = HudFactory.CreateText(closeBackground.rectTransform, "Label", resolvedFont, 30f, BattleHudPalette.PanelText);
-        HudFactory.Stretch(closeLabel.rectTransform);
-        // 곱셈 기호(U+2715 등)는 NotoSansKR 아틀라스에 없어 네모로 그려진다. 알파벳 X를 쓴다.
-        closeLabel.text = "X";
     }
 
     private void RefreshButtons()
@@ -194,20 +155,17 @@ public class FloorSelectUI : FacilityWindow
             bool unlocked = FloorProgress.IsUnlocked(floor);
             bool cleared = floor <= FloorProgress.HighestCleared;
 
-            floorButtons[i].interactable = unlocked;
+            NeonButton button = floorButtons[i];
+            button.interactable = unlocked;
+            // 열렸지만 아직 깨지 않은 층(지금 도전할 층)만 밝은 판으로 띄워 어디로 가야 할지 보이게 한다.
+            button.SetStyle(unlocked && !cleared ? NeonButtonStyle.Primary : NeonButtonStyle.Secondary);
 
-            // 잠긴 층은 칸을 어둡게 눌러 표시한다. 버튼의 비활성 색에 맡기면 반투명이라 칸이 사라진다.
-            var frame = floorButtons[i].targetGraphic as Image;
-            if (frame != null) frame.color = unlocked ? BattleHudPalette.PortraitFrame : LockedFrame;
-
-            TMP_Text label = floorLabels[i];
             // 체크표시(U+2713)를 쓰면 NotoSansKR에 글리프가 없어 매번 경고를 뱉고 □로 그려진다.
             // 폰트가 Static 아틀라스라 동적으로 추가할 수도 없으니, 잠김 표기와 같은 한국어로 맞춘다.
+            TMP_Text label = button.Label;
             if (!unlocked) label.text = floor + "층  (잠김)";
-            else if (cleared) label.text = floor + "층  (클리어)";
+            else if (cleared) label.text = floor + "층  <size=24>(클리어)</size>";
             else label.text = floor + "층";
-
-            label.color = unlocked ? BattleHudPalette.PanelText : BattleHudPalette.Dying;
         }
     }
 

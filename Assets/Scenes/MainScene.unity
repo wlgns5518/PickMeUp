@@ -2036,7 +2036,6 @@ MonoBehaviour:
   panelPadding: {x: 30, y: 26}
   floorColumns: 3
   openOnStart: 0
-  bannerSprite: {fileID: 21300000, guid: 3b60df34a4731f345a301361d210e989, type: 3}
   bannerWidth: 900
 --- !u!4 &247532115
 Transform:
@@ -8722,7 +8721,6 @@ MonoBehaviour:
   cardPrefab: {fileID: -5443837647192553864, guid: e426b271cba2d234b97760ca6340515e,
     type: 3}
   openOnStart: 0
-  bannerSprite: {fileID: 21300000, guid: 3b60df34a4731f345a301361d210e989, type: 3}
   bannerWidth: 900
   screenMargin: 40
   cardSpacing: 14
@@ -14699,7 +14697,6 @@ MonoBehaviour:
   cardSpawner: {fileID: 156220772}
   panelPadding: {x: 36, y: 30}
   openOnStart: 0
-  bannerSprite: {fileID: 21300000, guid: 3b60df34a4731f345a301361d210e989, type: 3}
   bannerWidth: 900
 --- !u!4 &842084882
 Transform:
@@ -15380,7 +15377,6 @@ MonoBehaviour:
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   forge: {fileID: 2068288107}
   openOnStart: 0
-  bannerSprite: {fileID: 21300000, guid: 3b60df34a4731f345a301361d210e989, type: 3}
   bannerWidth: 900
 --- !u!114 &883443450
 MonoBehaviour:
@@ -44008,7 +44004,6 @@ MonoBehaviour:
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   roster: {fileID: 11400000, guid: 0d619bff89015f24f9a394e847a2bc66, type: 2}
   openOnStart: 0
-  bannerSprite: {fileID: 21300000, guid: 3b60df34a4731f345a301361d210e989, type: 3}
   bannerWidth: 900
 --- !u!1 &1874621891
 GameObject:
@@ -46206,7 +46201,6 @@ MonoBehaviour:
   cardPrefab: {fileID: -5443837647192553864, guid: e426b271cba2d234b97760ca6340515e,
     type: 3}
   maxCardScale: 0.55
-  bannerSprite: {fileID: 21300000, guid: 3b60df34a4731f345a301361d210e989, type: 3}
   showOpenButton: 0
   floorSelect: {fileID: 247532114}
   screenMargin: 30

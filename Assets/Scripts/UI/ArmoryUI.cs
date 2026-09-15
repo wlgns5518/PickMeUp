@@ -34,8 +34,7 @@ public class ArmoryUI : FacilityWindow
     [SerializeField] private bool openOnStart;
 
     [Header("Warning Banner")]
-    [Tooltip("경고를 띄울 장식 배너(Assets/Image/UI.png). 비워두면 금색 테두리에 검은 판으로 그린다.")]
-    [SerializeField] private Sprite bannerSprite;
+    [Tooltip("경고 배너가 넘지 않을 가로 길이. 모양은 킷의 장식 메시지 박스다.")]
     [SerializeField] private float bannerWidth = 900f;
 
     private enum Filter { All, MainHand, OffHand }
@@ -43,8 +42,8 @@ public class ArmoryUI : FacilityWindow
     private const float PanelWidth = 1560f;
     private const float PanelHeight = 900f;
     private static readonly Vector2 PanelPadding = new Vector2(36f, 30f);
-    private const float TitleHeight = 62f;
-    private const float CloseSize = 56f;
+    private const float TitleHeight = 60f;
+    private const float TitleGap = 22f;
     private const float Gap = 14f;
     private const float ColumnGap = 28f;
     private const float LabelHeight = 34f;
@@ -70,18 +69,12 @@ public class ArmoryUI : FacilityWindow
     // 말줄임을 건 글자 칸이 최소한 가져야 할 높이(글자 크기 배수). RowText 주석 참조.
     private const float LineHeightRatio = 1.6f;
 
-    private static readonly Color TabSelected = new Color(0.38f, 0.31f, 0.12f, 0.96f);
-    private static readonly Color HeldByOther = new Color(0.12f, 0.12f, 0.15f, 0.95f);
-    private static readonly Color HintText = new Color(0.62f, 0.62f, 0.66f);
-    private static readonly Color WarnText = new Color(0.95f, 0.62f, 0.35f);
-    private static readonly Color ListGround = new Color(1f, 1f, 1f, 0.03f);
-
     private static readonly string[] FilterLabels = { "전체", "주무기", "방패" };
 
     private class HeroRow
     {
         public CharacterSO Character;
-        public Image Frame;
+        public NeonButton Button;
     }
 
     // 가운데 칸의 손 하나.
@@ -101,7 +94,7 @@ public class ArmoryUI : FacilityWindow
     private float itemListWidth;
 
     private readonly List<HeroRow> heroRows = new List<HeroRow>();
-    private readonly List<Image> filterTabBackgrounds = new List<Image>();
+    private readonly List<NeonButton> filterTabs = new List<NeonButton>();
     private readonly List<OwnedEquipment> visibleItems = new List<OwnedEquipment>();
 
     private Image portraitImage;
@@ -149,7 +142,7 @@ public class ArmoryUI : FacilityWindow
     public override void Show()
     {
         EnsureBuilt();
-        SetStatus(string.Empty, HintText);
+        SetStatus(string.Empty, BattleHudPalette.TextMuted);
         RefreshAll();
         SetOpen(true);
     }
@@ -170,7 +163,7 @@ public class ArmoryUI : FacilityWindow
     private void SelectHero(CharacterSO hero)
     {
         selectedHero = hero;
-        SetStatus(string.Empty, HintText);
+        SetStatus(string.Empty, BattleHudPalette.TextMuted);
         RefreshHeroHighlight();
         RebuildItemRows();
         RefreshDetail();
@@ -199,7 +192,7 @@ public class ArmoryUI : FacilityWindow
         if (item.IsHeldBy(selectedHero))
         {
             EquipmentInventory.Unequip(item);
-            SetStatus($"{WithObject(item.DisplayName)} 창고에 넣었습니다.", HintText);
+            SetStatus($"{WithObject(item.DisplayName)} 창고에 넣었습니다.", BattleHudPalette.TextMuted);
             return;
         }
 
@@ -228,7 +221,7 @@ public class ArmoryUI : FacilityWindow
         if (droppedShield != null)
             message += $"\n{WithTopic(droppedShield.DisplayName)} 창고로 돌아갔습니다.";
 
-        SetStatus(message, BattleHudPalette.Mvp);
+        SetStatus(message, BattleHudPalette.Accent);
     }
 
     private void UnequipSlot(EquipSlot slot)
@@ -239,7 +232,7 @@ public class ArmoryUI : FacilityWindow
         if (item == null) return;
 
         EquipmentInventory.Unequip(item);
-        SetStatus($"{WithObject(item.DisplayName)} 창고에 넣었습니다.\n{WithTopic(HeroLabel.Name(selectedHero))} 기본 장비를 다시 듭니다.", HintText);
+        SetStatus($"{WithObject(item.DisplayName)} 창고에 넣었습니다.\n{WithTopic(HeroLabel.Name(selectedHero))} 기본 장비를 다시 듭니다.", BattleHudPalette.TextMuted);
     }
 
     // ---- 만들기 -------------------------------------------------------------
@@ -247,22 +240,20 @@ public class ArmoryUI : FacilityWindow
     protected override void BuildWindow()
     {
         heroRows.Clear();
-        filterTabBackgrounds.Clear();
+        filterTabs.Clear();
         visibleItems.Clear();
 
         BuildCanvas();
         BuildPanel(BuildPopupRoot());
 
-        warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, bannerSprite, null, bannerWidth);
+        warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, null, bannerWidth);
 
         RefreshAll();
     }
 
     private void BuildPanel(RectTransform popup)
     {
-        Image panel = HudFactory.CreateImage(popup, "Panel", BattleHudPalette.PanelBody);
-        panel.raycastTarget = true;
-        panelRect = panel.rectTransform;
+        panelRect = HudFactory.CreatePanel(popup, "Panel").rectTransform;
         panelRect.anchorMin = new Vector2(0.5f, 0.5f);
         panelRect.anchorMax = new Vector2(0.5f, 0.5f);
         panelRect.pivot = new Vector2(0.5f, 0.5f);
@@ -272,13 +263,8 @@ public class ArmoryUI : FacilityWindow
         float contentWidth = PanelWidth - PanelPadding.x * 2f;
         float y = PanelPadding.y;
 
-        TMP_Text title = HudFactory.CreateText(panelRect, "Title", resolvedFont, 42f, BattleHudPalette.PanelText);
-        title.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(title.rectTransform, new Vector2(contentWidth, TitleHeight), new Vector2(PanelPadding.x, -y));
-        title.text = "무기창고";
-
-        BuildCloseButton(y, contentWidth);
-        y += TitleHeight + Gap;
+        BuildTitleBar(panelRect, "무기창고", PanelPadding.x, y, contentWidth, TitleHeight);
+        y += TitleHeight + TitleGap;
 
         float columnHeight = PanelHeight - PanelPadding.y - y;
         float heroX = PanelPadding.x;
@@ -291,26 +277,9 @@ public class ArmoryUI : FacilityWindow
         BuildItemColumn(itemX, y, itemWidth, columnHeight);
     }
 
-    private void BuildCloseButton(float y, float contentWidth)
-    {
-        Image background = HudFactory.CreateImage(panelRect, "Close", BattleHudPalette.PanelBackdrop);
-        background.raycastTarget = true;
-        HudFactory.SetTopLeft(background.rectTransform, new Vector2(CloseSize, CloseSize),
-            new Vector2(PanelPadding.x + contentWidth - CloseSize, -y));
-
-        var button = background.gameObject.AddComponent<Button>();
-        button.targetGraphic = background;
-        button.onClick.AddListener(Hide);
-
-        TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 28f, BattleHudPalette.PanelText);
-        HudFactory.Stretch(label.rectTransform);
-        // 곱셈 기호는 NotoSansKR 아틀라스에 없어 네모로 그려진다. 알파벳 X를 쓴다.
-        label.text = "X";
-    }
-
     private void BuildHeroColumn(float x, float y, float height)
     {
-        TMP_Text label = HudFactory.CreateText(panelRect, "HeroLabel", resolvedFont, 24f, HintText);
+        TMP_Text label = HudFactory.CreateText(panelRect, "HeroLabel", resolvedFont, 24f, BattleHudPalette.TextMuted);
         label.alignment = TextAlignmentOptions.Left;
         HudFactory.SetTopLeft(label.rectTransform, new Vector2(HeroColumnWidth, LabelHeight), new Vector2(x, -y));
         label.text = "보유 영웅";
@@ -323,27 +292,31 @@ public class ArmoryUI : FacilityWindow
     {
         float bottom = y + height;
 
-        Image portraitFrame = HudFactory.CreateImage(panelRect, "Portrait", BattleHudPalette.PortraitFrame);
+        // 초상화 테두리는 정사각 아이콘 판(icon_btn). 잘린 모서리가 초상화에 가리지 않게 안쪽을 넉넉히 비운다.
+        NeonUISkin skin = NeonUISkin.Current;
+        Image portraitFrame = HudFactory.CreateSkinnedImage(panelRect, "Portrait",
+            skin != null ? skin.iconButton : null, BattleHudPalette.PortraitFrame);
         HudFactory.SetTopLeft(portraitFrame.rectTransform, new Vector2(PortraitSize, PortraitSize), new Vector2(x, -y));
 
+        const float portraitInset = 12f;
         portraitImage = HudFactory.CreateImage(portraitFrame.rectTransform, "Image", Color.white);
         portraitImage.preserveAspect = true;
         HudFactory.Stretch(portraitImage.rectTransform);
-        portraitImage.rectTransform.offsetMin = new Vector2(4f, 4f);
-        portraitImage.rectTransform.offsetMax = new Vector2(-4f, -4f);
+        portraitImage.rectTransform.offsetMin = new Vector2(portraitInset, portraitInset);
+        portraitImage.rectTransform.offsetMax = new Vector2(-portraitInset, -portraitInset);
 
-        portraitInitial = HudFactory.CreateText(portraitFrame.rectTransform, "Initial", resolvedFont, 64f, HintText);
+        portraitInitial = HudFactory.CreateText(portraitFrame.rectTransform, "Initial", resolvedFont, 64f, BattleHudPalette.TextMuted);
         HudFactory.Stretch(portraitInitial.rectTransform);
 
         float textX = x + PortraitSize + 20f;
         float textWidth = DetailColumnWidth - PortraitSize - 20f;
 
-        heroNameText = HudFactory.CreateText(panelRect, "HeroName", resolvedFont, 38f, BattleHudPalette.PanelText);
+        heroNameText = HudFactory.CreateText(panelRect, "HeroName", resolvedFont, 38f, BattleHudPalette.TextPrimary);
         heroNameText.alignment = TextAlignmentOptions.Left;
         heroNameText.overflowMode = TextOverflowModes.Ellipsis;
         HudFactory.SetTopLeft(heroNameText.rectTransform, new Vector2(textWidth, 38f * LineHeightRatio), new Vector2(textX, -(y + 4f)));
 
-        heroInfoText = HudFactory.CreateText(panelRect, "HeroInfo", resolvedFont, 23f, HintText);
+        heroInfoText = HudFactory.CreateText(panelRect, "HeroInfo", resolvedFont, 23f, BattleHudPalette.TextMuted);
         heroInfoText.alignment = TextAlignmentOptions.TopLeft;
         heroInfoText.textWrappingMode = TextWrappingModes.Normal;
         HudFactory.SetTopLeft(heroInfoText.rectTransform, new Vector2(textWidth, 80f), new Vector2(textX, -(y + 70f)));
@@ -356,12 +329,12 @@ public class ArmoryUI : FacilityWindow
         offSlot = BuildSlotBox(EquipSlot.OffHand, "보조 손", x, y);
         y += SlotBoxHeight + Gap;
 
-        statusText = HudFactory.CreateText(panelRect, "Status", resolvedFont, 23f, HintText);
+        statusText = HudFactory.CreateText(panelRect, "Status", resolvedFont, 23f, BattleHudPalette.TextMuted);
         statusText.alignment = TextAlignmentOptions.TopLeft;
         statusText.textWrappingMode = TextWrappingModes.Normal;
         HudFactory.SetTopLeft(statusText.rectTransform, new Vector2(DetailColumnWidth, StatusHeight), new Vector2(x, -y));
 
-        TMP_Text hint = HudFactory.CreateText(panelRect, "Hint", resolvedFont, 21f, HintText);
+        TMP_Text hint = HudFactory.CreateText(panelRect, "Hint", resolvedFont, 21f, BattleHudPalette.TextMuted);
         hint.alignment = TextAlignmentOptions.BottomLeft;
         hint.textWrappingMode = TextWrappingModes.Normal;
         HudFactory.SetTopLeft(hint.rectTransform, new Vector2(DetailColumnWidth, HintHeight), new Vector2(x, -(bottom - HintHeight)));
@@ -371,38 +344,32 @@ public class ArmoryUI : FacilityWindow
 
     private SlotView BuildSlotBox(EquipSlot slot, string title, float x, float y)
     {
-        Image frame = HudFactory.CreateImage(panelRect, "Slot_" + slot, BattleHudPalette.PortraitFrame);
+        NeonUISkin skin = NeonUISkin.Current;
+        Image frame = HudFactory.CreateSkinnedImage(panelRect, "Slot_" + slot,
+            skin != null ? skin.buttonGhost : null, BattleHudPalette.PortraitFrame);
         HudFactory.SetTopLeft(frame.rectTransform, new Vector2(DetailColumnWidth, SlotBoxHeight), new Vector2(x, -y));
         RectTransform rect = frame.rectTransform;
 
-        TMP_Text titleText = RowText(rect, "Title", 22f, HintText, TextAlignmentOptions.Left, 14f, 28f, 20f, 20f);
+        TMP_Text titleText = RowText(rect, "Title", 22f, BattleHudPalette.TextMuted, TextAlignmentOptions.Left, 14f, 28f, 20f, 20f);
         titleText.text = title;
 
         var view = new SlotView
         {
             Slot = slot,
-            Name = RowText(rect, "Name", 32f, BattleHudPalette.PanelText, TextAlignmentOptions.Left, 46f, 46f, 20f, UnequipWidth + 36f),
-            Info = RowText(rect, "Info", 22f, HintText, TextAlignmentOptions.Left, 98f, 36f, 20f, 20f),
+            Name = RowText(rect, "Name", 32f, BattleHudPalette.TextPrimary, TextAlignmentOptions.Left, 46f, 46f, 20f, UnequipWidth + 36f),
+            Info = RowText(rect, "Info", 22f, BattleHudPalette.TextMuted, TextAlignmentOptions.Left, 98f, 36f, 20f, 20f),
         };
 
-        Image button = HudFactory.CreateImage(rect, "Unequip", BattleHudPalette.PanelBackdrop);
-        button.raycastTarget = true;
-        RectTransform buttonRect = button.rectTransform;
+        NeonButton unequip = HudFactory.CreateButton(rect, "Unequip", NeonButtonStyle.Secondary,
+            resolvedFont, "해제", 24f, () => UnequipSlot(slot));
+        RectTransform buttonRect = unequip.Rect;
         buttonRect.anchorMin = new Vector2(1f, 1f);
         buttonRect.anchorMax = new Vector2(1f, 1f);
         buttonRect.pivot = new Vector2(1f, 1f);
         buttonRect.sizeDelta = new Vector2(UnequipWidth, UnequipHeight);
         buttonRect.anchoredPosition = new Vector2(-20f, -44f);
 
-        var unequip = button.gameObject.AddComponent<Button>();
-        unequip.targetGraphic = button;
-        unequip.onClick.AddListener(() => UnequipSlot(slot));
-
-        TMP_Text label = HudFactory.CreateText(buttonRect, "Label", resolvedFont, 24f, BattleHudPalette.PanelText);
-        HudFactory.Stretch(label.rectTransform);
-        label.text = "해제";
-
-        view.UnequipButton = button.gameObject;
+        view.UnequipButton = unequip.gameObject;
         return view;
     }
 
@@ -410,7 +377,7 @@ public class ArmoryUI : FacilityWindow
     {
         float bottom = y + height;
 
-        inventoryLabel = HudFactory.CreateText(panelRect, "InventoryLabel", resolvedFont, 24f, HintText);
+        inventoryLabel = HudFactory.CreateText(panelRect, "InventoryLabel", resolvedFont, 24f, BattleHudPalette.TextMuted);
         inventoryLabel.alignment = TextAlignmentOptions.Left;
         HudFactory.SetTopLeft(inventoryLabel.rectTransform, new Vector2(width, LabelHeight), new Vector2(x, -y));
         y += LabelHeight + RowGap;
@@ -420,20 +387,11 @@ public class ArmoryUI : FacilityWindow
         {
             var thisFilter = (Filter)i;
 
-            Image background = HudFactory.CreateImage(panelRect, "Filter_" + thisFilter, BattleHudPalette.PortraitFrame);
-            background.raycastTarget = true;
-            HudFactory.SetTopLeft(background.rectTransform, new Vector2(tabWidth, FilterTabHeight),
-                new Vector2(x + i * (tabWidth + Gap), -y));
+            NeonButton tab = HudFactory.CreateButton(panelRect, "Filter_" + thisFilter, NeonButtonStyle.Ghost,
+                resolvedFont, FilterLabels[i], 24f, () => SelectFilter(thisFilter));
+            HudFactory.SetTopLeft(tab.Rect, new Vector2(tabWidth, FilterTabHeight), new Vector2(x + i * (tabWidth + Gap), -y));
 
-            var button = background.gameObject.AddComponent<Button>();
-            button.targetGraphic = background;
-            button.onClick.AddListener(() => SelectFilter(thisFilter));
-
-            TMP_Text label = HudFactory.CreateText(background.rectTransform, "Label", resolvedFont, 24f, BattleHudPalette.PanelText);
-            HudFactory.Stretch(label.rectTransform);
-            label.text = FilterLabels[i];
-
-            filterTabBackgrounds.Add(background);
+            filterTabs.Add(tab);
         }
         y += FilterTabHeight + Gap;
 
@@ -445,7 +403,7 @@ public class ArmoryUI : FacilityWindow
     // 세로로만 구르는 목록 하나. 영웅이 소환으로 늘고 장비가 제작으로 늘어나므로 칸 수를 미리 정할 수 없다.
     private RectTransform BuildScrollList(string listName, Vector2 size, Vector2 offset)
     {
-        Image viewport = HudFactory.CreateImage(panelRect, listName, ListGround);
+        Image viewport = HudFactory.CreateImage(panelRect, listName, BattleHudPalette.ListGround);
         // 줄 사이 빈 곳에서도 휠과 끌기를 받아야 한다.
         viewport.raycastTarget = true;
         HudFactory.SetTopLeft(viewport.rectTransform, size, offset);
@@ -502,18 +460,15 @@ public class ArmoryUI : FacilityWindow
             CharacterSO hero = members[i];
             if (hero == null) continue;
 
-            Image frame = HudFactory.CreateImage(heroContent, "Hero_" + i, BattleHudPalette.PortraitFrame);
-            frame.raycastTarget = true;
-            HudFactory.SetTopLeft(frame.rectTransform, new Vector2(HeroColumnWidth, HeroRowHeight), new Vector2(0f, -y));
+            // 글자가 여러 줄 따로 깔리므로 버튼 자체의 글자는 두지 않는다.
+            NeonButton row = HudFactory.CreateButton(heroContent, "Hero_" + i, NeonButtonStyle.Ghost,
+                resolvedFont, null, 0f, () => SelectHero(hero));
+            HudFactory.SetTopLeft(row.Rect, new Vector2(HeroColumnWidth, HeroRowHeight), new Vector2(0f, -y));
 
-            var button = frame.gameObject.AddComponent<Button>();
-            button.targetGraphic = frame;
-            button.onClick.AddListener(() => SelectHero(hero));
-
-            RectTransform rect = frame.rectTransform;
+            RectTransform rect = row.Rect;
             bool fallen = PartyRoster.IsFallen(hero);
 
-            TMP_Text nameText = RowText(rect, "Name", 26f, fallen ? HintText : BattleHudPalette.PanelText,
+            TMP_Text nameText = RowText(rect, "Name", 26f, fallen ? BattleHudPalette.TextMuted : BattleHudPalette.TextPrimary,
                 TextAlignmentOptions.Left, 8f, 34f, RowInset, 170f);
             nameText.text = HeroLabel.Name(hero);
 
@@ -526,11 +481,11 @@ public class ArmoryUI : FacilityWindow
                 weaponText.text = crafted.DisplayName;
             }
 
-            TMP_Text infoText = RowText(rect, "Info", 20f, fallen ? WarnText : HintText,
+            TMP_Text infoText = RowText(rect, "Info", 20f, fallen ? BattleHudPalette.Warn : BattleHudPalette.TextMuted,
                 TextAlignmentOptions.Left, 42f, 26f, RowInset, RowInset);
             infoText.text = $"Lv.{hero.Level} · {hero.starCount}성" + (fallen ? " · 쓰러짐" : string.Empty);
 
-            heroRows.Add(new HeroRow { Character = hero, Frame = frame });
+            heroRows.Add(new HeroRow { Character = hero, Button = row });
             y += HeroRowHeight + RowGap;
         }
 
@@ -540,14 +495,15 @@ public class ArmoryUI : FacilityWindow
 
     private void RefreshHeroHighlight()
     {
+        // 고른 줄은 네온 테두리로. 밝은 판(Primary)을 깔면 줄 안의 밝은 글자와 등급색이 묻힌다.
         for (int i = 0; i < heroRows.Count; i++)
-            heroRows[i].Frame.color = heroRows[i].Character == selectedHero ? TabSelected : BattleHudPalette.PortraitFrame;
+            heroRows[i].Button.SetStyle(heroRows[i].Character == selectedHero ? NeonButtonStyle.Secondary : NeonButtonStyle.Ghost);
     }
 
     private void RefreshFilterTabs()
     {
-        for (int i = 0; i < filterTabBackgrounds.Count; i++)
-            filterTabBackgrounds[i].color = (Filter)i == filter ? TabSelected : BattleHudPalette.PortraitFrame;
+        for (int i = 0; i < filterTabs.Count; i++)
+            filterTabs[i].SetStyle((Filter)i == filter ? NeonButtonStyle.Primary : NeonButtonStyle.Ghost);
     }
 
     private void RebuildItemRows()
@@ -592,18 +548,16 @@ public class ArmoryUI : FacilityWindow
         bool mine = item.IsHeldBy(selectedHero);
         bool other = item.IsEquipped && !mine;
 
-        Image frame = HudFactory.CreateImage(itemContent, "Item_" + index,
-            mine ? TabSelected : other ? HeldByOther : BattleHudPalette.PortraitFrame);
-        frame.raycastTarget = true;
-        HudFactory.SetTopLeft(frame.rectTransform, new Vector2(width, ItemRowHeight), new Vector2(0f, -y));
+        // 고른 영웅이 든 것은 네온 테두리, 다른 영웅이 든 것은 흐린 판(누르면 가져온다), 창고에 있는 것은 옅은 판.
+        NeonButton row = HudFactory.CreateButton(itemContent, "Item_" + index,
+            mine ? NeonButtonStyle.Secondary : other ? NeonButtonStyle.Muted : NeonButtonStyle.Ghost,
+            resolvedFont, null, 0f, () => ClickItem(item));
+        HudFactory.SetTopLeft(row.Rect, new Vector2(width, ItemRowHeight), new Vector2(0f, -y));
 
-        var button = frame.gameObject.AddComponent<Button>();
-        button.targetGraphic = frame;
-        button.onClick.AddListener(() => ClickItem(item));
+        RectTransform rect = row.Rect;
 
-        RectTransform rect = frame.rectTransform;
-
-        Image badge = HudFactory.CreateImage(rect, "Grade", BattleHudPalette.GaugeBackground);
+        NeonUISkin skin = NeonUISkin.Current;
+        Image badge = HudFactory.CreateSkinnedImage(rect, "Grade", skin != null ? skin.iconButton : null, BattleHudPalette.GaugeBackground);
         HudFactory.SetTopLeft(badge.rectTransform, new Vector2(GradeBadgeSize, GradeBadgeSize),
             new Vector2(RowInset, -(ItemRowHeight - GradeBadgeSize) * 0.5f));
 
@@ -613,15 +567,15 @@ public class ArmoryUI : FacilityWindow
 
         float textLeft = RowInset + GradeBadgeSize + 14f;
 
-        TMP_Text nameText = RowText(rect, "Name", 26f, other ? HintText : BattleHudPalette.PanelText,
+        TMP_Text nameText = RowText(rect, "Name", 26f, other ? BattleHudPalette.TextMuted : BattleHudPalette.TextPrimary,
             TextAlignmentOptions.Left, 6f, 34f, textLeft, ItemStatusWidth + RowInset);
         nameText.text = item.DisplayName;
 
-        TMP_Text typeText = RowText(rect, "Type", 20f, HintText,
+        TMP_Text typeText = RowText(rect, "Type", 20f, BattleHudPalette.TextMuted,
             TextAlignmentOptions.Left, 38f, 26f, textLeft, ItemStatusWidth + RowInset);
         typeText.text = $"{CharacterRules.Korean(item.Weapon.type)} · {EffectText(item)}";
 
-        TMP_Text statusLabel = RowText(rect, "Status", 21f, mine ? BattleHudPalette.Mvp : HintText,
+        TMP_Text statusLabel = RowText(rect, "Status", 21f, mine ? BattleHudPalette.Accent : BattleHudPalette.TextMuted,
             TextAlignmentOptions.Right, 0f, ItemRowHeight, width - ItemStatusWidth - RowInset, RowInset);
         statusLabel.text = mine ? "장착 중" : other ? OwnerLabel(item) : "보관 중";
     }
@@ -659,7 +613,7 @@ public class ArmoryUI : FacilityWindow
     private static void ApplyEmpty(SlotView view)
     {
         view.Name.text = "-";
-        view.Name.color = HintText;
+        view.Name.color = BattleHudPalette.TextMuted;
         view.Info.text = string.Empty;
         view.UnequipButton.SetActive(false);
     }
@@ -691,7 +645,7 @@ public class ArmoryUI : FacilityWindow
         {
             view.UnequipButton.SetActive(false);
             view.Name.text = "비어 있음";
-            view.Name.color = HintText;
+            view.Name.color = BattleHudPalette.TextMuted;
             view.Info.text = "두손 무기를 들고 있어 방패를 들 수 없습니다";
             return;
         }
@@ -705,7 +659,7 @@ public class ArmoryUI : FacilityWindow
     {
         view.UnequipButton.SetActive(false);
         view.Name.text = "기본 장비";
-        view.Name.color = BattleHudPalette.PanelText;
+        view.Name.color = BattleHudPalette.TextPrimary;
         view.Info.text = string.Empty;
     }
 
@@ -803,7 +757,7 @@ public class ArmoryUI : FacilityWindow
     {
         const float height = 120f;
 
-        TMP_Text text = HudFactory.CreateText(content, "Empty", resolvedFont, 22f, HintText);
+        TMP_Text text = HudFactory.CreateText(content, "Empty", resolvedFont, 22f, BattleHudPalette.TextMuted);
         text.textWrappingMode = TextWrappingModes.Normal;
         RectTransform rect = text.rectTransform;
         rect.anchorMin = new Vector2(0f, 1f);
