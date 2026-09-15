@@ -154,6 +154,15 @@ public static class CharacterBodyFactory
         var animator = body.GetComponent<Animator>();
         animator.avatar = avatar;
 
+        // 무기 소켓을 지금 박아 둔다. Meshy 리그는 손가락이 없어서 소켓을 몸을 기준 자세에 잠깐 세워 계산한다(HandSocket).
+        // 전투에 나간 복사본마다 그걸 하면 애니메이션이 도는 몸을 한 번씩 흔드는 셈이고, 여기서는 몸이 아직
+        // 바인드 포즈 그대로다. 복사본은 소켓을 그대로 물려받는다(WeaponEquipper가 손뼈 아래에서 찾는다).
+        var equipper = body.GetComponent<WeaponEquipper>();
+        float palmGripRatio = equipper != null ? equipper.PalmGripRatio : HandSocket.DefaultPalmGripRatio;
+        if (HandSocket.Resolve(animator, EquipHand.Right, palmGripRatio) == null ||
+            HandSocket.Resolve(animator, EquipHand.Left, palmGripRatio) == null)
+            Debug.LogWarning($"[CharacterBodyFactory] {character.characterName}: 손 소켓을 놓지 못했다. 전투에 나갈 때 다시 시도한다.");
+
         // 씬이 갈려도 남는다(소환은 마을, 전투는 던전). 부모가 DontDestroyOnLoad라 따라간다.
         Prototypes[id] = body;
         Imports[id] = import;

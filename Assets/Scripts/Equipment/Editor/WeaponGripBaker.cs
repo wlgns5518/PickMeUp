@@ -56,7 +56,7 @@ public static class WeaponGripBaker
 
         Vector3 position;
         Quaternion rotation;
-        MeasureGrip(definition.model, definition.type, out position, out rotation);
+        MeasureGrip(definition.model, definition.type, HandOf(definition), out position, out rotation);
 
         EnsureFolder(OutputFolder);
 
@@ -459,7 +459,7 @@ public static class WeaponGripBaker
 
         Vector3 position;
         Quaternion rotation;
-        if (!MeasureGrip(source, definition.type, out position, out rotation)) return false;
+        if (!MeasureGrip(source, definition.type, HandOf(definition), out position, out rotation)) return false;
 
         model.localPosition = position;
         model.localRotation = rotation;
@@ -504,7 +504,7 @@ public static class WeaponGripBaker
     // 여기서 할 일은 모델을 그 방향으로 세우고, 자루가 루트 원점에 오도록 밀어 넣는 것.
     // ------------------------------------------------------------------
 
-    public static bool MeasureGrip(GameObject model, WeaponType type, out Vector3 position, out Quaternion rotation)
+    public static bool MeasureGrip(GameObject model, WeaponType type, EquipHand hand, out Vector3 position, out Quaternion rotation)
     {
         position = Vector3.zero;
         rotation = Quaternion.identity;
@@ -517,11 +517,7 @@ public static class WeaponGripBaker
 
         if (type == WeaponType.Shield)
         {
-            // 방패는 자루가 없다. 가장 얇은 축이 방패 면의 법선이니 그쪽을 손등 바깥(소켓 +Z)으로 돌린다.
-            Vector3 thin = ThinnestAxis(bounds.size);
-            Quaternion flat = Quaternion.FromToRotation(thin, Vector3.forward);
-            rotation = flat;
-            position = -(flat * bounds.center);
+            MeasureShield(mesh, hand, out position, out rotation);
             return true;
         }
 
@@ -539,6 +535,75 @@ public static class WeaponGripBaker
 
         position = -(align * gripPoint);
         return true;
+    }
+
+    // 그립(손바닥 가운데)에서 방패 판까지의 거리(m). 손등과 팔뚝 두께만큼 띄워야 판이 손을 뚫지 않는다.
+    private const float ShieldBoardStandOff = 0.045f;
+
+    // 방패를 팔에 거는 자세.
+    //
+    // 방패는 팔뚝에 차는 물건으로 본다 — 이 게임의 막기·공격 동작이 팔뚝을 방패 뒤에 대고 든다.
+    // 그래서 판은 손바닥과 나란하고, 앞면은 손등 바깥을 향하며, 뒷면의 끈·손잡이는 손 쪽으로 온다.
+    // 방패의 위아래(카이트 방패의 뾰족한 끝)는 모델의 세로축을 소켓 +Y(엄지 쪽)에 맞춰,
+    // 팔을 가로로 들면 끝이 아래로 온다.
+    //
+    // 손등이 어느 쪽인지는 손마다 다르다. 좌우 소켓이 서로 거울이라 소켓 +Z가 왼손에서는 손바닥 쪽,
+    // 오른손에서는 손등 쪽이다. 예전에는 앞면을 손과 무관하게 +Z로 돌려서 왼손에 드는 방패가 전부
+    // 앞뒤가 뒤집혀 있었다 — 바깥 면이 몸 쪽을 보고, 팔이 방패 앞으로 나와 있었다.
+    //
+    // 메시에서 읽는 것:
+    //   · 가장 얇은 축 = 판의 법선. 이 팩은 그 축의 + 쪽이 앞면(보스·장식)이다. 앞뒤는 메시만으로 가를 수 없어
+    //     (보스가 앞으로 튀어나온 방패도, 끈이 뒤로 튀어나온 방패도 있다) 이 약속에 기댄다.
+    //     다른 팩에서 뒤집혀 나오면 프리팹의 Model을 세로축으로 반 바퀴 돌리면 된다.
+    //   · 판의 깊이 = 두께 축을 따라 정점이 가장 몰린 곳.
+    //   · 손이 잡는 자리 = 판 뒤로 튀어나온 정점(끈·손잡이)의 가운데. 뒤에 아무것도 없으면 판 가운데.
+    private static void MeasureShield(Mesh mesh, EquipHand hand, out Vector3 position, out Quaternion rotation)
+    {
+        Bounds bounds = mesh.bounds;
+        Vector3 thin = ThinnestAxis(bounds.size);
+        Vector3 modelUp = thin == Vector3.up ? Vector3.forward : Vector3.up;
+
+        Vector3 backOfHand = hand == EquipHand.Left ? Vector3.back : Vector3.forward;
+        rotation = Quaternion.LookRotation(backOfHand, Vector3.up) * Quaternion.Inverse(Quaternion.LookRotation(thin, modelUp));
+
+        Vector3[] vertices = mesh.vertices;
+        float board = DensestDepth(vertices, thin, bounds);
+        float window = Mathf.Max(0.005f, bounds.size.magnitude * 0.01f);
+
+        Vector3 handleSum = Vector3.zero;
+        int handleCount = 0;
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            if (Vector3.Dot(vertices[i], thin) > board - window) continue;
+            handleSum += vertices[i];
+            handleCount++;
+        }
+
+        Vector3 anchor = handleCount > 0 ? handleSum / handleCount : bounds.center;
+        // 판 위의 점으로 옮긴다. 깊이는 판에, 가로세로는 손잡이에 맞춘다.
+        anchor += thin * (board - Vector3.Dot(anchor, thin));
+
+        position = backOfHand * ShieldBoardStandOff - rotation * anchor;
+    }
+
+    // 축을 따라 정점이 가장 몰린 깊이. 방패라면 판이 있는 자리다(보스·끈은 정점이 적게 흩어져 있다).
+    private static float DensestDepth(Vector3[] vertices, Vector3 axis, Bounds bounds)
+    {
+        const int bins = 40;
+        float min = Vector3.Dot(bounds.min, axis);
+        float size = Mathf.Max(0.0001f, Vector3.Dot(bounds.size, axis));
+        var counts = new int[bins];
+
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            int bin = Mathf.Clamp((int)((Vector3.Dot(vertices[i], axis) - min) / size * bins), 0, bins - 1);
+            counts[bin]++;
+        }
+
+        int best = 0;
+        for (int i = 1; i < bins; i++)
+            if (counts[i] > counts[best]) best = i;
+        return min + (best + 0.5f) * size / bins;
     }
 
     private static Mesh FindMesh(GameObject model)

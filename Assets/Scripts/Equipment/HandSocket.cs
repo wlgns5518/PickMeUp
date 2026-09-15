@@ -35,19 +35,22 @@ public static class HandSocket
     // 손가락 뼈가 없는 리그를 위한 값들.
     //
     // AI가 구워 온 리그에는 손가락이 없는 경우가 흔하다(Meshy의 자동 리깅이 그렇다).
-    // 손가락이 없으면 손 모양을 읽을 수 없으니, 손뼈 자체의 국소 축에서 같은 자리를 잡는다.
-    // 믹사모 규약을 따르는 리그는 손뼈 국소 +Y가 손가락 방향이고 ±X가 손바닥을 가로지른다 —
-    // Y Bot(믹사모)에서 재면 팔 방향이 손뼈 국소 (0, 1, 0), 날 축이 (∓0.984, 0.177, 0)이고,
-    // Meshy 리그도 팔 방향이 (0.31, 0.95, -0.08)로 같은 +Y 규약을 쓴다.
+    // 손가락이 없으면 손 모양을 읽을 수 없다. 예전에는 손뼈의 국소 축이 믹사모와 같다고 보고
+    // (+Y가 손가락, ±X가 손바닥 가로) 거기서 소켓을 짚었는데, Meshy 리그의 손뼈는 손가락 축을 중심으로
+    // 약 64° 비틀려 있어서 모든 무기가 그만큼 돌아간 채 들렸다 — 방패는 손바닥 위에 쟁반처럼 누웠다.
+    // 뼈의 국소 축은 리그를 만든 도구마다 제멋대로라 믿을 수 없다.
     //
-    // 아래 두 상수로 계산하면 Y Bot에 손으로 맞춰 둔 소켓 회전(-0.64143, 0.76718)이 그대로 나온다.
-    // 즉 이 대체 경로는 손가락이 있는 리그에서도 거의 같은 답을 낸다.
-    private static readonly Vector3 FingerAxis = Vector3.up;
-    private const float BladeTilt = 0.18f;
+    // 대신 휴머노이드 아바타가 보장하는 것을 쓴다. 근육 값이 같으면 어느 리그든 손이 캐릭터 기준으로
+    // 같은 방향을 향한다 — 라엘·일라리스·Y Bot을 근육 0 자세에 세우고 손 메시의 손바닥 법선을 재면
+    // 10° 안에서 겹친다. 그래서 손가락이 있는 Y Bot을 그 자세에 세워 소켓을 캐릭터 기준으로 적어 두고,
+    // 새 리그도 같은 자세에 잠깐 세워 그 소켓을 자기 손뼈 기준으로 옮긴다(TryComputeFromHumanPose).
+    private static readonly Quaternion NeutralLeftSocket = new Quaternion(0.29571f, 0.70246f, -0.31816f, 0.56381f);
+    private static readonly Quaternion NeutralRightSocket = new Quaternion(0.31816f, -0.56381f, -0.29571f, -0.70246f);
 
-    // 아래팔 길이를 1로 봤을 때 손목에서 중지 밑동까지의 길이. Y Bot에서 잰 값(0.1278 / 0.2761).
-    // 손가락이 없으면 손 길이를 잴 수 없으므로 팔 길이에서 비례로 짚는다.
-    private const float HandToForearmRatio = 0.463f;
+    // 같은 자세에서 손목(Hand 본 원점)에서 소켓까지, 캐릭터 기준·아래팔 길이를 1로 본 값.
+    // DefaultPalmGripRatio로 놓인 소켓에서 잰 것이라 비율이 다르면 그만큼 줄이거나 늘린다.
+    private static readonly Vector3 NeutralLeftOffset = new Vector3(0.08979f, 0.01503f, 0.26222f);
+    private static readonly Vector3 NeutralRightOffset = new Vector3(-0.08979f, 0.01503f, 0.26222f);
 
     public static string NameFor(EquipHand hand)
     {
@@ -116,35 +119,70 @@ public static class HandSocket
         Transform little = animator.GetBoneTransform(right ? HumanBodyBones.RightLittleProximal : HumanBodyBones.LeftLittleProximal);
         Transform middle = animator.GetBoneTransform(right ? HumanBodyBones.RightMiddleProximal : HumanBodyBones.LeftMiddleProximal);
 
-        // 손가락이 하나라도 비면 손 모양을 읽을 수 없다. 그때는 손뼈 축에서 같은 자리를 짚는다.
+        // 손가락이 하나라도 비면 손 모양을 읽을 수 없다. 그때는 휴머노이드 기준 자세에서 짚는다.
         if (index == null || little == null || middle == null)
-        {
-            Transform forearm = animator.GetBoneTransform(right ? HumanBodyBones.RightLowerArm : HumanBodyBones.LeftLowerArm);
-            return TryComputeFromBoneAxes(bone, forearm, right, palmGripRatio, out localPosition, out localRotation);
-        }
+            return TryComputeFromHumanPose(animator, bone, hand, palmGripRatio, out localPosition, out localRotation);
 
         localPosition = PalmOffset(bone, middle, palmGripRatio);
         localRotation = GripRotation(bone, index, little, middle);
         return true;
     }
 
-    // 손가락 없는 리그. 손뼈의 국소 축이 곧 손 모양이라고 보고 같은 식을 태운다.
-    // 아래팔이 없으면 길이를 잴 데가 없어 손목에 그대로 붙인다 — 회전만이라도 맞춰 두면
-    // 무기가 손목에서 자라난 것처럼 보일지언정 엉뚱한 방향으로 뻗지는 않는다.
-    private static bool TryComputeFromBoneAxes(Transform hand, Transform forearm, bool right, float palmGripRatio,
-                                               out Vector3 localPosition, out Quaternion localRotation)
+    // 손가락 없는 리그. 몸을 근육 0 자세에 잠깐 세우고, 그 자세에서 Y Bot으로 잰 소켓(캐릭터 기준)을
+    // 이 리그의 손뼈 기준으로 옮긴다. 자세는 계산이 끝나면 뼈 하나하나 그대로 되돌린다 —
+    // 막 세운 몸은 지금 자세가 곧 바인드 포즈라 흐트러진 채로 남으면 안 된다.
+    private static bool TryComputeFromHumanPose(Animator animator, Transform hand, EquipHand side, float palmGripRatio,
+                                                out Vector3 localPosition, out Quaternion localRotation)
     {
-        Vector3 blade = new Vector3(right ? -1f : 1f, BladeTilt, 0f).normalized;
-        Vector3 palm = Vector3.Cross(blade, FingerAxis);
+        localPosition = Vector3.zero;
+        localRotation = Quaternion.identity;
 
-        localRotation = Quaternion.LookRotation(palm.normalized, blade);
+        Avatar avatar = animator.avatar;
+        if (avatar == null || !avatar.isValid || !avatar.isHuman) return false;
 
-        // 손뼈 국소 단위로 재야 한다. 리그에 배율이 섞여 있으면 월드 거리는 그대로 쓸 수 없다.
-        float handLength = forearm != null
-            ? hand.InverseTransformPoint(forearm.position).magnitude * HandToForearmRatio
-            : 0f;
-        localPosition = FingerAxis * (handLength * Mathf.Clamp01(palmGripRatio));
-        return true;
+        bool right = side == EquipHand.Right;
+        Transform forearm = animator.GetBoneTransform(right ? HumanBodyBones.RightLowerArm : HumanBodyBones.LeftLowerArm);
+        if (forearm == null) return false;
+
+        Transform root = animator.transform;
+        Transform[] bones = root.GetComponentsInChildren<Transform>(true);
+        var positions = new Vector3[bones.Length];
+        var rotations = new Quaternion[bones.Length];
+        for (int i = 0; i < bones.Length; i++)
+        {
+            positions[i] = bones[i].localPosition;
+            rotations[i] = bones[i].localRotation;
+        }
+
+        try
+        {
+            using (var handler = new HumanPoseHandler(avatar, root))
+            {
+                var pose = new HumanPose();
+                handler.GetHumanPose(ref pose);
+                for (int i = 0; i < pose.muscles.Length; i++) pose.muscles[i] = 0f;
+                pose.bodyRotation = Quaternion.identity;
+                handler.SetHumanPose(ref pose);
+            }
+
+            float ratio = Mathf.Clamp01(palmGripRatio) / DefaultPalmGripRatio;
+            float forearmLength = Vector3.Distance(forearm.position, hand.position);
+            Vector3 offset = right ? NeutralRightOffset : NeutralLeftOffset;
+            Vector3 socketPosition = hand.position + root.rotation * offset * (forearmLength * ratio);
+
+            // 손뼈 국소 값으로 적는다. 리그에 배율이 섞여 있어도 InverseTransformPoint가 걸러 준다.
+            localPosition = hand.InverseTransformPoint(socketPosition);
+            localRotation = Quaternion.Inverse(hand.rotation) * root.rotation * (right ? NeutralRightSocket : NeutralLeftSocket);
+            return true;
+        }
+        finally
+        {
+            for (int i = 0; i < bones.Length; i++)
+            {
+                bones[i].localPosition = positions[i];
+                bones[i].localRotation = rotations[i];
+            }
+        }
     }
 
     // 휴머노이드 리그에서 Hand 본의 원점은 손바닥이 아니라 손목 관절이다(이 리그는 손목~중지 밑동이 12.8cm).

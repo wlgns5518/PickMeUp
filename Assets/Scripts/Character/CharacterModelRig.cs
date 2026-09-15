@@ -17,8 +17,8 @@ using UnityEngine;
 // 골반 바로 위다 — 이름을 곧이곧대로 믿으면 척추가 뒤집힌 채로 매핑된다. 계층을 걸어서
 // 골반에서 목으로 올라가는 순서대로 Spine / Chest / UpperChest를 붙인다.
 //
-// 손가락은 매핑하지 않는다. Meshy 리그에 아예 없고, 있는 리그라도 손 소켓은 손뼈 축에서
-// 같은 답을 내도록 되어 있다(HandSocket 참조).
+// 손가락은 매핑하지 않는다. Meshy 리그에 아예 없고, 손 소켓은 손가락 없이 휴머노이드 기준 자세에서
+// 계산한다(HandSocket 참조).
 public static class CharacterModelRig
 {
     // Unity가 사람이라고 인정하는 데 반드시 필요한 뼈.
