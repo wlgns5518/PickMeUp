@@ -132,7 +132,6 @@ public class MeshyCharacterGenerator : MonoBehaviour
         if (saveAsAsset) SaveCharacterAsAsset(so);
 #endif
 
-        Debug.Log($"[Meshy] 완료: {so.characterName} ({so.starCount}★)");
         onUpdate?.Invoke(so);
     }
 
@@ -165,7 +164,6 @@ public class MeshyCharacterGenerator : MonoBehaviour
             ExtractHangulNames(ExtractGeminiText(response), count, result);
 
         FillFallback(result, count);
-        Debug.Log($"[Gemini] 배치 이름 {result.Count}개 수신");
         onComplete?.Invoke(result);
     }
 
@@ -280,8 +278,6 @@ public class MeshyCharacterGenerator : MonoBehaviour
     private IEnumerator PollTaskUntilDone(string statusUrl, string label, Action<string> onComplete)
     {
         float elapsed = 0f;
-        string lastStatus = null;
-        float lastLogAt = -10f;
 
         while (elapsed < timeoutSeconds)
         {
@@ -296,7 +292,6 @@ public class MeshyCharacterGenerator : MonoBehaviour
                 if (SucceededStatus.Contains(status ?? "") ||
                     (status != null && !FailedStatus.Contains(status) && !string.IsNullOrEmpty(url) && url != statusUrl))
                 {
-                    Debug.Log($"[Meshy] {label} 완료 ({elapsed:0}s)");
                     onComplete?.Invoke(url);
                     yield break;
                 }
@@ -305,18 +300,6 @@ public class MeshyCharacterGenerator : MonoBehaviour
                     Debug.LogError($"[Meshy] {label} 종료({status}): {body}");
                     onComplete?.Invoke(null);
                     yield break;
-                }
-
-                if (status != lastStatus)
-                {
-                    Debug.Log($"[Meshy] {label} 상태: {lastStatus ?? "(시작)"} → {status} ({elapsed:0}s)");
-                    lastStatus = status;
-                    lastLogAt = elapsed;
-                }
-                else if (elapsed - lastLogAt >= 30f)
-                {
-                    Debug.Log($"[Meshy] {label} {status} 진행 중... ({elapsed:0}s)");
-                    lastLogAt = elapsed;
                 }
             }
 
@@ -338,14 +321,11 @@ public class MeshyCharacterGenerator : MonoBehaviour
         yield return DownloadTexture(imageUrl, t => tex = t);
         if (tex == null) { Debug.LogWarning("[Meshy] 이미지 다운로드 null"); yield break; }
 
-        Debug.Log($"[Meshy] 이미지 {tex.width}x{tex.height}");
-
         if (transparentBackground)
             tex = MakeWhiteTransparent(tex, whiteThreshold, softEdge);
 
         so.portrait = SavePortraitAndLoadSprite(tex, so.characterName, out string assetPath);
         so.portraitAssetPath = assetPath;
-        Debug.Log($"[Meshy] 초상화 저장: {assetPath}");
     }
 
     private static IEnumerator DownloadTexture(string url, Action<Texture2D> onComplete)
@@ -450,7 +430,6 @@ public class MeshyCharacterGenerator : MonoBehaviour
             AssetDatabase.CreateAsset(so, path);
             RegisterInRoster(so);
             AssetDatabase.SaveAssets();
-            Debug.Log($"[Meshy] CharacterSO 저장: {path}");
         }
         catch (Exception e) { Debug.LogError($"[Meshy] CharacterSO 저장 실패: {e.Message}"); }
     }
@@ -468,7 +447,7 @@ public class MeshyCharacterGenerator : MonoBehaviour
             return;
         }
 
-        if (target.EditorRegister(so)) Debug.Log($"[Meshy] 보유 명단 등록: {so.characterName} → {target.name}");
+        target.EditorRegister(so);
     }
 
     // 로스터가 하나뿐일 때만 자동으로 고른다. 여럿이면 어느 쪽에 얹어야 할지 알 수 없으므로

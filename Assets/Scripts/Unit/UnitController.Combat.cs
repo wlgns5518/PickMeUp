@@ -279,7 +279,6 @@ public partial class UnitController
     private void OnSwingMissed()
     {
         nextSwingReadyTime += stats.attackRecoveryTime * 0.6f;
-        if (debugLogs) Debug.Log($"[UnitController] {name} 헛스윙 (사거리 {SwingReach:0.00}m / 각도 {stats.attackArcAngle:0}도)");
     }
 
     // ---------------------------------------------------------------- 회전 주도권
@@ -945,7 +944,6 @@ public partial class UnitController
             lastBlockTime = -999f;
         }
 
-        if (debugLogs) Debug.Log($"[UnitController] {name} {(stats.counterAfterPerfectGuard ? "패링" : "퍼펙트 가드")} — {(attacker != null ? attacker.name : "?")}의 공격을 흘려냄");
         return true;
     }
 

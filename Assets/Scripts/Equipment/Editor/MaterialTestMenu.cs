@@ -17,7 +17,5 @@ public static class MaterialTestMenu
             for (var grade = EquipmentGrade.E; grade <= EquipmentGrade.S; grade++)
                 MaterialInventory.Add(new CraftMaterial(kind, grade), PerStack);
         }
-
-        Debug.Log($"[MaterialTestMenu] 재료를 넣었습니다. 지금 보유: {MaterialInventory.TotalCount}개\n경로: {SaveSystem.SavePath}");
     }
 }

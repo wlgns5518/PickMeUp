@@ -13,11 +13,8 @@ public static class MeshyBodyServiceMenu
     [MenuItem(MenuPath, priority = 10)]
     private static void Toggle()
     {
+        // 켜졌는지는 메뉴의 체크 표시가 보여 준다(ToggleValidate).
         MeshyBodyService.Enabled = !MeshyBodyService.Enabled;
-        Debug.Log($"[MeshyBodyService] 소환 시 몸 굽기: {(MeshyBodyService.Enabled ? "켬" : "끔")}" +
-                  (MeshyBodyService.Enabled
-                      ? $" — 소환 한 번에 약 {MeshyBodyRecipe.CreditsPerCharacter} 크레딧이 나간다."
-                      : " — 소환한 캐릭터는 공용 몸으로 싸운다."));
     }
 
     [MenuItem(MenuPath, true)]

@@ -945,12 +945,7 @@ public class VillageBlockout : MonoBehaviour
             }
 
             if (UnityEditor.PrefabUtility.SaveAsPrefabAsset(root, path) == null)
-            {
                 Debug.LogError($"[VillageBlockout] 프리팹 저장에 실패했습니다: {path}", this);
-                return;
-            }
-
-            Debug.Log($"[VillageBlockout] 구웠습니다: {path}", this);
         }
         finally
         {

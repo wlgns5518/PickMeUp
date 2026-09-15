@@ -222,8 +222,6 @@ public partial class UnitController
 
         BeginCast();
         TriggerCastAnimation();
-
-        if (debugLogs) Debug.Log($"[UnitController] {name} 영창 시작 — {SpellCatalog.Korean(stats.affinity)} {spell.Name} ({spell.CastTime:0.0}초, 마력 {spell.ManaCost})");
     }
 
     // 이번 영창이 실제로 걸리는 시간. 성장(castSpeedMultiplier)이 여기에 곱해진다.
@@ -261,7 +259,6 @@ public partial class UnitController
         }
 
         int damage = ScaleDamage(Mathf.RoundToInt(stats.attackDamage * spell.DamageMultiplier));
-        int hitCount = 0;
 
         if (spell.Radius <= 0.01f)
         {
@@ -283,19 +280,14 @@ public partial class UnitController
                 {
                     CurrentTarget.ApplySlow(spell.SlowDuration, spell.SlowMultiplier);
                 }
-
-                hitCount = 1;
             }
         }
         else
         {
             UnitRegistry.FindEnemiesAround(this, aimPoint, spell.Radius, SpellVictims);
-            hitCount = SpellVictims.Count;
             for (int i = 0; i < SpellVictims.Count; i++) ApplySpellTo(SpellVictims[i], spell, damage);
             SpellVictims.Clear();
         }
-
-        if (debugLogs) Debug.Log($"[UnitController] {name} {spell.Name} 발동 — {hitCount}명 적중 (피해 {damage})");
     }
 
     private void ApplySpellTo(TargetRef victim, in SpellSpec spell, int damage)
@@ -318,26 +310,9 @@ public partial class UnitController
     {
         if (!hasCastingSpell && !IsCasting) return;
 
-        string lost = hasCastingSpell ? castingSpell.Name : "";
         hasCastingSpell = false;
         EndCast();
         spellRetryTime = Time.time + spellRetryDelay;
-
-        if (debugLogs) Debug.Log($"[UnitController] {name} 영창 중단 — {lost}{SubjectParticle(lost)} 흩어졌다 (마력 소모 없음)");
-    }
-
-    // 앞 글자의 받침 유무로 은/는·이/가를 고른다. "유성 낙하이(가)" 같은 표기를 없애기 위한 것.
-    // 로그에만 쓰이지만, 읽는 사람이 매번 걸려 넘어지는 문장은 고쳐 두는 편이 낫다.
-    private static string SubjectParticle(string word)
-    {
-        if (string.IsNullOrEmpty(word)) return "가";
-
-        char last = word[word.Length - 1];
-        // 한글 음절 영역 밖(영문·숫자)이면 판단할 근거가 없다. 가장 무난한 쪽으로 둔다.
-        if (last < 0xAC00 || last > 0xD7A3) return "가";
-
-        // 한글 음절은 (초성 x 21 + 중성) x 28 + 종성 으로 배열돼 있다. 나머지가 0이면 받침이 없다.
-        return (last - 0xAC00) % 28 == 0 ? "가" : "이";
     }
 
     // 죽은 유닛을 재사용하는 경로(Configure)를 위한 초기화.

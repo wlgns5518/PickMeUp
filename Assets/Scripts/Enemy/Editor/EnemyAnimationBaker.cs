@@ -273,9 +273,6 @@ public static class EnemyAnimationBaker
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
 
-        Debug.Log($"[EnemyAnimationBaker] {prefabName}: 뼈 {boneCount}개, 클립 {ranges.Count}개, " +
-                  $"텍스처 {texture.width}x{texture.height} → {path}");
-
         return library;
     }
 }

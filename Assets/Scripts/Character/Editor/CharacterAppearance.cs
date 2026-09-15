@@ -72,7 +72,6 @@ public static class CharacterAppearance
                 return FromJobOnly(character);
             }
 
-            Debug.Log($"[CharacterAppearance] {character.characterName}: {described}");
             return described.Trim();
         }
     }

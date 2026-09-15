@@ -101,11 +101,6 @@ public static class CharacterModelRig
             description = Describe(root.transform, bones, out problem);
             if (problem != null) return false;
 
-            // 아바타 세우기는 네이티브로 내려가고, 값이 이상하면 예외를 내는 대신 에디터째 멈추는 일이 있다.
-            // 무엇을 넘겼는지 미리 남겨 두면 멈췄을 때 로그만 보고 원인을 좁힐 수 있다.
-            Debug.Log($"[CharacterModelRig] {root.name}: 뼈 {description.human.Length}개 매핑, " +
-                      $"스켈레톤 {description.skeleton.Length}개 — 아바타를 세운다.");
-
             avatar = AvatarBuilder.BuildHumanAvatar(root, description);
         }
         finally

@@ -15546,7 +15546,6 @@ MonoBehaviour:
   onFail:
     m_PersistentCalls:
       m_Calls: []
-  debugLogs: 0
 --- !u!1 &953605072
 GameObject:
   m_ObjectHideFlags: 0

@@ -28,7 +28,6 @@ public static class WeaponImporter
 
         string[] guids = AssetDatabase.FindAssets("t:Prefab", new[] { SourceFolder });
         var all = new List<WeaponDefinition>();
-        int reused = 0;
 
         foreach (string guid in guids)
         {
@@ -60,7 +59,7 @@ public static class WeaponImporter
             // 아트 팩 프리팹을 그대로 손에 붙이면 무기마다 다른 데서 튀어나온다.
             // 손에 맞춰 구운 무기 프리팹(Assets/Equipment/Weapons)으로 감싸 물려 준다.
             // 이미 감싸 둔 것은 건드리지 않는다 — 손으로 다듬어 둔 자세를 덮어쓰면 안 된다.
-            if (!WeaponGripBaker.EnsureGripPrefab(definition)) reused++;
+            WeaponGripBaker.EnsureGripPrefab(definition);
 
             EditorUtility.SetDirty(definition);
             all.Add(definition);
@@ -71,8 +70,6 @@ public static class WeaponImporter
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log("[WeaponImporter] " + all.Count + "자루 정리 완료 (새로 만든 것 " + (all.Count - reused) +
-                  ", 그대로 둔 것 " + reused + "). → " + OutputFolder);
     }
 
     private static void BuildCatalog(List<WeaponDefinition> weapons)

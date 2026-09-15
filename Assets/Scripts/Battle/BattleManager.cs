@@ -29,9 +29,6 @@ public class BattleManager : MonoBehaviour
     [Header("Reward")]
     [SerializeField] private BattleRewardSettings rewardSettings = new BattleRewardSettings();
 
-    [Header("Debug")]
-    [SerializeField] private bool debugLogs = true;
-
     public static BattleManager Instance { get; private set; }
 
     // 정적 이벤트인 이유: 인스턴스 이벤트로 두면 구독자가 BattleManager.Instance를 먼저 찾아야 해서
@@ -168,7 +165,6 @@ public class BattleManager : MonoBehaviour
 
         allyRoster.Clear();
         allyRoster.AddRange(UnitRegistry.Allies);
-        if (debugLogs) Debug.Log($"[BattleManager] 전투 시작 — 아군 {UnitRegistry.Allies.Count} vs 적 {UnitRegistry.Enemies.Count}");
         OnBattleStarted?.Invoke();
     }
 
@@ -195,7 +191,6 @@ public class BattleManager : MonoBehaviour
             // if (PartyRoster.MarkFallen(unit.SourceCharacter))
             // {
             //     result.FallenCharacters.Add(unit.SourceCharacter);
-            //     if (debugLogs) Debug.Log($"[BattleManager] 영구 사망: {unit.SourceCharacter.characterName}");
             // }
         }
         else if (unit.Team == UnitTeam.Enemy)
@@ -214,12 +209,6 @@ public class BattleManager : MonoBehaviour
         BuildRewards();
         SelectMvp(outcome);
         Settle(outcome);
-
-        if (debugLogs)
-        {
-            Debug.Log($"[BattleManager] 전투 종료 — {result.KoreanOutcome} " +
-                      $"(생존 {result.AllySurvivors}, 아군 사망 {result.AllyDeaths}, 처치 {result.EnemyDeaths}, {result.Duration:F1}초)");
-        }
 
         // 이긴 층은 해금 상태에 남긴다. 층은 자동으로 이어지지 않고,
         // 플레이어가 메인 씬에서 다시 고르는 구조라 여기서는 기록만 한다.

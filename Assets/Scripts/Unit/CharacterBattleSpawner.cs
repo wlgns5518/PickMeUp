@@ -100,11 +100,7 @@ public class CharacterBattleSpawner : MonoBehaviour
             if (so == null) continue;
 
             // 원작의 영구 죽음 — 한 번 죽은 캐릭터는 다시 출전하지 않는다.
-            if (PartyRoster.IsFallen(so))
-            {
-                Debug.Log("[CharacterBattleSpawner] 영구 사망한 캐릭터라 출전에서 제외: " + so.characterName);
-                continue;
-            }
+            if (PartyRoster.IsFallen(so)) continue;
 
             GameObject body = AllyBody(so);
             if (body == null) continue;

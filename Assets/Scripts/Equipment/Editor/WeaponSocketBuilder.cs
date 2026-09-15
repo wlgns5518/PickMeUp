@@ -25,21 +25,17 @@ public static class WeaponSocketBuilder
     [MenuItem("PickMeUp/Equipment/Add Weapon Sockets (Selected)")]
     public static void AddSockets()
     {
-        int count = 0;
         foreach (Object o in Selection.objects)
         {
             var go = o as GameObject;
             if (go == null) continue;
 
             string path = AssetDatabase.GetAssetPath(go);
-            bool done = !string.IsNullOrEmpty(path) && path.EndsWith(".prefab")
-                ? AddToPrefab(path)
-                : AddToInstance(go);
-            if (done) count++;
+            if (!string.IsNullOrEmpty(path) && path.EndsWith(".prefab")) AddToPrefab(path);
+            else AddToInstance(go);
         }
 
         AssetDatabase.SaveAssets();
-        Debug.Log("[WeaponSocketBuilder] " + count + "명의 두 손에 소켓을 놓고 손 IK를 붙였다.");
     }
 
     [MenuItem("PickMeUp/Equipment/Add Weapon Sockets (Selected)", true)]
@@ -222,8 +218,6 @@ public static class WeaponSocketBuilder
         layers[0].iKPass = true;
         controller.layers = layers;
         EditorUtility.SetDirty(controller);
-
-        Debug.Log("[WeaponSocketBuilder] " + controller.name + ": 베이스 레이어의 IK Pass를 켰다.", controller);
     }
 
     // 소켓을 손바닥 쪽으로 얼마나 밀지는 캐릭터가 들고 있다. 없으면 기본값.

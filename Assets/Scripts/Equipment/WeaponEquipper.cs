@@ -56,9 +56,6 @@ public class WeaponEquipper : MonoBehaviour
     [Tooltip("시위를 놓고 손이 애니메이션으로 돌아가기까지의 시간(초). 짧을수록 튕기듯 놓는다.")]
     [SerializeField, Min(0.01f)] private float releaseTime = 0.12f;
 
-    [Header("Debug")]
-    [SerializeField] private bool debugLogs;
-
     // 전투가 읽는 자리. 어느 손에 들렸는지와 무관하게 "무엇으로 싸우는가"를 말한다.
     public WeaponDefinition MainHand { get; private set; }
     public WeaponDefinition OffHand { get; private set; }
@@ -477,8 +474,6 @@ public class WeaponEquipper : MonoBehaviour
         foreach (Rigidbody rb in instance.GetComponentsInChildren<Rigidbody>(true)) rb.isKinematic = true;
 
         WarnIfGripNotBaked(instance, definition);
-
-        if (debugLogs) Debug.Log($"[WeaponEquipper] {name}: {definition.DisplayName} → {socket.name}", this);
         return instance;
     }
 

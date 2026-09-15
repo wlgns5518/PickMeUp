@@ -44,8 +44,6 @@ public static class CharacterModelStore
         string path = PathFor(characterId);
         if (File.Exists(path)) File.Delete(path);
         File.Move(temporary, path);
-
-        Debug.Log($"[CharacterModelStore] 몸을 저장했다: {path} ({info.Length / 1024} KB)");
         return true;
     }
 

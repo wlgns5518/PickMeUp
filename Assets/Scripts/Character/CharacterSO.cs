@@ -261,11 +261,7 @@ public class CharacterSO : ScriptableObject
             CharacterModelStore.Delete(bodyId);
 
             string soPath = AssetDatabase.GetAssetPath(this);
-            if (!string.IsNullOrEmpty(soPath))
-            {
-                AssetDatabase.DeleteAsset(soPath);
-                Debug.Log($"[CharacterSO] Deleted: {soPath}");
-            }
+            if (!string.IsNullOrEmpty(soPath)) AssetDatabase.DeleteAsset(soPath);
             AssetDatabase.SaveAssets();
         }
         catch (Exception e)

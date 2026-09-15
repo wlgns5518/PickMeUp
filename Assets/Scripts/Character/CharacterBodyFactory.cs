@@ -79,14 +79,10 @@ public static class CharacterBodyFactory
             yield break;
         }
 
-        // 아래 세 단계는 전부 네이티브로 내려가고, 잘못된 입력을 만나면 예외 없이 에디터째
-        // 멈춰 버리는 일이 있다(특히 아바타 세우기). 어디서 멈췄는지 로그로 남겨 두지 않으면
-        // 다음에도 "그냥 멈췄다"밖에 알 수 없다.
         // 코루틴이 한 번 쉬고 나서 시작한다. 부른 쪽의 호출 스택 위에서 곧바로 glTFast를 건드리면
         // await가 붙잡는 동기화 문맥이 Unity의 것이 아닐 수 있다.
         yield return null;
 
-        Trace(character, "GLB 읽기 시작");
 
         // 프레임을 쪼개지 않는 에이전트를 쓴다.
         //
@@ -104,7 +100,6 @@ public static class CharacterBodyFactory
         Task<bool> loading = import.LoadFile(CharacterModelStore.PathFor(id), importSettings: settings);
         while (!loading.IsCompleted) yield return null;
 
-        Trace(character, "GLB 읽기 끝 (" + (loading.IsFaulted ? "실패" : loading.Result.ToString()) + ")");
 
         if (loading.IsFaulted || !loading.Result)
         {
@@ -118,7 +113,6 @@ public static class CharacterBodyFactory
         GameObject body = UnityEngine.Object.Instantiate(template, Nursery());
         body.name = string.IsNullOrEmpty(character.characterName) ? id : character.characterName;
 
-        Trace(character, "장면 꺼내기 시작");
         // 읽기와 같이 Task를 코루틴에서 기다린다. 동기판 InstantiateMainScene은 이 비동기판의
         // .Result를 그대로 붙잡고 있을 뿐이라(glTFast 6), 메인 스레드를 막는 것 말고는 다른 점이 없다.
         Task<bool> instantiating = import.InstantiateMainSceneAsync(body.transform);
@@ -132,7 +126,6 @@ public static class CharacterBodyFactory
             onDone?.Invoke(null);
             yield break;
         }
-        Trace(character, "장면 꺼내기 끝, 뼈 " + body.GetComponentsInChildren<Transform>(true).Length + "개");
 
         // 아바타를 세우기 전에 해야 한다. 아바타는 이 순간의 뼈 값을 기준으로 삼는다.
         BakeOutScale(body);
@@ -142,7 +135,6 @@ public static class CharacterBodyFactory
         // 에디터가 오래 멈춘 것처럼 보인다.
         yield return null;
 
-        Trace(character, "아바타 세우기 시작");
         if (!CharacterModelRig.TryBuildAvatar(body, out Avatar avatar, out string problem))
         {
             Debug.LogError($"[CharacterBodyFactory] {character.characterName}: 사람으로 세우지 못했다 — {problem}");
@@ -167,7 +159,6 @@ public static class CharacterBodyFactory
         Prototypes[id] = body;
         Imports[id] = import;
 
-        Debug.Log($"[CharacterBodyFactory] {body.name}의 몸을 세웠다 (아바타 {avatar.name}).");
         onDone?.Invoke(body);
     }
 
@@ -299,12 +290,6 @@ public static class CharacterBodyFactory
             if (texture != null) return texture;
         }
         return null;
-    }
-
-    // 네이티브 단계 사이사이에 발자국을 남긴다. 로그가 어디서 끊겼는지가 곧 어디서 멈췄는지다.
-    private static void Trace(CharacterSO character, string step)
-    {
-        Debug.Log($"[CharacterBodyFactory] {character.characterName}: {step}");
     }
 
     /// 캐릭터가 사라졌을 때(영구 사망, 삭제) 붙잡고 있던 것을 놓는다.

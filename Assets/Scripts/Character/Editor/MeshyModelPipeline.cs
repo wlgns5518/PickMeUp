@@ -121,7 +121,6 @@ public static class MeshyModelPipeline
 
         // 굽는 도중의 재컴파일이 await를 삼키지 않도록 잠근다.
         EditorApplication.LockReloadAssemblies();
-        int done = 0;
         try
         {
             foreach (CharacterSO character in characters)
@@ -129,7 +128,6 @@ public static class MeshyModelPipeline
                 try
                 {
                     await Bake(character);
-                    done++;
                 }
                 catch (Exception e)
                 {
@@ -142,9 +140,6 @@ public static class MeshyModelPipeline
             EditorUtility.ClearProgressBar();
             EditorApplication.UnlockReloadAssemblies();
         }
-
-        Debug.Log($"[MeshyModelPipeline] {done}/{characters.Count}명의 몸을 구웠다. " +
-                  $"받아 둔 곳: {CharacterModelStore.Root}");
     }
 
     /// 캐릭터 한 명분. 끝나면 CharacterModelStore에 그 캐릭터 id로 GLB가 놓여 있다.

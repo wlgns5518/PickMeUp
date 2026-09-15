@@ -137,8 +137,6 @@ public partial class UnitController : MonoBehaviour
     [Tooltip("사망 애니메이션이 끝나면 Animator를 꺼서 시체가 계속 애니메이션되지 않도록 한다.")]
     [SerializeField] private bool disableAnimatorAfterDeath = true;
 
-    [Header("Debug")]
-    [SerializeField] private bool debugLogs;
 #if UNITY_EDITOR
     // 인스펙터 확인용. GetType().Name / GameObject.name은 호출할 때마다 문자열을 새로 만들기 때문에
     // 동작·타깃이 바뀔 때마다 GC 쓰레기가 쌓인다. 빌드에는 포함하지 않는다.
@@ -611,7 +609,6 @@ public partial class UnitController : MonoBehaviour
             return length;
         }
 
-        if (debugLogs) Debug.LogWarning($"[UnitController] {name} could not find animation clip named '{stateName}' to derive duration. Using fallback {fallback}s.");
         return fallback;
     }
 
@@ -1031,10 +1028,9 @@ public partial class UnitController : MonoBehaviour
     {
         // CanUsePotion을 거치지 않고 직접 불려도 적은 회복되지 않도록 여기서도 막는다.
         if (!CanRecoverHp) return;
-        if (!stats.ConsumePotion(out int healedHp, out int healedMana)) return;
+        if (!stats.ConsumePotion(out _, out _)) return;
 
         lastPotionTime = Time.time;
-        if (debugLogs) Debug.Log($"[UnitController] {name} 회복약 사용: HP +{healedHp}, MP +{healedMana} (남은 개수 {stats.potionCount})");
     }
 
     public void TriggerPotion()
@@ -1100,8 +1096,6 @@ public partial class UnitController : MonoBehaviour
         if (target == null || target.IsDead) return;
 
         target.Stats.ApplyShield(stats.shieldAmount, stats.shieldDuration);
-
-        if (debugLogs) Debug.Log($"[UnitController] {name} 보호막 시전 완료: {target.name} +{stats.shieldAmount} ({stats.shieldDuration}초)");
     }
 
     public void CancelShieldCast()
@@ -1110,7 +1104,6 @@ public partial class UnitController : MonoBehaviour
 
         EndCast();
         castShieldTarget = null;
-        if (debugLogs) Debug.Log($"[UnitController] {name} 보호막 영창 중단 — 마력만 소모됨");
     }
 
     // 영창을 시작한다. 마력은 여기서 나간다 — 끊기면 그대로 손실이다.
@@ -1142,18 +1135,14 @@ public partial class UnitController : MonoBehaviour
         castHealTarget = null;
         if (target == null || target.IsDead || !target.CanRecoverHp) return;
 
-        int healed = target.Stats.Heal(stats.healAmount);
+        target.Stats.Heal(stats.healAmount);
 
         // 디스펠. 원작에서 독·마비·출혈을 제때 걷어내지 못하면 전열이 통째로 무력화된다 —
         // 회복량보다 이쪽이 판을 가르는 경우가 많다.
-        bool dispelled = false;
         if (stats.dispelOnHeal && target.Emotion != null && target.Emotion.HasDispellableEffect)
         {
             target.Emotion.Dispel();
-            dispelled = true;
         }
-
-        if (debugLogs) Debug.Log($"[UnitController] {name} 회복 시전 완료: {target.name} HP +{healed}{(dispelled ? " (상태이상 해제)" : "")}");
     }
 
     // 영창이 끊겼다. 마력은 이미 나갔으므로 돌려주지 않는다 — 그것이 끊긴 대가다.
@@ -1163,7 +1152,6 @@ public partial class UnitController : MonoBehaviour
 
         EndCast();
         castHealTarget = null;
-        if (debugLogs) Debug.Log($"[UnitController] {name} 영창 중단 — 마력만 소모됨");
     }
 
     public void TriggerHeal()
@@ -1646,12 +1634,6 @@ public partial class UnitController : MonoBehaviour
         {
             // 막았다는 것 자체가 보여야 한다. 예전에는 피가 안 튀는 것 말고는 아무 반응도 없었다.
             PlayBlockImpact();
-
-            if (debugLogs)
-            {
-                Debug.Log($"[UnitController] {name} 방어 성공 — {(attacker != null ? attacker.name : "?")}의 공격을 막음 " +
-                          $"(피해 {incoming} → {dealt}, 남은 강인도 {stats.currentPoise - poiseDamage:0}/{stats.maxPoise:0})");
-            }
         }
 
         // 맞았으면 위치가 드러난다. 배율은 위에서 이미 적용됐으므로 이 한 대는 감면을 받는다.
@@ -2781,17 +2763,8 @@ public partial class UnitController : MonoBehaviour
 
     private void PlayAnimation(int stateHash, bool forceRestart)
     {
-        if (animator == null)
-        {
-            if (debugLogs) Debug.LogWarning($"[UnitController] {name} cannot play animation: Animator is null.");
-            return;
-        }
-
-        if (stateHash == 0)
-        {
-            if (debugLogs) Debug.LogWarning($"[UnitController] {name} cannot play animation: state name is empty.");
-            return;
-        }
+        if (animator == null) return;
+        if (stateHash == 0) return;
 
         if (!forceRestart && currentAnimationHash == stateHash) return;
 

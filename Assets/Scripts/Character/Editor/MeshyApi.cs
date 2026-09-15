@@ -41,7 +41,6 @@ public static class MeshyApi
         where T : class
     {
         double elapsed = 0;
-        string lastStatus = null;
 
         while (elapsed < TimeoutSeconds)
         {
@@ -49,11 +48,6 @@ public static class MeshyApi
             T task = JsonUtility.FromJson<T>(json);
 
             string status = StatusOf(task);
-            if (status != lastStatus)
-            {
-                Debug.Log($"[Meshy] {endpoint} {taskId}: {lastStatus ?? "(시작)"} → {status}");
-                lastStatus = status;
-            }
             onProgress?.Invoke(Mathf.Clamp01(ProgressOf(task) / 100f), status);
 
             if (MeshyBodyRecipe.IsDone(status)) return task;
@@ -95,7 +89,6 @@ public static class MeshyApi
         if (created == null || string.IsNullOrEmpty(created.result))
             throw new Exception($"Meshy {endpoint}가 태스크 id를 돌려주지 않았다: {json}");
 
-        Debug.Log($"[Meshy] {endpoint} 태스크 생성: {created.result}");
         return created.result;
     }
 
@@ -148,7 +141,6 @@ public static class MeshyApi
 
             byte[] bytes = await response.Content.ReadAsByteArrayAsync();
             File.WriteAllBytes(destinationPath, bytes);
-            Debug.Log($"[Meshy] 받음: {destinationPath} ({bytes.Length / 1024} KB)");
         }
     }
 

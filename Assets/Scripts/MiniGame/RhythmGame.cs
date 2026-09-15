@@ -64,10 +64,6 @@ public class RhythmGame : MonoBehaviour
     public UnityEvent onSuccess;
     public UnityEvent onFail;
 
-    [Header("Debug")]
-    [Tooltip("노트마다 판정 로그 출력. 프레임 끊김의 원인이 되므로 디버깅할 때만 켠다.")]
-    [SerializeField] private bool debugLogs;
-
     private readonly List<float> noteHitTimes = new List<float>();
     private readonly List<RhythmNote> activeNotes = new List<RhythmNote>();
     private readonly List<RhythmNote> notePool = new List<RhythmNote>();
@@ -1017,10 +1013,6 @@ public class RhythmGame : MonoBehaviour
 
         PunchReceptor(lane, flashColor);
         ShowJudgmentPopup(judgment, lane);
-
-        // 판정 로그는 노트마다 발생한다. Debug.Log는 스택 트레이스를 수집하느라 비싸서
-        // 리듬게임 판정 타이밍에 그대로 프레임 끊김으로 나타나므로 기본은 꺼둔다.
-        if (debugLogs) Debug.Log($"[Rhythm] {lastJudgmentText}");
     }
 
     private void FinishByResult()
@@ -1038,7 +1030,6 @@ public class RhythmGame : MonoBehaviour
     {
         if (!running) return;
         running = false;
-        Debug.Log($"[Rhythm] Success! ({difficulty}, score {score}, perfect {perfectCount}, good {goodCount}, miss {missCount})");
         onSuccess?.Invoke();
         EndAndHide();
     }
@@ -1047,7 +1038,6 @@ public class RhythmGame : MonoBehaviour
     {
         if (!running) return;
         running = false;
-        Debug.Log($"[Rhythm] Fail ({difficulty}, score {score}, perfect {perfectCount}, good {goodCount}, miss {missCount})");
         onFail?.Invoke();
         EndAndHide();
     }

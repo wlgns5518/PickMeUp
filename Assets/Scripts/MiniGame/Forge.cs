@@ -85,7 +85,6 @@ public class Forge : MonoBehaviour
         WeaponFamily family = CraftRecipe.FamilyOf(materials);
         EquipmentGrade grade = EquipmentCraftTable.RollAuto(CraftRecipe.BaseGradeOf(materials));
         var result = new CraftedEquipment(CraftRecipe.RollWeapon(family), grade);
-        Debug.Log($"[Forge] 자동 제작({Describe(materials)} → {CraftRecipe.FamilyName(family)}): {result.name}");
         Deliver(result);
         return true;
     }
@@ -115,7 +114,6 @@ public class Forge : MonoBehaviour
         pendingBaseGrade = CraftRecipe.BaseGradeOf(materials);
         pendingDifficulty = difficulty;
         awaitingPuzzle = true;
-        Debug.Log($"[Forge] 수동 제작 시작({Describe(materials)} → {CraftRecipe.FamilyName(pendingFamily)}, {difficulty})");
         puzzle.StartPuzzle(null, difficulty);
         return true;
     }
@@ -146,7 +144,6 @@ public class Forge : MonoBehaviour
 
         EquipmentGrade grade = EquipmentCraftTable.RollManual(pendingBaseGrade, pendingDifficulty);
         var result = new CraftedEquipment(CraftRecipe.RollWeapon(pendingFamily), grade);
-        Debug.Log($"[Forge] 수동 제작 성공(밑변 {pendingBaseGrade}, {pendingDifficulty}): {result.name}");
         Deliver(result);
     }
 
@@ -162,14 +159,6 @@ public class Forge : MonoBehaviour
         if (!awaitingPuzzle) return;
         awaitingPuzzle = false;
 
-        Debug.Log($"[Forge] 수동 제작 실패({CraftRecipe.FamilyName(pendingFamily)}) — 재료 소모, 보상 없음");
         onFailed?.Invoke();
-    }
-
-    private static string Describe(IReadOnlyList<CraftMaterial> materials)
-    {
-        var names = new string[materials.Count];
-        for (int i = 0; i < materials.Count; i++) names[i] = materials[i].DisplayName;
-        return string.Join(" + ", names);
     }
 }

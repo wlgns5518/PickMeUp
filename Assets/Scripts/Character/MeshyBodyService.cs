@@ -96,11 +96,8 @@ public class MeshyBodyService : MonoBehaviour
             return;
         }
 
-        if (!Enabled)
-        {
-            Debug.Log($"[MeshyBodyService] 몸 굽기가 꺼져 있어 {character.characterName}은 공용 몸으로 나간다.");
-            return;
-        }
+        // 몸 굽기가 꺼져 있으면 공용 몸으로 나간다.
+        if (!Enabled) return;
 
         Instance.Enqueue(character);
     }
@@ -198,9 +195,7 @@ public class MeshyBodyService : MonoBehaviour
         states[id] = body != null ? BodyState.Ready : BodyState.Failed;
         progress[id] = 1f;
 
-        if (body != null)
-            Debug.Log($"[MeshyBodyService] {character.characterName}의 몸이 준비됐다.");
-        else
+        if (body == null)
             Debug.LogWarning($"[MeshyBodyService] {character.characterName}의 몸을 세우지 못했다. 공용 몸으로 나간다.");
     }
 
@@ -320,7 +315,6 @@ public class MeshyBodyService : MonoBehaviour
                 yield break;
             }
 
-            Debug.Log($"[MeshyBodyService] {character.characterName} 외형: {described.Trim()}");
             onDone(described.Trim());
         }
     }
@@ -379,7 +373,6 @@ public class MeshyBodyService : MonoBehaviour
                 yield break;
             }
 
-            Debug.Log($"[MeshyBodyService] {endpoint} 태스크 생성: {created.result}");
             onDone(created.result);
         }
     }

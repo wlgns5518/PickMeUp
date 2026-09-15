@@ -247,13 +247,11 @@ public class PuzzleGame : MonoBehaviour
 
         // 검 이미지가 실제로 차지하는 영역(타이트 바운딩)만 슬라이스 대상으로 사용
         Rect src = mask != null ? mask.ContentRect : fullRect;
-        Debug.Log($"[Puzzle] 콘텐츠 영역 {src} (전체 {fullRect})");
 
         // Hell 픽셀 크기는 고정. 낮은 난이도는 어셈블 크기 동일하게 유지하도록 확대.
         // ex) Hell=40 → Hard=60, Normal≈86, Easy=150. 15×Hell = n×current 동일.
         const int hellN = (int)PuzzleDifficulty.Hell;
         currentPieceSize = (hellN / (float)n) * hellPieceSize;
-        Debug.Log($"[Puzzle] 조각 표시 크기: {currentPieceSize:0.0}px (난이도 {difficulty}, n={n})");
 
         float pieceWPx = src.width / n;
         float pieceHPx = src.height / n;
@@ -262,8 +260,6 @@ public class PuzzleGame : MonoBehaviour
         // 최소 1인 이유는 비율을 0으로 두더라도 "그림이 하나도 없는 칸"은 걸러내야 하기 때문이다.
         int needed = Mathf.Max(1, Mathf.CeilToInt(pieceWPx * pieceHPx * minOpaqueRatio));
 
-        int preplaced = 0;
-        int skipped = 0;
         for (int row = 0; row < n; row++)
         {
             for (int col = 0; col < n; col++)
@@ -279,11 +275,7 @@ public class PuzzleGame : MonoBehaviour
 
                 // 그림이 한 픽셀도 없는 칸은 조각을 만들지 않는다. 만들어 봐야 아무것도 그리지
                 // 않는 오브젝트가 되고, 없어도 완성 그림은 똑같다 — 지켜야 할 그림이 없으니까.
-                if (opaque == 0)
-                {
-                    skipped++;
-                    continue;
-                }
+                if (opaque == 0) continue;
 
                 // FullRect가 꼭 필요하다. Sprite.Create는 기본이 Tight라 조각마다 알파 외곽선을
                 // 따라가며 폴리곤 메시를 만드는데, 조각은 어차피 정사각형이라 아무 이득이 없으면서
@@ -297,7 +289,6 @@ public class PuzzleGame : MonoBehaviour
                 if (preplaceBackgroundPieces && opaque < needed)
                 {
                     backgroundPieces.Add(piece);
-                    preplaced++;
                 }
                 else
                 {
@@ -305,10 +296,6 @@ public class PuzzleGame : MonoBehaviour
                 }
             }
         }
-
-        if (skipped > 0)   Debug.Log($"[Puzzle] 빈 칸 {skipped}개는 조각을 만들지 않음");
-        if (preplaced > 0) Debug.Log($"[Puzzle] 배경 조각 {preplaced}개는 맞춰진 채로 시작");
-        Debug.Log($"[Puzzle] 맞출 조각 {pieces.Count}개 (격자 {n}x{n} = {n * n}칸)");
     }
 
 #if UNITY_EDITOR
@@ -323,7 +310,6 @@ public class PuzzleGame : MonoBehaviour
         {
             importer.isReadable = true;
             importer.SaveAndReimport();
-            Debug.Log($"[Puzzle] '{tex.name}' Read/Write Enabled 자동 활성화");
         }
     }
 #endif
@@ -708,7 +694,6 @@ public class PuzzleGame : MonoBehaviour
     {
         if (!running) return;
         running = false;
-        Debug.Log($"[Puzzle] 성공! ({difficulty}, 남은 시간 {remainingTime:0.0}s)");
         onSuccess?.Invoke();
         ShowBanner("COMPLETE!", successBannerColor);
     }
@@ -717,7 +702,6 @@ public class PuzzleGame : MonoBehaviour
     {
         if (!running) return;
         running = false;
-        Debug.Log("[Puzzle] 실패 (시간 초과)");
         onFail?.Invoke();
         ShowBanner("TIME OVER", failBannerColor);
     }

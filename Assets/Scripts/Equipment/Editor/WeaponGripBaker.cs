@@ -162,7 +162,6 @@ public static class WeaponGripBaker
             return false;
         }
 
-        Debug.Log("[WeaponGripBaker] " + contents.name + ": 그립이 무기 밖에 있어 모델을 반 바퀴 돌렸다.");
         return true;
     }
 
@@ -323,7 +322,6 @@ public static class WeaponGripBaker
     [MenuItem("PickMeUp/Equipment/Author Hand Points (All Weapons)")]
     public static void AuthorAllHandPoints()
     {
-        int count = 0;
         foreach (string guid in AssetDatabase.FindAssets("t:WeaponDefinition"))
         {
             var definition = AssetDatabase.LoadAssetAtPath<WeaponDefinition>(AssetDatabase.GUIDToAssetPath(guid));
@@ -331,11 +329,10 @@ public static class WeaponGripBaker
 
             string path = AssetDatabase.GetAssetPath(definition.model);
             WeaponDefinition captured = definition;
-            if (EditPrefab(path, contents => AuthorHandPoints(contents, captured))) count++;
+            EditPrefab(path, contents => AuthorHandPoints(contents, captured));
         }
 
         AssetDatabase.SaveAssets();
-        Debug.Log("[WeaponGripBaker] " + count + "자루에 손 · 보조 그립 · 시위 표식을 채웠다.");
     }
 
     // 손으로 그립을 다시 잡는 길. 프리팹을 열어 GripPoint를 자루의 원하는 지점으로 옮긴 뒤 실행하면,
@@ -344,7 +341,6 @@ public static class WeaponGripBaker
     [MenuItem("PickMeUp/Equipment/Align Grip Point (Selected)")]
     public static void AlignSelected()
     {
-        int count = 0;
         foreach (Object o in Selection.objects)
         {
             var go = o as GameObject;
@@ -353,7 +349,7 @@ public static class WeaponGripBaker
             string path = AssetDatabase.GetAssetPath(go);
             if (!string.IsNullOrEmpty(path) && path.EndsWith(".prefab"))
             {
-                if (EditPrefab(path, Align)) count++;
+                EditPrefab(path, Align);
                 continue;
             }
 
@@ -362,11 +358,10 @@ public static class WeaponGripBaker
             if (grip == null) continue;
 
             Undo.RegisterFullObjectHierarchyUndo(grip.gameObject, "Align Grip Point");
-            if (Align(grip.gameObject)) count++;
+            Align(grip.gameObject);
         }
 
         AssetDatabase.SaveAssets();
-        Debug.Log("[WeaponGripBaker] " + count + "자루의 그립을 루트에 맞췄다.");
     }
 
     [MenuItem("PickMeUp/Equipment/Align Grip Point (Selected)", true)]
@@ -377,7 +372,6 @@ public static class WeaponGripBaker
     [MenuItem("PickMeUp/Equipment/Recompute Grip (Selected)")]
     public static void RecomputeSelected()
     {
-        int count = 0;
         foreach (Object o in Selection.objects)
         {
             GameObject prefab = o as GameObject;
@@ -390,11 +384,10 @@ public static class WeaponGripBaker
             if (string.IsNullOrEmpty(path) || !path.EndsWith(".prefab")) continue;
 
             WeaponDefinition captured = definition;
-            if (EditPrefab(path, contents => Remeasure(contents, captured))) count++;
+            EditPrefab(path, contents => Remeasure(contents, captured));
         }
 
         AssetDatabase.SaveAssets();
-        Debug.Log("[WeaponGripBaker] " + count + "자루의 쥐는 자세를 다시 계산했다.");
     }
 
     [MenuItem("PickMeUp/Equipment/Recompute Grip (Selected)", true)]
