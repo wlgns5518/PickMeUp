@@ -9,7 +9,7 @@ public readonly struct CraftedEquipment
     public CraftedEquipment(WeaponDefinition weapon, EquipmentGrade grade)
     {
         this.weapon = weapon;
-        this.name = weapon != null ? weapon.DisplayName : string.Empty;
+        this.name = EquipmentGradeNames.ItemName(weapon, grade);
         this.grade = grade;
     }
 }

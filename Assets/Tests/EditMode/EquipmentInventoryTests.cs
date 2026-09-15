@@ -74,6 +74,59 @@ public class EquipmentInventoryTests
     }
 
     [Test]
+    public void 등급_배율은_E부터_S까지_한_단계에_0점2씩_오른다()
+    {
+        Assert.AreEqual(0.80f, EquipmentGradeRules.PowerOf(EquipmentGrade.E), 0.0001f);
+        Assert.AreEqual(1.00f, EquipmentGradeRules.PowerOf(EquipmentGrade.D), 0.0001f, "D는 기본 장비와 같다");
+        Assert.AreEqual(1.80f, EquipmentGradeRules.PowerOf(EquipmentGrade.S), 0.0001f);
+
+        for (var grade = EquipmentGrade.E; grade < EquipmentGrade.S; grade++)
+        {
+            float step = EquipmentGradeRules.PowerOf(grade + 1) - EquipmentGradeRules.PowerOf(grade);
+            Assert.AreEqual(0.20f, step, 0.0001f, $"{grade}→{grade + 1}");
+        }
+    }
+
+    [Test]
+    public void 제작_장비_이름에는_등급_수식어가_붙는다()
+    {
+        Assert.AreEqual("조잡한 Test_LongSword", new OwnedEquipment(longSword, EquipmentGrade.E).DisplayName);
+        Assert.AreEqual("전설의 Test_LongSword", new OwnedEquipment(longSword, EquipmentGrade.S).DisplayName);
+        Assert.AreEqual("명장의 Test_Shield", new CraftedEquipment(shield, EquipmentGrade.A).name, "제작소 결과도 같은 이름을 쓴다");
+    }
+
+    [Test]
+    public void 들린_장비의_등급이_전투_배율로_이어진다()
+    {
+        CharacterSO hero = Hero("Hero_A");
+        Assert.AreEqual(1f, CharacterLoadout.MainHandPower(hero), 0.0001f, "기본 장비는 배율 1");
+        Assert.AreEqual(1f, CharacterLoadout.ShieldPower(hero), 0.0001f);
+
+        EquipmentInventory.Equip(hero, EquipmentInventory.Add(longSword, EquipmentGrade.S), out _);
+        EquipmentInventory.Equip(hero, EquipmentInventory.Add(shield, EquipmentGrade.E), out _);
+
+        Assert.AreEqual(1.80f, CharacterLoadout.MainHandPower(hero), 0.0001f);
+        Assert.AreEqual(0.80f, CharacterLoadout.ShieldPower(hero), 0.0001f, "조잡한 방패는 기본 방패보다 못하다");
+    }
+
+    [Test]
+    public void 마법사_손에_걸린_장비의_등급은_전투에_닿지_않는다()
+    {
+        CharacterSO mage = Hero("Hero_Mage");
+        mage.job = JobType.Mage;
+
+        // 옛 세이브에서 마법사가 S 롱소드를 들고 있던 경우.
+        WeaponDefinition real = WeaponCatalog.Find("Sword_1");
+        Assume.That(real, Is.Not.Null, "WeaponCatalog에 Sword_1이 없다");
+        File.WriteAllText(SaveSystem.SavePath,
+            "{\"highestClearedFloor\":0,\"characters\":[],\"equipment\":[" +
+            "{\"weapon\":\"Sword_1\",\"grade\":5,\"owner\":\"" + mage.Id + "\"}]}");
+        SaveSystem.LoadEquipment();
+
+        Assert.AreEqual(1f, CharacterLoadout.MainHandPower(mage), 0.0001f);
+    }
+
+    [Test]
     public void 장착하면_기본_장비_대신_제작_장비를_든다()
     {
         CharacterSO hero = Hero("Hero_A");

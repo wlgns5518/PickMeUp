@@ -619,7 +619,7 @@ public class ArmoryUI : FacilityWindow
 
         TMP_Text typeText = RowText(rect, "Type", 20f, HintText,
             TextAlignmentOptions.Left, 38f, 26f, textLeft, ItemStatusWidth + RowInset);
-        typeText.text = CharacterRules.Korean(item.Weapon.type);
+        typeText.text = $"{CharacterRules.Korean(item.Weapon.type)} · {EffectText(item)}";
 
         TMP_Text statusLabel = RowText(rect, "Status", 21f, mine ? BattleHudPalette.Mvp : HintText,
             TextAlignmentOptions.Right, 0f, ItemRowHeight, width - ItemStatusWidth - RowInset, RowInset);
@@ -706,14 +706,14 @@ public class ArmoryUI : FacilityWindow
         view.UnequipButton.SetActive(false);
         view.Name.text = "기본 장비";
         view.Name.color = BattleHudPalette.PanelText;
-        view.Info.text = "원래 쓰던 대로 듭니다";
+        view.Info.text = string.Empty;
     }
 
     private static void ApplyCrafted(SlotView view, OwnedEquipment item)
     {
         view.Name.text = item.DisplayName;
         view.Name.color = EquipmentGradeNames.ColorOf(item.Grade);
-        view.Info.text = $"제작 장비 · {EquipmentGradeNames.NameOf(item.Grade)}등급 · {CharacterRules.Korean(item.Weapon.type)}";
+        view.Info.text = $"{EquipmentGradeNames.NameOf(item.Grade)}등급 · {CharacterRules.Korean(item.Weapon.type)} · {EffectText(item)}";
         view.UnequipButton.SetActive(true);
     }
 
@@ -750,6 +750,14 @@ public class ArmoryUI : FacilityWindow
         if (byType != 0) return byType;
 
         return string.CompareOrdinal(a.DisplayName, b.DisplayName);
+    }
+
+    // 등급이 무엇을 얼마나 올리는지. 주무기는 공격력, 방패는 피해 감소와 막기에 곱해진다(EquipmentGradeRules).
+    // 기본 장비가 1이므로, 1보다 작으면 원래 들던 것보다 못하다는 뜻이다.
+    private static string EffectText(OwnedEquipment item)
+    {
+        string stat = item.Slot == EquipSlot.OffHand ? "방어" : "공격";
+        return $"{stat} x{item.Power:0.00}";
     }
 
     private static string OwnerLabel(OwnedEquipment item)

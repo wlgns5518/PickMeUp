@@ -304,6 +304,10 @@ public class CharacterBattleSpawner : MonoBehaviour
         JobCombatProfile job = JobProfile.For(so.job);
         WeaponCombatProfile weapon = JobProfile.For(AllyMainHandType(so, body));
         bool hasShield = CharacterLoadout.HasShield(so);
+        // 무기창고에서 들린 제작 장비의 등급 배율. 기본 장비면 둘 다 1이라 예전 수치 그대로다.
+        // 사거리와 공속은 무기 종류의 개성이라 등급이 건드리지 않는다(EquipmentGradeRules).
+        float weaponPower = CharacterLoadout.MainHandPower(so);
+        float shieldPower = CharacterLoadout.ShieldPower(so);
 
         var stats = new UnitStats
         {
@@ -312,7 +316,7 @@ public class CharacterBattleSpawner : MonoBehaviour
         };
 
         stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * job.HpMultiplier * debugHealthMultiplier));
-        stats.attackDamage = Mathf.Max(1, Mathf.RoundToInt(stats.attackDamage * job.AttackMultiplier * weapon.AttackMultiplier));
+        stats.attackDamage = Mathf.Max(1, Mathf.RoundToInt(stats.attackDamage * job.AttackMultiplier * weapon.AttackMultiplier * weaponPower));
         stats.skillDamage = stats.attackDamage * 2;
 
         stats.maxMana = Mathf.RoundToInt((baseMana + so.Intelligence * manaPerIntelligence) * job.ManaMultiplier);
@@ -335,9 +339,9 @@ public class CharacterBattleSpawner : MonoBehaviour
         // (평타 간격은 애니메이션 길이가 정하므로 여기서 건드릴 수 없다)
         stats.skillCooldown /= Mathf.Max(0.1f, weapon.AttackSpeedMultiplier);
 
-        stats.damageReduction = job.DamageReduction + (hasShield ? JobProfile.ShieldDamageReduction : 0f);
+        stats.damageReduction = job.DamageReduction + (hasShield ? JobProfile.ShieldDamageReduction * shieldPower : 0f);
         stats.damageReduction = Mathf.Clamp(stats.damageReduction, 0f, 0.9f);
-        if (hasShield) stats.blockDamageReduction = Mathf.Clamp01(stats.blockDamageReduction + JobProfile.ShieldBlockBonus);
+        if (hasShield) stats.blockDamageReduction = Mathf.Clamp01(stats.blockDamageReduction + JobProfile.ShieldBlockBonus * shieldPower);
 
         // 서포터만 아군을 회복시킬 수 있다.
         stats.canHealAllies = job.IsHealer;

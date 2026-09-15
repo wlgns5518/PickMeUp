@@ -50,6 +50,23 @@ public static class CharacterLoadout
         return item != null ? item.Weapon : character.offHandWeapon;
     }
 
+    // 주무기가 공격력에 곱하는 등급 배율. 제작 장비면 그 등급의 배율, 기본 장비면 1이다(EquipmentGradeRules).
+    public static float MainHandPower(CharacterSO character)
+    {
+        OwnedEquipment item = CraftedIn(character, EquipSlot.MainHand);
+        return item != null ? item.Power : EquipmentGradeRules.BasePower;
+    }
+
+    // 방패가 피해 감소와 막기 보너스에 곱하는 등급 배율. 방패를 들 수 없으면 무엇이 걸려 있든 1이다 —
+    // 어차피 방패 보정 자체가 붙지 않는다(HasShield).
+    public static float ShieldPower(CharacterSO character)
+    {
+        if (!CanHoldShield(character)) return EquipmentGradeRules.BasePower;
+
+        OwnedEquipment item = CraftedIn(character, EquipSlot.OffHand);
+        return item != null ? item.Power : EquipmentGradeRules.BasePower;
+    }
+
     // 이 자리에 들린 제작 장비. 제작 장비를 들 수 없는 캐릭터면 무엇이 걸려 있든 없는 것으로 본다.
     private static OwnedEquipment CraftedIn(CharacterSO character, EquipSlot slot) =>
         CanEquip(character) ? EquipmentInventory.EquippedIn(character, slot) : null;

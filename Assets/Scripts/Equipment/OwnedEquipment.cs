@@ -26,7 +26,11 @@ public class OwnedEquipment
 
     public EquipSlot Slot => Weapon != null ? Weapon.slot : EquipSlot.MainHand;
 
-    public string DisplayName => Weapon != null ? Weapon.DisplayName : string.Empty;
+    // "전설의 롱소드". 등급 수식어가 붙은 이름이다 — 무기 에셋의 이름은 Weapon.DisplayName.
+    public string DisplayName => EquipmentGradeNames.ItemName(Weapon, Grade);
+
+    // 이 장비가 전투에 곱하는 등급 배율(EquipmentGradeRules).
+    public float Power => EquipmentGradeRules.PowerOf(Grade);
 
     public bool IsHeldBy(CharacterSO character) => character != null && IsEquipped && OwnerId == character.Id;
 }
