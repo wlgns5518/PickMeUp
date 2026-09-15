@@ -65,6 +65,9 @@ public class BloodEffectPool : MonoBehaviour
             if (now < activeExpireTimes[i]) continue;
             DeactivateAt(i);
         }
+
+        // 회수할 것이 없으면 다음 Spawn까지 쉰다. 피는 교전 순간에만 튀므로 대부분의 프레임이 여기에 걸린다.
+        if (activeInstances.Count == 0) enabled = false;
     }
 
     public GameObject Spawn(GameObject prefab, Vector3 position, Quaternion rotation, Color bloodColor)
@@ -94,6 +97,7 @@ public class BloodEffectPool : MonoBehaviour
 
         activeInstances.Add(instanceObject);
         activeExpireTimes.Add(Time.time + GetLifetime(instanceObject));
+        enabled = true;
 
         return instanceObject;
     }

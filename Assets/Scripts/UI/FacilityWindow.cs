@@ -5,9 +5,12 @@ using UnityEngine.UI;
 // 마을 시설을 눌러 여는 창의 공통 뼈대.
 //
 // 소환소·합성소·시공의 틈·장비제작소·층 선택은 안에 들어가는 내용만 다를 뿐,
-// 창으로서 하는 일은 똑같다. 캔버스를 한 번 세우고, 팝업을 껐다 켜고, 배너 시간을 굴린다.
+// 창으로서 하는 일은 똑같다. 캔버스를 한 번 세우고, 팝업을 껐다 켠다.
 // 그 다섯 벌이 각자 같은 코드를 들고 있어서, 창을 하나 더 만들 때마다 다시 베껴 써야 했고
 // 도메인 리로드로 남은 캔버스를 치우는 처리 같은 것을 빠뜨리면 그 창만 조용히 어긋났다.
+//
+// 창에는 Update가 없다. 배너 시간은 배너가 떠 있는 동안 배너 스스로 굴린다(AnnouncementBannerTicker) —
+// 예전에는 창마다 매 프레임 배너를 두드려서, 창이 전부 닫혀 있어도 그 수만큼 Update가 돌았다.
 //
 // 여기서 정하는 것은 "창이 열리고 닫히는 방식" 하나뿐이다.
 // 무엇을 그릴지(BuildWindow)와 언제 무엇을 갱신할지(Show/Hide)는 각 창이 그대로 정한다 —
@@ -144,16 +147,6 @@ public abstract class FacilityWindow : MonoBehaviour, IFacilityWindow
 
     // 다시 지은 뒤 화면 값을 맞출 것이 있으면 여기서.
     protected virtual void AfterRosterRebuilt()
-    {
-    }
-
-    // 배너는 MonoBehaviour가 아니라 코루틴을 쓸 수 없다. 시간을 창이 대신 굴려 준다.
-    private void Update()
-    {
-        TickWindow(Time.deltaTime);
-    }
-
-    protected virtual void TickWindow(float deltaTime)
     {
     }
 }

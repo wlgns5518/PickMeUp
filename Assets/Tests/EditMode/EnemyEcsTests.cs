@@ -692,6 +692,30 @@ public class EnemyEcsTests
         Assert.IsTrue(EnemyWorldBridge.HasLivingEnemy());
     }
 
+    // 적 체력바가 매 프레임 묻는 합계도 표를 세울 때 함께 센 값이다.
+    // 최대 체력은 시체까지 넣고(바가 실제로 비어 가야 한다), 현재 체력과 생존 수는 산 적만 센다.
+    [Test]
+    public void 체력_합계는_표를_세울_때_함께_센다()
+    {
+        AddEnemyState(new float3(1f, 0f, 1f));
+        AddEnemyState(new float3(2f, 0f, 2f));
+        AddDeadEnemyState(new float3(3f, 0f, 3f));
+        EnemyWorldBridge.RebuildEnemyIndex();
+
+        EnemyWorldBridge.SumEnemyHealth(out float current, out float max, out int alive);
+        Assert.AreEqual(200f, current, 0.001f);
+        Assert.AreEqual(300f, max, 0.001f);
+        Assert.AreEqual(2, alive);
+
+        // 스냅샷을 비우고 다시 세우면 지난 프레임의 합이 남지 않는다.
+        EnemyWorldBridge.EnemyStates.Clear();
+        EnemyWorldBridge.RebuildEnemyIndex();
+        EnemyWorldBridge.SumEnemyHealth(out current, out max, out alive);
+        Assert.AreEqual(0f, current);
+        Assert.AreEqual(0f, max);
+        Assert.AreEqual(0, alive);
+    }
+
     private void AddDeadEnemyState(float3 position)
     {
         Entity entity = manager.CreateEntity();

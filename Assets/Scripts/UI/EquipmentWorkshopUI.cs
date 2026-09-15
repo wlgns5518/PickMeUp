@@ -145,11 +145,6 @@ public class EquipmentWorkshopUI : FacilityWindow
         MaterialInventory.Changed -= HandleMaterialsChanged;
     }
 
-    protected override void TickWindow(float deltaTime)
-    {
-        warningBanner?.Tick(deltaTime);
-    }
-
     public override void Show()
     {
         EnsureBuilt();

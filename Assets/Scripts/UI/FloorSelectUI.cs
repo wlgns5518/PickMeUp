@@ -73,11 +73,6 @@ public class FloorSelectUI : FacilityWindow
         RefreshButtons();
     }
 
-    protected override void TickWindow(float deltaTime)
-    {
-        warningBanner?.Tick(deltaTime);
-    }
-
     // 문을 눌렀을 때 불린다. 열기 직전에 해금 상태를 다시 읽는다.
     public override void Show()
     {

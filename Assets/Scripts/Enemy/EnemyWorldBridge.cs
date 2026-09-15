@@ -206,6 +206,8 @@ public static class EnemyWorldBridge
         IndexByEntity.Clear();
         AllyAttackersByEntity.Clear();
         aliveEnemyCount = 0;
+        aliveEnemyHp = 0f;
+        totalEnemyMaxHp = 0f;
     }
 
     public static void Dispose()
@@ -286,21 +288,29 @@ public static class EnemyWorldBridge
 
     public static EnemyState GetEnemy(int index) => EnemyStates[index];
 
-    // 살아 있는 적 수. 아래 루프가 어차피 전부 도는 김에 함께 센다.
+    // 살아 있는 적 수와 체력 합. 아래 루프가 어차피 전부 도는 김에 함께 센다.
     private static int aliveEnemyCount;
+    private static float aliveEnemyHp;
+    private static float totalEnemyMaxHp;
 
     // 적 스냅샷을 다 채운 뒤 부른다. 손잡이로 찾을 수 있게 표를 다시 세운다.
     public static void RebuildEnemyIndex()
     {
         IndexByEntity.Clear();
         aliveEnemyCount = 0;
+        aliveEnemyHp = 0f;
+        totalEnemyMaxHp = 0f;
         if (!IsReady) return;
 
         for (int i = 0; i < EnemyStates.Length; i++)
         {
             EnemyState enemy = EnemyStates[i];
             IndexByEntity[enemy.entity] = i;
-            if (enemy.IsAlive) aliveEnemyCount++;
+            totalEnemyMaxHp += Mathf.Max(0f, enemy.maxHp);
+            if (!enemy.IsAlive) continue;
+
+            aliveEnemyCount++;
+            aliveEnemyHp += Mathf.Max(0f, enemy.hp);
         }
     }
 
@@ -331,22 +341,14 @@ public static class EnemyWorldBridge
 
     // 엔티티가 된 적의 체력 합. 화면의 적 체력바가 팀 전체를 하나로 보여 주므로
     // 게임오브젝트 쪽 합과 그대로 더하면 된다(UI/EnemyHealthBar).
+    //
+    // 체력바가 매 프레임 묻는 값이라 여기서 다시 훑지 않는다. 표를 세울 때 함께 센 값이다.
     public static void SumEnemyHealth(out float current, out float max, out int alive)
     {
-        current = 0f;
-        max = 0f;
-        alive = 0;
-        if (!IsReady) return;
-
-        for (int i = 0; i < EnemyStates.Length; i++)
-        {
-            EnemyState enemy = EnemyStates[i];
-            max += Mathf.Max(0f, enemy.maxHp);
-            if (!enemy.IsAlive) continue;
-
-            current += Mathf.Max(0f, enemy.hp);
-            alive++;
-        }
+        bool ready = IsReady;
+        current = ready ? aliveEnemyHp : 0f;
+        max = ready ? totalEnemyMaxHp : 0f;
+        alive = ready ? aliveEnemyCount : 0;
     }
 
     // 표를 세울 때 함께 센 값이라 훑지 않는다. 겨눌 상대가 없는 아군이 매 틱 묻는 질문이다.

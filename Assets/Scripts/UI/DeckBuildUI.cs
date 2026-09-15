@@ -180,11 +180,6 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
         Refresh();
     }
 
-    protected override void TickWindow(float deltaTime)
-    {
-        announcement?.Tick(deltaTime);
-    }
-
     // ---- 열고 닫기 --------------------------------------------------------
 
     public override void Show()

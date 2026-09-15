@@ -13,7 +13,8 @@ using UnityEngine.UI;
 // 그림 비율에 글자를 끼워 맞추지 않고, 띄울 때마다 글자 크기에 맞춰 박스를 늘린다(README의 OrnateMessageBox와 같은 계산).
 //
 // BattleResultPanel과 같이 화면 주인(BattleHud, DeckBuildUI)이 만들어 들고 있는 평범한 클래스다.
-// MonoBehaviour가 아니라 코루틴을 못 쓰므로, 시간은 주인이 매 프레임 Tick으로 굴려 준다.
+// 시간은 배너 루트에 붙은 AnnouncementBannerTicker가 굴린다. 루트는 떠 있는 동안에만 켜져 있으므로
+// 배너가 꺼져 있는 대부분의 시간에는 아무것도 돌지 않는다.
 public class AnnouncementBanner
 {
     public const float DefaultHoldSeconds = 2f;
@@ -59,6 +60,8 @@ public class AnnouncementBanner
 
         group = root.gameObject.AddComponent<CanvasGroup>();
         group.alpha = 0f;
+
+        root.gameObject.AddComponent<AnnouncementBannerTicker>().Bind(this);
 
         // 눌러서 바로 넘길 수 있어야 한다. HudFactory는 표시 전용이라 레이캐스트가 꺼져 있다.
         body.raycastTarget = true;
@@ -110,14 +113,11 @@ public class AnnouncementBanner
         timer = 0f;
     }
 
-    public void Tick(float deltaTime)
+    // AnnouncementBannerTicker가 루트가 켜져 있는 동안(= Idle이 아닌 동안) 매 프레임 부른다.
+    internal void Tick(float deltaTime)
     {
         switch (phase)
         {
-            case Phase.Idle:
-                if (pending.Count > 0) BeginNext();
-                break;
-
             case Phase.FadeIn:
                 timer += deltaTime;
                 float t = Mathf.Clamp01(timer / FadeInSeconds);

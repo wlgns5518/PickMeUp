@@ -136,9 +136,6 @@ public class BattleHud : MonoBehaviour
         // 슬롯은 파티 인원수(보통 5명)뿐이라 매 프레임 훑어도 부담이 없다.
         partyPanel?.Refresh();
         enemyBar?.Refresh();
-
-        // 부고 패널은 MonoBehaviour가 아니라 코루틴을 쓸 수 없다. 페이드를 여기서 굴린다.
-        deathBanner?.Tick(Time.deltaTime);
     }
 
     private void BuildCanvas()

@@ -136,11 +136,6 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
         OwnedRoster.Changed -= HandleRosterChanged;
     }
 
-    protected override void TickWindow(float deltaTime)
-    {
-        warningBanner?.Tick(deltaTime);
-    }
-
     public override void Show()
     {
         EnsureBuilt();

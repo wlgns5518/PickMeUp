@@ -134,11 +134,6 @@ public class ArmoryUI : FacilityWindow
         EquipmentInventory.Changed -= HandleDataChanged;
     }
 
-    protected override void TickWindow(float deltaTime)
-    {
-        warningBanner?.Tick(deltaTime);
-    }
-
     public override void Show()
     {
         EnsureBuilt();

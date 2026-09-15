@@ -144,7 +144,13 @@ public class RhythmGame : MonoBehaviour
         UpdateComboPunch();
         UpdateScoreRoll();
 
-        if (!running) return;
+        if (!running)
+        {
+            // 게임도 연출도 끝났으면 다음 StartRhythm까지 쉰다. 마을에 상주하는 컴포넌트라
+            // 그대로 두면 한 번도 열지 않은 판에도 매 프레임 돈다.
+            if (IsIdle()) enabled = false;
+            return;
+        }
 
         elapsedTime += Time.deltaTime;
         SpawnDueNotes();
@@ -201,6 +207,7 @@ public class RhythmGame : MonoBehaviour
         lastShownScore = -1;
         lastJudgmentText = "";
         running = true;
+        enabled = true;
 
         HideJudgmentPopupImmediate();
         UpdateTimerUI();
@@ -751,6 +758,24 @@ public class RhythmGame : MonoBehaviour
 
         receptorPunchTimers[lane] = receptorPunchDuration;
         laneReceptors[lane].color = flashColor;
+    }
+
+    // 남은 연출이 하나도 없는가. 펀치가 끝난 리셉터도 크기를 1로 되돌리는 한 프레임이 필요하다.
+    private bool IsIdle()
+    {
+        if (judgmentPopupTimer > 0f || comboPunchTimer > 0f) return false;
+        if (scoreText != null && !Mathf.Approximately(displayedScore, score)) return false;
+
+        if (laneReceptorRects != null)
+        {
+            for (int lane = 0; lane < laneReceptorRects.Length; lane++)
+            {
+                if (receptorPunchTimers[lane] > 0f) return false;
+                if (laneReceptorRects[lane] != null && laneReceptorRects[lane].localScale.x != 1f) return false;
+            }
+        }
+
+        return true;
     }
 
     private void UpdateReceptorPunches()
