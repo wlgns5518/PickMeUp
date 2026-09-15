@@ -34,6 +34,18 @@ public partial struct EnemyAnimationRenderSystem : ISystem
         state.Dependency = job.ScheduleParallel(state.Dependency);
     }
 
+    // 구간표 배열은 Publish가 Persistent로 만들지만, 그쪽은 다시 Publish될 때만 옛 배열을 치운다.
+    // 플레이를 끝내 월드가 통째로 사라질 때는 아무도 치우지 않아 다음 도메인 리로드에 누수로 보고됐다
+    // ("Leak Detected : Persistent allocates 1 individual allocations"). 월드가 내려갈 때 여기서 함께 치운다.
+    public void OnDestroy(ref SystemState state)
+    {
+        // 지난 프레임에 걸어 둔 잡이 아직 이 배열을 읽고 있을 수 있다.
+        state.CompleteDependency();
+
+        if (!SystemAPI.TryGetSingleton(out EnemyAnimationLookup lookup)) return;
+        if (lookup.clipRanges.IsCreated) lookup.clipRanges.Dispose();
+    }
+
     [BurstCompile]
     private partial struct WriteAnimationJob : IJobEntity
     {
