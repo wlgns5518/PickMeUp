@@ -119,9 +119,15 @@ public static class CharacterBodyFactory
         body.name = string.IsNullOrEmpty(character.characterName) ? id : character.characterName;
 
         Trace(character, "장면 꺼내기 시작");
-        if (!import.InstantiateMainScene(body.transform))
+        // 읽기와 같이 Task를 코루틴에서 기다린다. 동기판 InstantiateMainScene은 이 비동기판의
+        // .Result를 그대로 붙잡고 있을 뿐이라(glTFast 6), 메인 스레드를 막는 것 말고는 다른 점이 없다.
+        Task<bool> instantiating = import.InstantiateMainSceneAsync(body.transform);
+        while (!instantiating.IsCompleted) yield return null;
+
+        if (instantiating.IsFaulted || !instantiating.Result)
         {
-            Debug.LogError($"[CharacterBodyFactory] {character.characterName}의 GLB에서 장면을 꺼내지 못했다.");
+            Debug.LogError($"[CharacterBodyFactory] {character.characterName}의 GLB에서 장면을 꺼내지 못했다" +
+                           (instantiating.Exception != null ? ": " + instantiating.Exception.Message : "."));
             UnityEngine.Object.Destroy(body);
             onDone?.Invoke(null);
             yield break;

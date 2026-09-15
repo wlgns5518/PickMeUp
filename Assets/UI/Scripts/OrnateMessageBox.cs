@@ -66,7 +66,7 @@ public class OrnateMessageBox : MonoBehaviour
         _text.fontSize = fontSize;
         _text.color = textColor;
         _text.alignment = TextAlignmentOptions.Center;
-        _text.enableWordWrapping = true;
+        _text.textWrappingMode = TextWrappingModes.Normal;
         _text.enableAutoSizing = false;
         _text.raycastTarget = false;
         _textRT.anchorMin = _textRT.anchorMax = new Vector2(0.5f, 0.5f);
