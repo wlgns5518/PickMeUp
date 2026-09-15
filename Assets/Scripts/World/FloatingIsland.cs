@@ -58,7 +58,36 @@ public class FloatingIsland : MonoBehaviour
 
     private void OnEnable()
     {
+#if UNITY_EDITOR
+        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= ReleaseMesh;
+        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += ReleaseMesh;
+#endif
         Rebuild();
+    }
+
+#if UNITY_EDITOR
+    private void OnDisable()
+    {
+        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= ReleaseMesh;
+    }
+#endif
+
+    // 메시는 DontSave라 씬이 내려가도 저절로 정리되지 않는다(DontSave에 DontUnloadUnusedAsset이 들어 있다).
+    // 지우지 않으면 마을 씬을 불러올 때마다 한 벌씩 쌓인다 — 전투를 세 번 다녀오는 동안 셋이 남는 것을 실측했다.
+    private void OnDestroy()
+    {
+        ReleaseMesh();
+    }
+
+    // 에디터에서 스크립트를 다시 컴파일할 때도 부른다. 리로드가 끝나면 mesh 필드만 비고 메시는 남아서,
+    // OnEnable이 새로 만들 때마다 옛 메시가 주인 없이 쌓였다.
+    private void ReleaseMesh()
+    {
+        if (mesh == null) return;
+
+        if (Application.isPlaying) Destroy(mesh);
+        else DestroyImmediate(mesh);
+        mesh = null;
     }
 
     private void OnValidate()

@@ -33,6 +33,10 @@ public static class CharacterBodyFactory
     // GltfImport를 놓아 버리면 그것이 만든 메시와 텍스처가 함께 사라진다. 몸이 살아 있는 동안 같이 붙잡아 둔다.
     private static readonly Dictionary<string, GltfImport> Imports = new Dictionary<string, GltfImport>();
 
+    // 이 공장이 몸마다 직접 찍어낸 것(게임용 재질, 아바타). 임포트에 속하지 않고 몸 오브젝트를 지워도
+    // 따라 지워지지 않으므로, 몸을 놓을 때 여기서 함께 지운다.
+    private static readonly Dictionary<string, List<UnityEngine.Object>> Owned = new Dictionary<string, List<UnityEngine.Object>>();
+
     // 세워 둔 몸이 사는 곳. 꺼져 있어서 그 아래 있는 동안에는 Awake가 돌지 않는다.
     private static Transform nursery;
 
@@ -58,10 +62,16 @@ public static class CharacterBodyFactory
         if (character == null) { onDone?.Invoke(null); yield break; }
 
         string id = character.Id;
-        if (Prototypes.TryGetValue(id, out GameObject existing) && existing != null)
+        if (Prototypes.TryGetValue(id, out GameObject existing))
         {
-            onDone?.Invoke(existing);
-            yield break;
+            if (existing != null)
+            {
+                onDone?.Invoke(existing);
+                yield break;
+            }
+
+            // 몸만 어떤 이유로 사라졌다. 딸려 있던 임포트와 재질을 먼저 놓아야 새로 세운 것이 덮어쓰며 새지 않는다.
+            Forget(id);
         }
 
         if (!CharacterModelStore.Exists(id))
@@ -105,6 +115,8 @@ public static class CharacterBodyFactory
         {
             Debug.LogError($"[CharacterBodyFactory] {character.characterName}의 GLB를 읽지 못했다: " +
                            (loading.Exception != null ? loading.Exception.Message : "형식이 맞지 않는다"));
+            // 실패한 임포트도 도중까지 읽은 텍스처·메시를 들고 있다. 여기서 놓지 않으면 아무도 놓지 않는다.
+            import.Dispose();
             onDone?.Invoke(null);
             yield break;
         }
@@ -123,13 +135,15 @@ public static class CharacterBodyFactory
             Debug.LogError($"[CharacterBodyFactory] {character.characterName}의 GLB에서 장면을 꺼내지 못했다" +
                            (instantiating.Exception != null ? ": " + instantiating.Exception.Message : "."));
             UnityEngine.Object.Destroy(body);
+            import.Dispose();
             onDone?.Invoke(null);
             yield break;
         }
 
         // 아바타를 세우기 전에 해야 한다. 아바타는 이 순간의 뼈 값을 기준으로 삼는다.
         BakeOutScale(body);
-        ApplyBodyMaterial(body);
+        var owned = new List<UnityEngine.Object>();
+        ApplyBodyMaterial(body, owned);
 
         // 한 프레임 쉬어 준다. 여기까지가 무거워서, 아바타 세우기와 같은 프레임에 몰면
         // 에디터가 오래 멈춘 것처럼 보인다.
@@ -139,12 +153,15 @@ public static class CharacterBodyFactory
         {
             Debug.LogError($"[CharacterBodyFactory] {character.characterName}: 사람으로 세우지 못했다 — {problem}");
             UnityEngine.Object.Destroy(body);
+            DestroyAll(owned);
+            import.Dispose();
             onDone?.Invoke(null);
             yield break;
         }
 
         var animator = body.GetComponent<Animator>();
         animator.avatar = avatar;
+        owned.Add(avatar);
 
         // 무기 소켓을 지금 박아 둔다. Meshy 리그는 손가락이 없어서 소켓을 몸을 기준 자세에 잠깐 세워 계산한다(HandSocket).
         // 전투에 나간 복사본마다 그걸 하면 애니메이션이 도는 몸을 한 번씩 흔드는 셈이고, 여기서는 몸이 아직
@@ -158,6 +175,7 @@ public static class CharacterBodyFactory
         // 씬이 갈려도 남는다(소환은 마을, 전투는 던전). 부모가 DontDestroyOnLoad라 따라간다.
         Prototypes[id] = body;
         Imports[id] = import;
+        Owned[id] = owned;
 
         onDone?.Invoke(body);
     }
@@ -255,7 +273,8 @@ public static class CharacterBodyFactory
 
     private static readonly string[] BaseColorProperties = { "baseColorTexture", "_BaseMap", "_MainTex" };
 
-    private static void ApplyBodyMaterial(GameObject body)
+    // 만든 재질은 owned에 담는다. 임포트가 아니라 이쪽 소유라 몸을 놓을 때 직접 지워야 한다.
+    private static void ApplyBodyMaterial(GameObject body, List<UnityEngine.Object> owned)
     {
         var template = Resources.Load<Material>(MaterialResourceName);
         if (template == null)
@@ -275,6 +294,7 @@ public static class CharacterBodyFactory
                 Texture baseColor = BaseColorOf(source[i]);
                 if (baseColor != null) material.SetTexture("_BaseMap", baseColor);
                 replaced[i] = material;
+                owned.Add(material);
             }
             renderer.sharedMaterials = replaced;
         }
@@ -292,14 +312,26 @@ public static class CharacterBodyFactory
         return null;
     }
 
-    /// 캐릭터가 사라졌을 때(영구 사망, 삭제) 붙잡고 있던 것을 놓는다.
+    /// 캐릭터가 사라졌을 때(합성 재료, 삭제) 붙잡고 있던 것을 놓는다.
     public static void Forget(string characterId)
     {
+        if (string.IsNullOrEmpty(characterId)) return;
+
         if (Prototypes.TryGetValue(characterId, out GameObject body) && body != null)
             UnityEngine.Object.Destroy(body);
         Prototypes.Remove(characterId);
 
+        if (Owned.TryGetValue(characterId, out List<UnityEngine.Object> owned)) DestroyAll(owned);
+        Owned.Remove(characterId);
+
         if (Imports.TryGetValue(characterId, out GltfImport import)) import?.Dispose();
         Imports.Remove(characterId);
+    }
+
+    private static void DestroyAll(List<UnityEngine.Object> objects)
+    {
+        for (int i = 0; i < objects.Count; i++)
+            if (objects[i] != null) UnityEngine.Object.Destroy(objects[i]);
+        objects.Clear();
     }
 }

@@ -45,7 +45,33 @@ public class PolygonWall : MonoBehaviour
 
     private void OnEnable()
     {
+#if UNITY_EDITOR
+        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= ReleaseMesh;
+        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += ReleaseMesh;
+#endif
         Rebuild();
+    }
+
+#if UNITY_EDITOR
+    private void OnDisable()
+    {
+        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= ReleaseMesh;
+    }
+#endif
+
+    // 메시 정리 규칙은 FloatingIsland와 같다 — DontSave라 직접 지우지 않으면 씬을 불러올 때마다 쌓인다.
+    private void OnDestroy()
+    {
+        ReleaseMesh();
+    }
+
+    private void ReleaseMesh()
+    {
+        if (mesh == null) return;
+
+        if (Application.isPlaying) Destroy(mesh);
+        else DestroyImmediate(mesh);
+        mesh = null;
     }
 
     private void OnValidate()

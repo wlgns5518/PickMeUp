@@ -112,6 +112,8 @@ public static class CharacterModelRig
         if (avatar == null || !avatar.isValid)
         {
             problem = "AvatarBuilder가 아바타를 세우지 못했다(자세가 사람 범위를 벗어났을 수 있다).";
+            // 쓰지 못할 아바타라도 만들어진 에셋이다. 버리기 전에 지운다.
+            if (avatar != null) Object.Destroy(avatar);
             avatar = null;
             return false;
         }

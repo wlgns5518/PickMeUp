@@ -118,6 +118,30 @@ public class MeshyBodyService : MonoBehaviour
         Instance.Enqueue(character);
     }
 
+    /// 명단에서 사라진 캐릭터(합성 재료)의 몸을 메모리에서 내린다.
+    ///
+    /// 세워 둔 몸은 2K 텍스처와 메시를 통째로 들고 씬 전환에도 살아남는다(CharacterBodyFactory).
+    /// 놓지 않으면 합성할 때마다 그 한 벌이 세션 내내 남는다. 디스크의 GLB는 지우지 않는다 —
+    /// 에셋이 남아 있는 한 다시 명단에 오를 수 있고, 그때는 크레딧 없이 파일에서 다시 세우면 된다.
+    /// 그래서 상태도 함께 지운다. Ready로 남겨 두면 다시 세울 차례가 와도 이미 섰다고 건너뛴다.
+    public static void Release(CharacterSO character)
+    {
+        if (character == null) return;
+
+        string id = character.Id;
+        BodyState state = BodyState.None;
+        if (instance != null) instance.states.TryGetValue(id, out state);
+
+        // 줄에 섰거나 굽는 중이면 건드리지 않는다. 줄에서 빼는 길이 없어서 지워 봐야 끝나고 다시 선다.
+        if (state == BodyState.Queued || state == BodyState.Working) return;
+
+        CharacterBodyFactory.Forget(id);
+        if (instance == null) return;
+
+        instance.states.Remove(id);
+        instance.progress.Remove(id);
+    }
+
     /// 이 명단의 몸이 다 설 때까지 기다린다. 정해진 시간을 넘기면 그대로 돌아온다 —
     /// 아직 안 된 캐릭터는 공용 몸으로 나가면 되지, 전투를 막을 일은 아니다.
     public static IEnumerator WaitUntilReady(IReadOnlyList<CharacterSO> lineup, float timeoutSeconds)

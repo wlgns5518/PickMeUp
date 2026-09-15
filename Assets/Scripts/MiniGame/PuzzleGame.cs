@@ -101,6 +101,10 @@ public class PuzzleGame : MonoBehaviour
     // 배경만 있어 처음부터 제자리에 놓아 두는 조각. 진행률에도 성공 판정에도 들어가지 않는다.
     private readonly List<PuzzlePiece> backgroundPieces = new List<PuzzlePiece>();
 
+    // 조각마다 Sprite.Create로 찍은 스프라이트. 런타임에 만든 에셋은 조각 오브젝트를 지워도 함께
+    // 사라지지 않는다 — 직접 지우지 않으면 퍼즐을 다시 시작할 때마다 최대 225장씩(Hell) 쌓인다.
+    private readonly List<Sprite> pieceSprites = new List<Sprite>();
+
     // 제자리에 놓인 조각 수. 전부 놓이면 성공이다.
     private int placedCount;
 
@@ -138,12 +142,22 @@ public class PuzzleGame : MonoBehaviour
         UpdateSnapPunches();
         UpdateBanner();
 
-        if (!running) return;
+        if (running)
+        {
+            remainingTime -= Time.deltaTime;
+            UpdateTimerUI();
 
-        remainingTime -= Time.deltaTime;
-        UpdateTimerUI();
+            if (remainingTime <= 0f) Fail();
+        }
 
-        if (remainingTime <= 0f) Fail();
+        // 퍼즐이 끝났고 연출(팝·배너)도 다 끝났으면 다음 StartPuzzle까지 쉰다.
+        // 마을에 상주하는 컴포넌트라, 그대로 두면 퍼즐을 열지 않는 동안에도 매 프레임 돈다.
+        if (!running && punchTimers.Count == 0 && bannerTimer <= 0f) enabled = false;
+    }
+
+    private void OnDestroy()
+    {
+        ReleasePieceSprites();
     }
 
     // Forge의 난이도 버튼처럼 sprite를 넘기지 않는 호출도 있다. null을 그대로 대입하면
@@ -178,6 +192,7 @@ public class PuzzleGame : MonoBehaviour
         remainingTime = timeLimit;
         lastShownSecond = -1;
         running = true;
+        enabled = true;
 
         isTimerLow = false;
         if (timerText != null) timerText.color = timerNormalColor;
@@ -228,6 +243,14 @@ public class PuzzleGame : MonoBehaviour
 
         // 빈칸은 조각과 짝이라 함께 치운다. 남겨 두면 지워진 조각을 가리키는 칸이 판에 남는다.
         ClearSlots();
+        ReleasePieceSprites();
+    }
+
+    private void ReleasePieceSprites()
+    {
+        for (int i = 0; i < pieceSprites.Count; i++)
+            if (pieceSprites[i] != null) Destroy(pieceSprites[i]);
+        pieceSprites.Clear();
     }
 
     private void SlicePieces()
@@ -282,6 +305,7 @@ public class PuzzleGame : MonoBehaviour
                 // 한 장당 4ms 가까이 든다(Hell 225장 = 840ms 멈춤).
                 Sprite pieceSprite = Sprite.Create(tex, pieceRect, new Vector2(0.5f, 0.5f), 100f,
                     0, SpriteMeshType.FullRect);
+                pieceSprites.Add(pieceSprite);
                 PuzzlePiece piece = CreatePiece(pieceSprite, currentPieceSize, currentPieceSize, col, row);
 
                 // 그림이 옅게만 든 칸은 버리지 않고 처음부터 맞춰진 것으로 둔다. 버리면 그림에

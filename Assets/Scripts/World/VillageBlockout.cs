@@ -136,6 +136,11 @@ public class VillageBlockout : MonoBehaviour
     private void OnEnable()
     {
 #if UNITY_EDITOR
+        // 스크립트를 다시 컴파일하면 머티리얼·메시 목록(직렬화되지 않는 필드)만 비고 물건은 남는다.
+        // 리로드 직전에 치워 두지 않으면 컴파일할 때마다 한 벌(머티리얼 스물몇 개와 바닥 메시)씩 주인 없이 쌓인다.
+        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= ClearGenerated;
+        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += ClearGenerated;
+
         if (!Application.isPlaying)
         {
             // 씬을 여는 도중에 오브젝트를 만들면 유니티가 싫어한다. 한 틱 미룬다.
@@ -145,6 +150,13 @@ public class VillageBlockout : MonoBehaviour
 #endif
         Rebuild();
     }
+
+#if UNITY_EDITOR
+    private void OnDisable()
+    {
+        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= ClearGenerated;
+    }
+#endif
 
     private void OnDestroy()
     {

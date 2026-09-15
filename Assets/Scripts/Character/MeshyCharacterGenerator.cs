@@ -326,6 +326,13 @@ public class MeshyCharacterGenerator : MonoBehaviour
 
         so.portrait = SavePortraitAndLoadSprite(tex, so.characterName, out string assetPath);
         so.portraitAssetPath = assetPath;
+
+#if UNITY_EDITOR
+        // 에디터에서는 방금 쓴 PNG를 에셋으로 다시 읽어 쓰므로 내려받은 텍스처는 더 쓸 데가 없다.
+        // 런타임 텍스처라 지우지 않으면 소환할 때마다 초상화 한 장(수 MB)씩 메모리에 쌓인다.
+        // 빌드에서는 이 텍스처가 곧 초상화 스프라이트의 원본이라 남겨 둔다.
+        Destroy(tex);
+#endif
     }
 
     private static IEnumerator DownloadTexture(string url, Action<Texture2D> onComplete)
@@ -372,6 +379,8 @@ public class MeshyCharacterGenerator : MonoBehaviour
             var result = new Texture2D(src.width, src.height, TextureFormat.RGBA32, false);
             result.SetPixels32(pixels);
             result.Apply();
+            // 내려받은 원본은 여기서 역할이 끝났다. 런타임 텍스처라 지우지 않으면 소환할 때마다 한 장씩 남는다.
+            Destroy(src);
             return result;
         }
         catch (Exception e)
