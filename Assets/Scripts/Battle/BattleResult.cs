@@ -27,6 +27,9 @@ public class BattleResult
     // 승리했을 때만 정해진다. Rewards 안의 원소를 그대로 가리킨다.
     public BattleReward Mvp { get; internal set; }
 
+    // 이번 판에 받은 제작 재료. 이긴 판에만 채워진다(MaterialDrops). 창고에는 이미 들어가 있다.
+    public readonly List<CraftMaterial> Materials = new List<CraftMaterial>();
+
     public bool IsFinished => Outcome != BattleOutcome.InProgress;
 
     public string KoreanOutcome
@@ -53,5 +56,6 @@ public class BattleResult
         FallenCharacters.Clear();
         Rewards.Clear();
         Mvp = null;
+        Materials.Clear();
     }
 }

@@ -9,7 +9,7 @@ using UnityEngine;
 // PartyRoster의 사망 기록은 런타임 컬렉션뿐이라 플레이를 멈추면 사라졌고,
 // 결과적으로 "영구"라는 말이 실제로는 성립하지 않았다.
 //
-// 로스터 상태와 층 해금 상태, 무기창고(제작한 장비와 누가 무엇을 들었는지)를 함께 남긴다.
+// 로스터 상태와 층 해금 상태, 무기창고(제작한 장비와 누가 무엇을 들었는지), 모아 둔 제작 재료를 함께 남긴다.
 // 캐릭터 식별은 에셋 이름(CharacterSO.name)을 쓴다. GUID는 에디터 전용이라 빌드에서 못 쓴다.
 public static class SaveSystem
 {
@@ -23,6 +23,15 @@ public static class SaveSystem
         public EquipmentGrade grade;
         // 비어 있으면 창고에 보관 중이다.
         public string owner;
+    }
+
+    // 제작 재료 한 칸. 종류와 등급이 같은 재료는 개수로 쌓인다.
+    [Serializable]
+    private class MaterialRecord
+    {
+        public MaterialKind kind;
+        public EquipmentGrade grade;
+        public int count;
     }
 
     [Serializable]
@@ -56,6 +65,8 @@ public static class SaveSystem
         public List<CharacterRecord> characters = new List<CharacterRecord>();
         // 이 칸이 없던 시절의 세이브는 빈 창고로 읽힌다.
         public List<EquipmentRecord> equipment = new List<EquipmentRecord>();
+        // 마찬가지로, 없으면 재료 하나 없이 시작한다.
+        public List<MaterialRecord> materials = new List<MaterialRecord>();
     }
 
     public static string SavePath => Path.Combine(Application.persistentDataPath, FileName);
@@ -103,15 +114,22 @@ public static class SaveSystem
             data.characters.Add(record);
         }
 
-        // 창고는 스스로 파일에서 읽어 온 뒤에 적는다(EquipmentInventory.Items). 창고를 한 번도 열지 않은
-        // 전투 씬에서 저장해도 방금 덮어쓸 파일에 있던 장비가 그대로 실린다.
+        // 창고와 재료는 스스로 파일에서 읽어 온 뒤에 적는다(EquipmentInventory.Items 등). 창고를 한 번도
+        // 열지 않은 전투 씬에서 저장해도 방금 덮어쓸 파일에 있던 장비와 재료가 그대로 실린다.
         WriteEquipment(data);
+        WriteMaterials(data);
         Write(data);
     }
 
     // 무기창고만 저장한다. 제작·장착은 마을에서 일어나 로스터 명단을 쥔 쪽이 없으므로,
     // 파일에 이미 있는 성장 기록은 그대로 두고 장비 칸만 갈아 끼운다.
-    public static void SaveEquipment()
+    public static void SaveEquipment() => Patch(WriteEquipment);
+
+    // 재료만 저장한다. 이유는 SaveEquipment와 같다.
+    public static void SaveMaterials() => Patch(WriteMaterials);
+
+    // 파일에 이미 있는 것은 그대로 두고 한 칸만 갈아 끼운다.
+    private static void Patch(Action<SaveData> write)
     {
         SaveData data;
         if (HasSave)
@@ -124,8 +142,44 @@ public static class SaveSystem
             data = new SaveData { highestClearedFloor = FloorProgress.HighestCleared };
         }
 
-        WriteEquipment(data);
+        write(data);
         Write(data);
+    }
+
+    // MaterialInventory가 처음 쓰일 때 스스로 부른다. 세이브가 없거나 깨졌으면 재료 없이 시작한다.
+    public static void LoadMaterials()
+    {
+        var restored = new List<KeyValuePair<CraftMaterial, int>>();
+
+        SaveData data;
+        if (HasSave && TryRead(out data) && data.materials != null)
+        {
+            for (int i = 0; i < data.materials.Count; i++)
+            {
+                MaterialRecord record = data.materials[i];
+                if (record == null || record.count <= 0) continue;
+                restored.Add(new KeyValuePair<CraftMaterial, int>(new CraftMaterial(record.kind, record.grade), record.count));
+            }
+        }
+
+        MaterialInventory.Restore(restored);
+    }
+
+    private static void WriteMaterials(SaveData data)
+    {
+        data.materials = new List<MaterialRecord>();
+
+        var stacks = new List<KeyValuePair<CraftMaterial, int>>();
+        MaterialInventory.CollectNonEmpty(stacks);
+        for (int i = 0; i < stacks.Count; i++)
+        {
+            data.materials.Add(new MaterialRecord
+            {
+                kind = stacks[i].Key.Kind,
+                grade = stacks[i].Key.Grade,
+                count = stacks[i].Value,
+            });
+        }
     }
 
     // EquipmentInventory가 처음 쓰일 때 스스로 부른다. 세이브가 없거나 깨졌으면 빈 창고로 시작한다.
@@ -241,8 +295,9 @@ public static class SaveSystem
         try
         {
             if (File.Exists(SavePath)) File.Delete(SavePath);
-            // 창고는 파일에서 스스로 읽어 온 값을 들고 있다. 파일이 사라졌는데 그대로 두면 다음 저장이 되살려 놓는다.
+            // 창고와 재료는 파일에서 스스로 읽어 온 값을 들고 있다. 파일이 사라졌는데 그대로 두면 다음 저장이 되살려 놓는다.
             EquipmentInventory.Forget();
+            MaterialInventory.Forget();
         }
         catch (Exception e)
         {

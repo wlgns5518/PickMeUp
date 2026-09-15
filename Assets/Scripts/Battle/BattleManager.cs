@@ -223,7 +223,13 @@ public class BattleManager : MonoBehaviour
 
         // 이긴 층은 해금 상태에 남긴다. 층은 자동으로 이어지지 않고,
         // 플레이어가 메인 씬에서 다시 고르는 구조라 여기서는 기록만 한다.
-        if (outcome == BattleOutcome.Victory) FloorProgress.MarkCleared(FloorProgress.SelectedFloor);
+        if (outcome == BattleOutcome.Victory)
+        {
+            // 재료는 해금을 기록하기 전에 굴린다. 방금 깬 층의 등급으로 받아야 한다.
+            MaterialDrops.Roll(FloorProgress.SelectedFloor, rewardSettings, result.Materials);
+            MaterialInventory.AddRange(result.Materials);
+            FloorProgress.MarkCleared(FloorProgress.SelectedFloor);
+        }
 
         CaptureStress();
         SaveRoster();

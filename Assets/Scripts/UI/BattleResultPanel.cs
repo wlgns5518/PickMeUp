@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using TMPro;
 using UnityEngine;
@@ -110,9 +111,7 @@ public class BattleResultPanel
 
         AppendLevelUps(result);
         AppendSkillUnlocks(result);
-
-        Builder.Append("보상이 지급됩니다.\n");
-        Builder.Append("우편함을 확인해주세요.\n");
+        AppendMaterials(result);
 
         if (result.Mvp != null && result.Mvp.Character != null)
         {
@@ -189,6 +188,38 @@ public class BattleResultPanel
         }
 
         if (shown > 0) Builder.Append('\n');
+    }
+
+    // 받은 제작 재료. 같은 재료는 묶어서 "B급 강철 x2"로 적는다. 등급 글자색은 제작소·무기창고와 같다.
+    private void AppendMaterials(BattleResult result)
+    {
+        if (result.Materials.Count == 0) return;
+
+        var stacks = new List<CraftMaterial>();
+        var counts = new List<int>();
+        for (int i = 0; i < result.Materials.Count; i++)
+        {
+            int index = stacks.IndexOf(result.Materials[i]);
+            if (index < 0)
+            {
+                stacks.Add(result.Materials[i]);
+                counts.Add(1);
+            }
+            else
+            {
+                counts[index]++;
+            }
+        }
+
+        Builder.Append("재료 획득\n");
+        for (int i = 0; i < stacks.Count; i++)
+        {
+            if (i > 0) Builder.Append(",  ");
+            string color = ColorUtility.ToHtmlStringRGB(EquipmentGradeNames.ColorOf(stacks[i].Grade));
+            Builder.Append("<color=#").Append(color).Append('>').Append(stacks[i].DisplayName).Append("</color>");
+            if (counts[i] > 1) Builder.Append(" x").Append(counts[i]);
+        }
+        Builder.Append("\n장비제작소에서 쓸 수 있습니다.\n");
     }
 
     // 영구 사망은 승패와 무관하게 항상 알린다. 이 게임에서 되돌릴 수 없는 유일한 손실이다.
