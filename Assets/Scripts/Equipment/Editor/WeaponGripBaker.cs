@@ -454,9 +454,14 @@ public static class WeaponGripBaker
         Quaternion rotation;
         if (!MeasureGrip(source, definition.type, HandOf(definition), out position, out rotation)) return false;
 
-        model.localPosition = position;
+        // 손으로 줄여 둔 크기는 건드리지 않는다. 방패 셋은 애니메이션에서 몸을 뚫지 않도록
+        // 그립을 중심으로 0.5배로 줄여 놓았는데, 여기서 배율을 1로 되돌리면 자세만 다시 잡으려다
+        // 방패가 원래 크기로 부풀어 오른다. MeasureGrip이 내주는 자리는 배율 1 기준이므로
+        // 같은 배율로 당겨야 "판만 그립 쪽으로 줄어든" 자세가 그대로 유지된다.
+        float modelScale = Mathf.Max(0.0001f, model.localScale.x);
+        model.localPosition = position * modelScale;
         model.localRotation = rotation;
-        model.localScale = Vector3.one;
+        model.localScale = Vector3.one * modelScale;
 
         Transform gripPoint = grip != null ? grip.GripPoint : null;
         if (gripPoint != null && gripPoint != contents.transform)
@@ -572,7 +577,21 @@ public static class WeaponGripBaker
             handleCount++;
         }
 
-        Vector3 anchor = handleCount > 0 ? handleSum / handleCount : bounds.center;
+        // 판이 원형에 가까우면 메시에서 손잡이를 찾지 않고 한가운데를 잡는다.
+        //
+        // 원형 방패는 보스 뒤 한가운데를 주먹으로 쥐는 물건이라 잡을 자리가 한 곳뿐이다. 그런데 이 팩의
+        // 원형 방패들은 뒷면 테두리·장식 정점이 한쪽으로 쏠려 있어서, 위에서 고른 "손잡이"가 판 가운데에서
+        // 크게 벗어났다 — Round_Metal 5.1cm, Round_Metal_Shield_Small 11.6cm. 그만큼 방패가 팔 바깥으로
+        // 밀려 달리기·죽음 모션에서 몸통을 뚫었다(작은 방패가 같은 0.42m인데도 6.3cm 파고들던 이유다).
+        //
+        // 카이트처럼 길쭉한 판은 실제로 위쪽을 잡으므로(19cm 치우침이 정상) 그대로 메시에서 찾는다.
+        float acrossA, acrossB;
+        if (thin == Vector3.right) { acrossA = bounds.size.y; acrossB = bounds.size.z; }
+        else if (thin == Vector3.up) { acrossA = bounds.size.x; acrossB = bounds.size.z; }
+        else { acrossA = bounds.size.x; acrossB = bounds.size.y; }
+        bool circular = Mathf.Max(acrossA, acrossB) <= Mathf.Min(acrossA, acrossB) * 1.3f;
+
+        Vector3 anchor = !circular && handleCount > 0 ? handleSum / handleCount : bounds.center;
         // 판 위의 점으로 옮긴다. 깊이는 판에, 가로세로는 손잡이에 맞춘다.
         anchor += thin * (board - Vector3.Dot(anchor, thin));
 
