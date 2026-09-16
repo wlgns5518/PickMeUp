@@ -15,7 +15,7 @@ MonoBehaviour:
   entries:
   - type: 1
     controller: {fileID: 22100000, guid: cc7f50da8c6ffb846b972b8903c98aaa, type: 2}
-    attackCount: 10
+    attackCount: 7
   - type: 2
     controller: {fileID: 22100000, guid: 11cfa17218caeca44bdb399703658de4, type: 2}
     attackCount: 11
