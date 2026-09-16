@@ -40,3 +40,6 @@ MonoBehaviour:
   - type: 10
     controller: {fileID: 22100000, guid: f5094e6861e5c33409b436e12ac53d26, type: 2}
     attackCount: 3
+  shieldClips:
+  - original: {fileID: 7400000, guid: 59929a0c23b907e41977a4df7fd407ce, type: 2}
+    shield: {fileID: 7400000, guid: 1b3c649dcdaaf894db5c457215e5db87, type: 2}

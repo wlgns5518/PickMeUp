@@ -112,6 +112,8 @@ public class WeaponEquipper : MonoBehaviour
     private RuntimeAnimatorController defaultController;
     private bool defaultControllerCaptured;
     private WeaponType appliedAnimatorWeapon = (WeaponType)(-1);
+    // 방패는 주무기와 따로 기억한다. 같은 무기를 든 채로 방패만 내려놓아도 막기 자세가 바뀌어야 한다.
+    private bool appliedAnimatorShield;
     private GameObject nockedArrow;
     private Vector3 arrowLocalPosition;
     private Quaternion arrowLocalRotation = Quaternion.identity;
@@ -383,6 +385,10 @@ public class WeaponEquipper : MonoBehaviour
 
     // 주무기 종류에 맞는 Attack1~3 Override Controller로 갈아 끼운다.
     // 등록된 게 없으면(None, Shield 등) 프리팹에 원래 물려 있던 컨트롤러(맨손)로 되돌린다.
+    //
+    // 방패를 들었으면 그 위에 한 겹을 더 얹어 막기 자세를 방패용으로 바꾼다. 방패는 주무기가 아니라
+    // 보조 손이 정하는 것이라 이 표(WeaponType → 컨트롤러)만으로는 갈라지지 않는다 — 같은 한손검이라도
+    // 방패를 든 탱커와 맨손으로 받아내는 검사가 다른 자세를 잡아야 한다.
     private void ApplyWeaponAnimator(WeaponType type)
     {
         if (ResolveAnimator() == null) return;
@@ -393,13 +399,17 @@ public class WeaponEquipper : MonoBehaviour
             defaultControllerCaptured = true;
         }
 
-        if (type == appliedAnimatorWeapon) return;
+        bool shield = OffHand != null && CharacterRules.IsShield(OffHand.type);
+        if (type == appliedAnimatorWeapon && shield == appliedAnimatorShield) return;
         appliedAnimatorWeapon = type;
+        appliedAnimatorShield = shield;
 
         WeaponAnimationLibrary.Entry entry = WeaponAnimationLibrary.FindEntry(type);
         RuntimeAnimatorController weaponController = entry != null ? entry.controller : null;
 
-        animator.runtimeAnimatorController = weaponController != null ? weaponController : defaultController;
+        RuntimeAnimatorController applied = weaponController != null ? weaponController : defaultController;
+        if (shield) applied = WeaponAnimationLibrary.WithShield(applied);
+        animator.runtimeAnimatorController = applied;
 
         // 컨트롤러를 갈아 끼우면 Animator는 다음 갱신에서야 새 상태 기계로 다시 묶인다.
         // 그 사이에 들어온 CrossFade와 HasState는 바뀌기 전 컨트롤러를 기준으로 해석되므로,

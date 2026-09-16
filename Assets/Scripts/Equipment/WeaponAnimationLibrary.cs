@@ -24,14 +24,40 @@ public class WeaponAnimationLibrary : ScriptableObject
 
     public List<Entry> entries = new List<Entry>();
 
+    // 방패를 들었을 때만 갈아 끼우는 클립 한 쌍.
+    [System.Serializable]
+    public class ShieldClip
+    {
+        [Tooltip("기본 컨트롤러에 물려 있는 클립(갈아 끼울 대상).")]
+        public AnimationClip original;
+        [Tooltip("방패를 들었을 때 그 자리에 대신 재생할 클립.")]
+        public AnimationClip shield;
+    }
+
+    [Tooltip("주무기 종류와 무관하게, 보조 손에 방패가 들렸을 때만 갈아 끼우는 클립들. " +
+             "막기 자세가 여기 들어간다 — 방패 없이 무기로 받아내는 직군(패링·무기 방어)은 " +
+             "기본 클립을 그대로 쓰고, 방패를 든 유닛만 방패를 앞으로 세우는 자세로 바뀐다.")]
+    public List<ShieldClip> shieldClips = new List<ShieldClip>();
+
     private static WeaponAnimationLibrary cached;
     private static bool searched;
+
+    // 방패용으로 한 겹 덧씌운 컨트롤러. 기본 컨트롤러 하나당 하나만 만들어 모든 유닛이 나눠 쓴다 —
+    // 유닛마다 만들면 스폰 수만큼 런타임 에셋이 쌓인다.
+    private static readonly Dictionary<RuntimeAnimatorController, AnimatorOverrideController> ShieldVariants =
+        new Dictionary<RuntimeAnimatorController, AnimatorOverrideController>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetCache()
     {
         cached = null;
         searched = false;
+
+        // 도메인 리로드를 끈 에디터에서는 이 표가 플레이를 넘어 살아남는다. 지난 판에 만든
+        // 컨트롤러를 그대로 두면 재생할 때마다 하나씩 쌓이므로 여기서 걷어낸다.
+        foreach (KeyValuePair<RuntimeAnimatorController, AnimatorOverrideController> pair in ShieldVariants)
+            if (pair.Value != null) Destroy(pair.Value);
+        ShieldVariants.Clear();
     }
 
     public static WeaponAnimationLibrary Instance
@@ -65,5 +91,47 @@ public class WeaponAnimationLibrary : ScriptableObject
     {
         Entry entry = FindEntry(type);
         return entry != null ? entry.controller : null;
+    }
+
+    // 방패를 든 유닛이 쓸 컨트롤러. shieldClips에 적힌 클립만 갈아 끼운 한 겹을 덧씌운다.
+    // 갈아 끼울 것이 없으면 받은 컨트롤러를 그대로 돌려준다.
+    //
+    // 무기 컨트롤러 위에 한 겹을 더 얹는 방식이라, 무기별 오버라이드를 고쳐도 방패 쪽이
+    // 저절로 따라온다 — 무기마다 "방패 있는 판"을 따로 만들어 두면 둘이 어긋난다.
+    public static RuntimeAnimatorController WithShield(RuntimeAnimatorController baseController)
+    {
+        if (baseController == null) return null;
+
+        WeaponAnimationLibrary library = Instance;
+        if (library == null || library.shieldClips == null || library.shieldClips.Count == 0) return baseController;
+
+        AnimatorOverrideController variant;
+        if (ShieldVariants.TryGetValue(baseController, out variant) && variant != null) return variant;
+
+        // 오버라이드 컨트롤러 위에 오버라이드 컨트롤러를 그대로 씌우면 안쪽 것이 통째로 버려진다
+        // (무기 컨트롤러를 감쌌더니 Attack1~7이 맨손 클립으로 돌아갔다). 그래서 뿌리 컨트롤러를
+        // 바탕으로 한 장만 만들고, 무기가 갈아 끼운 것을 먼저 옮겨 담은 뒤 방패 것을 얹는다.
+        var weapon = baseController as AnimatorOverrideController;
+        variant = new AnimatorOverrideController(weapon != null ? weapon.runtimeAnimatorController : baseController);
+        if (weapon != null)
+        {
+            var carried = new List<KeyValuePair<AnimationClip, AnimationClip>>(weapon.overridesCount);
+            weapon.GetOverrides(carried);
+            variant.ApplyOverrides(carried);
+        }
+        variant.name = baseController.name + " (Shield)";
+        // 씬에 속하지 않는 런타임 에셋이다. 씬을 넘겨도 살아 있어야 하고(유닛이 계속 쓴다)
+        // 저장되어서도 안 된다. 치우는 것은 ResetCache가 맡는다.
+        variant.hideFlags = HideFlags.HideAndDontSave;
+
+        for (int i = 0; i < library.shieldClips.Count; i++)
+        {
+            ShieldClip swap = library.shieldClips[i];
+            if (swap == null || swap.original == null || swap.shield == null) continue;
+            variant[swap.original] = swap.shield;
+        }
+
+        ShieldVariants[baseController] = variant;
+        return variant;
     }
 }
