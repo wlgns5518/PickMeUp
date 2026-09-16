@@ -84,6 +84,14 @@ public struct EnemyStats : IComponentData
     public float biteDuration;
     public float biteCooldown;
 
+    // 물린 아군이 뿌리치지 못하고 굳어 있는 시간(초). 0이면 경직시키지 않는다.
+    //
+    // 이게 이 동작의 전부다 — 물어뜯기는 피해로 잡는 수가 아니라 한 명을 판에서 빼는 수다.
+    // 강인도를 깎아 깨지기를 기다리는 것과는 다르므로, 무는 순간에는 강인도 피해를 아예 넘기지
+    // 않는다. 둘 다 넣으면 그 한 방으로 강인도가 먼저 깨지면서 면역 시간이 켜지고, 정작 경직이
+    // 그 면역에 막힌다(아군 쪽 UnitController.ApplySkillDamage 주석과 같은 이유다).
+    public float biteStaggerDuration;
+
     // 이 리그가 가진 콤보 단수. 굽힌 클립 수에서 나오므로 스포너가 아니라 EnemyHorde가 채운다 —
     // 리그마다 단수가 다르고, 없는 클립을 가리키면 그 스윙만 서 있는 그림이 된다.
     // 0이나 1이면 콤보 없이 1단만 반복한다.
@@ -190,6 +198,14 @@ public struct EnemyAction : IComponentData
 
     // 지금 구간이 끝나기까지 남은 시간.
     public float timer;
+
+    // 지금 재생 중인 클립이 걸쳐야 할 시간(초). 이 구간이 끝나는 프레임에 클립도 끝나도록
+    // 진행도를 이 값으로 나눠 민다(EnemyCombatSystem.Advance).
+    //
+    // 클립 종류로 길이를 고르던 때는 표에 없는 클립이 전부 1초로 떨어져, 콤보 2~7단은 75%에서
+    // 잘리고 방향별 피격은 30%만 재생되고 끊겼다. 구간을 시작하는 쪽이 자기 길이를 적어 두면
+    // 클립을 새로 늘려도 그 구멍이 다시 생기지 않는다.
+    public float animationLength;
 
     // 다음 스윙이 가능해지는 시각.
     public double nextAttackTime;

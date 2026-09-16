@@ -70,6 +70,11 @@ public class EnemyHordeSpawner : MonoBehaviour
     [Tooltip("재사용 대기(초). 물린 아군이 다시 물리지 않는 시간이기도 하다 — " +
              "그러지 않으면 한 명에게 여럿이 동시에 물고 늘어져 그 자리에서 녹는다.")]
     [SerializeField] private float biteCooldown = 5f;
+    [Tooltip("물린 아군이 뿌리치지 못하고 굳어 있는 시간(초). 0이면 경직시키지 않는다.\n" +
+             "게임오브젝트 고블린의 skillStaggerDuration이 1.5라 같은 값으로 둔다.\n\n" +
+             "이게 이 동작의 전부다 — 물어뜯기는 피해로 잡는 수가 아니라 한 명을 판에서 빼는 수다. " +
+             "그래서 무는 순간에는 강인도 피해를 넘기지 않는다(그쪽으로 깨지면 면역이 켜져 경직이 막힌다).")]
+    [SerializeField] private float biteStaggerDuration = 1.5f;
 
     [Header("강인도와 무너짐")]
     [Tooltip("이 적의 한 대가 아군의 강인도를 얼마나 깎는가. 아군의 maxPoise가 100이므로 " +
@@ -115,6 +120,7 @@ public class EnemyHordeSpawner : MonoBehaviour
             biteDamage = Mathf.Max(0, Mathf.RoundToInt(biteDamage * (1f + damagePerLevel * steps))),
             biteDuration = biteDuration,
             biteCooldown = biteCooldown,
+            biteStaggerDuration = biteStaggerDuration,
 
             attackWindup = attackWindup,
             attackRecovery = attackRecovery,

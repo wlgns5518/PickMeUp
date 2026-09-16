@@ -92,6 +92,10 @@ public partial class EnemyBridgeOutputSystem : SystemBase
 [UpdateInGroup(typeof(EnemySimulationGroup), OrderFirst = true)]
 public partial struct EnemyDamageSystem : ISystem
 {
+    // 쓰러진 뒤 엔티티가 남아 있는 시간. 쓰러지는 모션이 이 시간에 딱 맞춰 끝나야 하므로
+    // 지우는 쪽(EnemyCleanupSystem)과 같은 값을 써야 한다.
+    internal const float CorpseLinger = 1.2f;
+
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
@@ -107,6 +111,7 @@ public partial struct EnemyDamageSystem : ISystem
         var animationLookup = SystemAPI.GetComponentLookup<EnemyAnimation>();
         var statsLookup = SystemAPI.GetComponentLookup<EnemyStats>(true);
         var transformLookup = SystemAPI.GetComponentLookup<LocalTransform>();
+        var targetLookup = SystemAPI.GetComponentLookup<EnemyTarget>();
 
         while (bridge.hitsOnEnemies.TryDequeue(out EnemyWorldBridge.HitOnEnemy hit))
         {
@@ -176,6 +181,25 @@ public partial struct EnemyDamageSystem : ISystem
             // 흘려내기(피해 0)로는 갱신하지 않는다 — 쳐낸 것이 처치의 공은 아니다.
             if (damage > 0) health.lastAttackerAllyIndex = hit.attackerAllyIndex;
 
+            // 맞았으면 때린 쪽을 돌아본다. 아직 아무도 겨누지 않고 있을 때만이다 —
+            // 이미 붙어 싸우는 상대가 있으면 뒤에서 한 대 맞았다고 그쪽으로 돌아서면 안 된다.
+            //
+            // 이게 없으면 등지고 서 있던 고블린이 영영 깨어나지 않는다. 표적이 없으면 움직이지도
+            // 돌지도 않는데(EnemyMovementSystem의 facing은 표적이 있어야 잡힌다), 표적을 고르는
+            // 쪽은 시야각 안만 보기 때문이다. 스폰 회전이 무작위라 그냥 두면 상당수가 그렇게 굳는다.
+            if (damage > 0 && hit.attackerAllyIndex >= 0 && bridge.allies.IsCreated &&
+                targetLookup.HasComponent(hit.enemy))
+            {
+                EnemyTarget target = targetLookup[hit.enemy];
+                bool hasTarget = target.allyIndex >= 0 && target.allyIndex < bridge.allies.Length &&
+                                 bridge.allies[target.allyIndex].alive != 0;
+                if (!hasTarget)
+                {
+                    target.allyIndex = hit.attackerAllyIndex;
+                    targetLookup[hit.enemy] = target;
+                }
+            }
+
             if (health.current <= 0)
             {
                 health.current = 0;
@@ -187,7 +211,8 @@ public partial struct EnemyDamageSystem : ISystem
                     allyIndex = health.lastAttackerAllyIndex,
                 });
                 // 쓰러지는 모션이 끝나면 엔티티를 지운다(EnemyCleanupSystem).
-                action.timer = 1.2f;
+                action.timer = CorpseLinger;
+                action.animationLength = CorpseLinger;
                 animation.clip = EnemyClip.Death;
                 animation.normalizedTime = 0f;
 
@@ -220,6 +245,7 @@ public partial struct EnemyDamageSystem : ISystem
 
                 action.kind = EnemyActionKind.Stagger;
                 action.timer = math.max(0.3f, staggerDuration);
+                action.animationLength = action.timer;
                 action.struckThisSwing = true;
                 animation.clip = EnemyClip.Stagger;
                 animation.normalizedTime = 0f;
@@ -232,6 +258,7 @@ public partial struct EnemyDamageSystem : ISystem
                 {
                     action.kind = EnemyActionKind.HitReact;
                     action.timer = stats.hitReactionDuration;
+                    action.animationLength = stats.hitReactionDuration;
                     animation.clip = DirectionalHitClip(transform, hit.fromPosition);
                     animation.normalizedTime = 0f;
                 }
@@ -289,7 +316,8 @@ public partial struct EnemyCleanupSystem : ISystem
             if (action.ValueRO.kind != EnemyActionKind.Dead) continue;
 
             action.ValueRW.timer -= deltaTime;
-            animation.ValueRW.normalizedTime = math.saturate(animation.ValueRO.normalizedTime + deltaTime / 1.2f);
+            float length = math.max(0.01f, action.ValueRO.animationLength);
+            animation.ValueRW.normalizedTime = math.saturate(animation.ValueRO.normalizedTime + deltaTime / length);
 
             if (action.ValueRO.timer <= 0f) ecb.DestroyEntity(entity);
         }

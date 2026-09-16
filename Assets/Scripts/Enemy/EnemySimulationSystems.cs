@@ -164,6 +164,15 @@ public partial struct EnemyTargetingSystem : ISystem
             // 들고 있던 표적이 아직 쓸 만하면 그대로 둔다.
             if (IsUsable(target.allyIndex) && now < target.nextRetargetTime) return;
 
+            // 지금 아무도 겨누고 있지 않다면 시야각을 따지지 않는다.
+            //
+            // 스폰 회전이 무작위라 시야각(160°) 밖에서 시작하는 개체가 절반이 넘는데, 표적이
+            // 없으면 움직이지도 돌지도 않는다(EnemyMovementSystem의 facing은 표적이 있어야 잡힌다).
+            // 그래서 등지고 선 고블린은 영영 아무도 못 찾고 그 자리에서 맞고만 있었다.
+            // 서 있는 동안 주위를 둘러본다고 보는 편이 맞다 — 한 번 붙고 나면 아래 규칙대로
+            // 다시 시야각이 걸린다.
+            bool blind = !IsUsable(target.allyIndex);
+
             int best = EnemyTarget.None;
             float bestScore = float.MaxValue;
             float3 forward = math.normalizesafe(transform.Forward(), new float3(0f, 0f, 1f));
@@ -181,7 +190,7 @@ public partial struct EnemyTargetingSystem : ISystem
 
                 // 이미 겨누고 있던 상대는 시야각을 따지지 않는다. 등을 돌린 순간
                 // 표적을 놓아 버리면 쫓아가다 말고 멈춰 선다.
-                if (i != target.allyIndex && distance > 0.01f)
+                if (!blind && i != target.allyIndex && distance > 0.01f)
                 {
                     float alignment = math.dot(forward, toAlly / distance);
                     if (alignment < cosHalfFov) continue;
@@ -227,10 +236,15 @@ public partial struct EnemyCombatSystem : ISystem
         if (!SystemAPI.TryGetSingleton(out EnemyWorldBridge.BridgeData bridge)) return;
         if (!bridge.allies.IsCreated) return;
 
+        // 구워 둔 클립 길이. 제자리걸음과 달리기는 게임플레이가 정한 시간이 없어서
+        // 클립 자신의 길이로 돌려야 한다 — 없으면 1초로 보고 돈다(ClipLength).
+        SystemAPI.TryGetSingleton(out EnemyAnimationLookup lookup);
+
         var job = new CombatJob
         {
             allies = bridge.allies.AsArray(),
             hits = bridge.hitsOnAllies.AsParallelWriter(),
+            clipRanges = lookup.clipRanges,
             deltaTime = SystemAPI.Time.DeltaTime,
             now = SystemAPI.Time.ElapsedTime,
         };
@@ -243,11 +257,13 @@ public partial struct EnemyCombatSystem : ISystem
     {
         [ReadOnly] public NativeArray<EnemyWorldBridge.AllyState> allies;
         public NativeQueue<EnemyWorldBridge.HitOnAlly>.ParallelWriter hits;
+        // x = 시작 줄, y = 프레임 수, z = 초 단위 길이. 여기서는 z만 쓴다.
+        [ReadOnly] public NativeArray<float4> clipRanges;
         public float deltaTime;
         public double now;
 
         private void Execute(Entity entity, ref EnemyAction action, ref EnemyAnimation animation,
-            in EnemyTarget target, in EnemyStats stats, ref LocalTransform transform)
+            in EnemyTarget target, in EnemyStats stats, in EnemyMotion motion, ref LocalTransform transform)
         {
             if (action.kind == EnemyActionKind.Dead) return;
 
@@ -266,19 +282,24 @@ public partial struct EnemyCombatSystem : ISystem
                 case EnemyActionKind.HitReact:
                 case EnemyActionKind.Stagger:
                     // 스스로 아무것도 못 한다. 시간이 다하면 교전으로 돌아간다.
-                    if (action.timer <= 0f) EnterApproach(ref action, ref animation);
-                    else Advance(ref animation, action, stats);
-                    return;
+                    if (action.timer > 0f) { Advance(ref animation, action); return; }
+                    break;
 
                 case EnemyActionKind.Windup:
                     TickWindup(entity, ref action, ref animation, target, stats, transform);
                     return;
 
                 case EnemyActionKind.Recover:
-                    if (action.timer <= 0f) EnterApproach(ref action, ref animation);
-                    else Advance(ref animation, action, stats);
-                    return;
+                    if (action.timer > 0f) { Advance(ref animation, action); return; }
+                    break;
             }
+
+            // 구간이 끝났으면 그 프레임에 바로 다음 수를 고른다.
+            //
+            // 예전에는 여기서 EnterApproach가 달리기 클립을 0부터 물려 놓고 끝냈다. 그런데
+            // 바로 아래 판단이 다음 프레임에 대개 제자리걸음으로 덮어써서, 스윙이 끝날 때마다
+            // 달리기 첫 프레임이 한 장씩 끼어들었다 — 공격 쿨다운이 1.1초라 마리마다 1초에
+            // 한 번씩 튀는 것이 그대로 보였다.
 
             // 여기부터가 Idle/Approach — 스스로 다음 수를 고를 수 있는 구간이다.
             if (!TryGetAlly(target.allyIndex, out EnemyWorldBridge.AllyState ally))
@@ -287,8 +308,7 @@ public partial struct EnemyCombatSystem : ISystem
                 // 겨눌 상대가 사라졌으면 콤보도 처음으로 돌아간다. 다음에 붙는 상대에게
                 // 5단부터 시작하면 그 앞 네 단을 건너뛴 셈이 된다.
                 action.comboIndex = 0;
-                animation.clip = EnemyClip.Idle;
-                animation.normalizedTime = math.frac(animation.normalizedTime + deltaTime * 0.5f);
+                Loop(ref animation, EnemyClip.Idle);
                 return;
             }
 
@@ -305,6 +325,7 @@ public partial struct EnemyCombatSystem : ISystem
             {
                 action.kind = EnemyActionKind.Bite;
                 action.timer = stats.biteDuration;
+                action.animationLength = stats.biteDuration;
                 action.struckThisSwing = false;
                 action.nextBiteTime = now + stats.biteCooldown;
                 animation.clip = EnemyClip.Bite;
@@ -316,6 +337,9 @@ public partial struct EnemyCombatSystem : ISystem
             {
                 action.kind = EnemyActionKind.Windup;
                 action.timer = stats.attackWindup;
+                // 한 번의 스윙은 들어올리기와 거두기 두 구간에 걸쳐 있고, 클립 하나가 그 둘을
+                // 통째로 덮는다. 그래서 길이는 여기서 한 번만 잡고 EnterRecover는 건드리지 않는다.
+                action.animationLength = stats.attackWindup + stats.attackRecovery;
                 action.struckThisSwing = false;
                 animation.clip = ComboClip(action.comboIndex, stats.comboSteps);
                 animation.normalizedTime = 0f;
@@ -333,6 +357,7 @@ public partial struct EnemyCombatSystem : ISystem
                 {
                     action.kind = EnemyActionKind.Leap;
                     action.timer = stats.leapDuration;
+                    action.animationLength = stats.leapDuration;
                     action.struckThisSwing = false;
                     action.leapDirection = toAlly / flat;
                     // 멈춰 설 거리만큼 남기고 뛴다. 상대에게 그대로 파고들면 겹쳐 선다.
@@ -346,8 +371,42 @@ public partial struct EnemyCombatSystem : ISystem
             }
 
             action.kind = EnemyActionKind.Approach;
-            animation.clip = inRange ? EnemyClip.Idle : EnemyClip.Run;
-            animation.normalizedTime = math.frac(animation.normalizedTime + deltaTime * 1.4f);
+
+            // 걷는 모션은 실제로 움직이는지로 고른다. 예전에는 사거리 안인지로 골랐는데,
+            // 멈춰 서는 거리(1.0m)와 사거리(1.2m)가 달라서 그 사이 20cm 구간에서는 미끄러지며
+            // 제자리걸음을 했고, 상대가 그 경계에서 오가면 두 클립이 매 프레임 뒤바뀌었다.
+            // 속도는 가속으로 이미 완만해져 있어(lerp) 그 자체가 경계에서의 떨림을 막아 준다.
+            float speedSq = math.lengthsq(motion.velocity);
+            float walkThreshold = stats.moveSpeed * 0.25f;
+            Loop(ref animation, speedSq > walkThreshold * walkThreshold ? EnemyClip.Run : EnemyClip.Idle);
+        }
+
+        // 도는 클립(제자리걸음·달리기)을 한 칸 민다. 게임플레이가 정한 시간이 없으므로
+        // 구워 둔 클립 길이로 돌린다 — 달리기는 0.867초라, 예전의 고정 1.4회/초는 21% 빨랐다.
+        private void Loop(ref EnemyAnimation animation, EnemyClip clip)
+        {
+            // 클립이 바뀌는 순간에만 처음으로 돌린다. 한 번만 재생하는 클립을 마치고 오면
+            // 진행도가 1에 가깝게 남아 있어서, 그대로 이어 붙이면 걷는 모션이 끝자락부터 시작한다.
+            // 매 프레임 0으로 되돌리면 안 된다 — 스폰 때 흩어 놓은 시작 지점(EnemyHorde)이
+            // 지워져 1000마리가 같은 박자로 숨 쉬게 된다.
+            if (animation.clip != clip)
+            {
+                animation.clip = clip;
+                animation.normalizedTime = 0f;
+                return;
+            }
+
+            animation.normalizedTime = math.frac(animation.normalizedTime + deltaTime / ClipLength(clip));
+        }
+
+        // 구워 둔 클립 길이(초). 구간표가 아직 없으면 1초로 본다.
+        private float ClipLength(EnemyClip clip)
+        {
+            int index = (int)clip;
+            if (!clipRanges.IsCreated || index < 0 || index >= clipRanges.Length) return 1f;
+
+            float length = clipRanges[index].z;
+            return length > 0.01f ? length : 1f;
         }
 
         // 덤벼드는 구간. 클립 진행도에 맞춰 밀고, 착지하는 프레임에 한 번 때린다.
@@ -446,7 +505,11 @@ public partial struct EnemyCombatSystem : ISystem
                         {
                             allyIndex = target.allyIndex,
                             damage = stats.biteDamage,
-                            poiseDamage = stats.poiseDamagePerHit * 2f,
+                            // 강인도 피해는 일부러 0이다. 무는 수의 강인도 효과는 아래 경직 그 자체이고,
+                            // 둘 다 넣으면 이 한 방으로 강인도가 먼저 깨지면서 면역 시간이 켜져
+                            // 정작 경직이 그 면역에 막힌다(아군 쪽 ApplySkillDamage와 같은 규칙).
+                            poiseDamage = 0f,
+                            forceStaggerDuration = stats.biteStaggerDuration,
                             fromPosition = transform.Position,
                             source = self,
                             // 문 상대는 이 동작이 한 바퀴 돌 동안 다시 물리지 않는다.
@@ -463,7 +526,7 @@ public partial struct EnemyCombatSystem : ISystem
         private void TickWindup(Entity self, ref EnemyAction action, ref EnemyAnimation animation,
             in EnemyTarget target, in EnemyStats stats, in LocalTransform transform)
         {
-            Advance(ref animation, action, stats);
+            Advance(ref animation, action);
 
             if (action.timer > 0f) return;
             if (action.struckThisSwing)
@@ -528,24 +591,15 @@ public partial struct EnemyCombatSystem : ISystem
             return (EnemyClip)((int)EnemyClip.Attack2 + (step - 1));
         }
 
-        private void EnterApproach(ref EnemyAction action, ref EnemyAnimation animation)
+        // 한 번만 재생하는 클립의 진행도를 밀어 준다. 실제로 뼈를 움직이는 것은 렌더러의 몫이다.
+        //
+        // 길이는 구간을 시작한 쪽이 적어 둔 값을 쓴다(EnemyAction.animationLength). 예전에는
+        // 클립 종류로 골랐는데 표에 Attack·Hit·Stagger 셋만 있어서, 나머지가 전부 1초로 떨어졌다 —
+        // 콤보 2~7단은 0.75초짜리 스윙을 1초로 나눠 75%에서 잘렸고, 방향별 피격 네 종은
+        // 0.3초 동안 30%만 재생되고 끊겼다. 고블린이 움찔하다 마는 것처럼 보이던 원인이다.
+        private void Advance(ref EnemyAnimation animation, in EnemyAction action)
         {
-            action.kind = EnemyActionKind.Approach;
-            animation.clip = EnemyClip.Run;
-            animation.normalizedTime = 0f;
-        }
-
-        // 클립 진행도만 밀어 준다. 실제로 뼈를 움직이는 것은 렌더러의 몫이다.
-        private void Advance(ref EnemyAnimation animation, in EnemyAction action, in EnemyStats stats)
-        {
-            float length = animation.clip switch
-            {
-                EnemyClip.Attack => math.max(0.01f, stats.attackWindup + stats.attackRecovery),
-                EnemyClip.Hit => math.max(0.01f, stats.hitReactionDuration),
-                EnemyClip.Stagger => math.max(0.01f, stats.staggerDuration),
-                _ => 1f,
-            };
-
+            float length = math.max(0.01f, action.animationLength);
             animation.normalizedTime = math.saturate(animation.normalizedTime + deltaTime / length);
         }
 

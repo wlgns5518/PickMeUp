@@ -98,6 +98,10 @@ public static class EnemyWorldBridge
         // 붙잡는 스킬로 문 경우. 물린 아군은 이 시간 동안 다시 물리지 않는다 —
         // 아군 쪽 MarkSkillVictim과 같은 규칙이고, 시간은 무는 쪽이 정한다.
         public float skillVictimDuration;
+
+        // 물린 아군을 그 자리에서 굳혀 두는 시간(초). 0이면 경직시키지 않는다.
+        // 강인도를 깎아 깨뜨리는 것과 다르다 — 이쪽은 강인도와 무관하게 무너뜨린다.
+        public float forceStaggerDuration;
     }
 
     // 적 하나가 쓰러졌다. 누구에게 귀속시킬지만 담는다.
@@ -651,6 +655,14 @@ public static class EnemyWorldBridge
             if (ally == null || ally.IsDead) continue;
 
             ally.TakeEnemyDamage(hit.damage, hit.fromPosition, hit.source, hit.poiseDamage);
+
+            // 물린 아군은 그 자리에서 굳는다. 물어뜯기는 피해로 잡는 수가 아니라 한 명을
+            // 판에서 빼는 수라, 이 경직이 빠지면 "물려도 그냥 계속 싸우는" 그림이 된다.
+            //
+            // 피해 뒤에 부르는 것이 맞다. 아군 쪽 ApplySkillDamage도 TakeDamage 다음에
+            // TryForceStagger를 부르고, 흘려낸(퍼펙트 가드) 경우에는 무는 쪽이 대신 무너지므로
+            // TryForceStagger가 스스로 면역을 보고 물러난다.
+            if (hit.forceStaggerDuration > 0f) ally.TryForceStagger(hit.forceStaggerDuration);
 
             // 물린 아군에게 면역 시간을 건다. 피해보다 먼저 걸면 안 된다 —
             // 이 한 대로 쓰러지는 경우까지 포함해 "맞고 나서" 세는 것이 맞다.

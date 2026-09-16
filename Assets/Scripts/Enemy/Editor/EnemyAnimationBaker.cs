@@ -42,9 +42,18 @@ public static class EnemyAnimationBaker
 
     // 한 클립에서 뽑는 최대 프레임 수. 텍스처 세로 크기를 정하는 값이라 상한을 둔다 —
     // 대기 클립이 9.93초(298프레임)라 그대로 구우면 나머지 다섯 개를 합친 것보다 커진다.
-    private const int MaxFramesPerClip = 64;
+    private const int MaxFramesPerClip = 128;
 
-    private const int SampleFps = 30;
+    // 클립을 몇 fps로 뽑을 것인가.
+    //
+    // 30이면 화면이 60Hz일 때 한 줄이 두 프레임씩 버텨서 적만 뚝뚝 끊겨 보인다. 아군은 Animator가
+    // 사이를 메워 주므로 나란히 놓으면 차이가 그대로 드러난다. 특히 제자리걸음과 달리기가 그렇다 —
+    // 그 둘만 구운 속도 그대로(1.0배) 돌고, 나머지는 게임플레이 시간에 맞춰 눌려서 오히려 줄을
+    // 건너뛰기 때문이다.
+    //
+    // 셰이더에서 줄 사이를 섞는 방법도 있지만 뼈마다 텍스처 조회가 3 → 6으로 늘어난다. 60으로 굽는
+    // 쪽은 런타임 비용이 0이고 텍스처만 1.30 → 2.60MB가 된다(138 x 1235, RGBAFloat).
+    private const int SampleFps = 60;
 
     [MenuItem("PickMeUp/적 애니메이션 굽기")]
     private static void BakeSelected()
