@@ -22,6 +22,17 @@ public class ChaseBehavior : UnitBehavior
     // 가는 쪽을 보고 달리는 중인가. 파고드는 접근에서만 참이다(아래 OnTick 주석).
     private bool facingTravel;
 
+    // 가는 쪽으로 몸을 돌리는 중인가. 다 돌 때까지는 회전을 코드가 쥐고 있는다(BeginTravelFacing).
+    private bool turningToTravel;
+
+    // 다 돌았다고 볼 각도. 달리기 클립이 어색해 보이지 않을 만큼만 맞추면 된다 —
+    // 0에 가깝게 잡으면 상대가 조금만 움직여도 주도권이 넘어가지 못하고 붙들려 있는다.
+    private const float TravelFacingTolerance = 20f;
+
+    // 이번 접근에서 돌아 들어갈 것인가. 한 번 정하면 접근이 끝날 때까지 바꾸지 않는다.
+    private bool flanking;
+    private bool flankDecided;
+
     public ChaseBehavior(UnitController context) : base(context)
     {
     }
@@ -37,6 +48,8 @@ public class ChaseBehavior : UnitBehavior
         // 예측 위치로 달리면서 상대를 본다 — 그 둘이 어긋나므로 회전은 코드가 잡는다.
         unit.SetCodeDrivenFacing(true);
         facingTravel = false;
+        turningToTravel = false;
+        flankDecided = false;
         // 이번 접근의 파고들 방위를 새로 고르게 한다(GetEngageDestination 주석 참조).
         unit.ClearEngageBearing();
         // 0으로 두어 이번 틱에 곧바로 길을 잡게 한다. 남겨 두면 첫 간격만큼 목적지 없이 서 있다.
@@ -93,10 +106,23 @@ public class ChaseBehavior : UnitBehavior
     // 몸의 주도권이 프레임마다 오가며 홱홱 돈다.
     private void TickFacing()
     {
-        if (!facingTravel) unit.FaceTarget();
+        if (facingTravel) return;
+
+        // 가는 쪽으로 돌아서는 중. 다 돌면 그때 주도권을 에이전트에게 넘긴다.
+        if (turningToTravel)
+        {
+            if (!unit.TurnTowardsMoveDirection(TravelFacingTolerance)) return;
+
+            turningToTravel = false;
+            facingTravel = true;
+            unit.SetCodeDrivenFacing(false);
+            return;
+        }
+
+        unit.FaceTarget();
     }
 
-    // 회전 주도권을 에이전트에게 넘긴다.
+    // 가는 쪽을 보고 달리기로 한다. 다만 주도권은 다 돌고 나서 넘긴다.
     //
     // 여기서 몸을 즉시 돌려서는 안 된다. 도주와 빠지기는 직전에 StopMovement로 속도가 0이라
     // 스냅해도 안전하지만, 추격은 이미 전속력으로 달리는 중에 들어올 수 있다 —
@@ -104,13 +130,18 @@ public class ChaseBehavior : UnitBehavior
     // 감속하는 0.2초 동안 그림이 통째로 역주행이 된다.
     // (실측: 스냅을 넣었더니 dotV가 -0.96까지 떨어지고 어긋난 프레임이 9.2%에서 19.6%로 늘었다.)
     //
-    // 몸은 에이전트가 제 속도에 맞춰 돌린다. 회전은 720도/초라 따라잡는 데 오래 걸리지 않는다.
+    // 그렇다고 곧바로 에이전트에게 맡길 수도 없다. updateRotation은 "지금 내는 속도" 쪽으로
+    // 돌리는데, 방향을 뒤집는 구간에서는 그 속도가 0을 지나며 거의 돌지 않기 때문이다.
+    // 암살자가 빠졌다가 돌아설 때가 정확히 그 구간이다 — 실측에서 물러나던 쪽을 본 채로
+    // 0.3초 넘게 뒷걸음질쳤고(내적 -0.89), 그동안 뒷걸음 클립이 재생됐다.
+    //
+    // 그래서 그 사이만 코드가 rotationSpeed로 돌린다(TurnTowardsMoveDirection). 스냅도 아니고
+    // 에이전트의 느린 회전도 아닌, 720도/초로 0.25초에 도는 그림이다. 다 돌면 넘긴다.
     private void BeginTravelFacing()
     {
-        if (facingTravel) return;
+        if (facingTravel || turningToTravel) return;
 
-        facingTravel = true;
-        unit.SetCodeDrivenFacing(false);
+        turningToTravel = true;
     }
 
     // 앞이 막혀 더 갈 수 없는데도 계속 밀어붙이면, 지역 회피가 매 프레임 되밀어 그 자리에서 떤다.
@@ -166,7 +197,20 @@ public class ChaseBehavior : UnitBehavior
         // 이제 접근 자체가 진형이다. 탱커는 정면으로 곧장 들어가 어그로를 붙들고, 검사는
         // 측면을 물고, 암살자는 등 뒤로 돌아간다. 방위 성향이 없는 유닛(생산직, 고블린)은
         // GetEngageDestination이 예측 위치를 그대로 돌려주므로 예전 동작 그대로다.
-        bool flanking = unit.HasEngagePreference;
+        // 돌아 들어갈지는 이번 접근에서 한 번만 정한다.
+        //
+        // HasEngagePreference는 "상대가 나를 안 보고 있는가"라 상대가 제 주기마다 표적을 다시
+        // 고를 때마다 뒤집힌다. 그대로 매번 물어보면 목적지가 "등 뒤"와 "상대 발밑" 사이를 오가고,
+        // 유닛은 그 둘을 잇는 호를 따라 상대 둘레를 돌게 된다 — 붙는 순간이 특히 심해서, 실측에서
+        // 2.5m 안에서는 회전이 초당 202도에 옆걸음 클립이 절반(52%)이었다.
+        // 방위를 접근 단위로 붙들어 두는 것(heldEngageBearing)과 같은 이유이고, 거기서 빠져 있던
+        // 나머지 반쪽이다 — 방위는 붙들면서 "돌아 들어갈지" 자체는 매번 다시 묻고 있었다.
+        if (!flankDecided)
+        {
+            flanking = unit.HasEngagePreference;
+            flankDecided = true;
+        }
+
         Vector3 destination = flanking
             ? unit.GetEngageDestination(standoff)
             : unit.GetPredictedTargetPosition();

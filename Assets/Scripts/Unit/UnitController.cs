@@ -2456,6 +2456,43 @@ public partial class UnitController : MonoBehaviour
             turnSpeed * Time.deltaTime);
     }
 
+    // 가려는 쪽으로 몸을 돌린다. 다 돌았으면(또는 돌 방향이 없으면) true.
+    //
+    // 회전 주도권을 에이전트에게 넘기기 전에 쓴다. NavMeshAgent의 updateRotation은 "지금 내는
+    // 속도" 쪽으로 돌리는데, 방향을 뒤집는 구간에서는 그 속도가 0을 지나며 거의 돌지 않는다 —
+    // angularSpeed를 720으로 올려 놔도 그렇다. 실측에서 암살자가 빠졌다가 돌아설 때 몸이
+    // 물러나던 쪽을 본 채로 0.3초 넘게 뒷걸음질쳤다(진행·정면 내적 -0.89에서 8도/66ms로만 회복).
+    //
+    // 스냅이 아니라 rotationSpeed로 도는 것이 요점이다. 전속력으로 달리는 중에 몸만 홱 돌리면
+    // 에이전트에는 이전 방향의 속도가 남아 그림이 통째로 역주행이 된다(ChaseBehavior 주석의 실측).
+    public bool TurnTowardsMoveDirection(float toleranceDegrees)
+    {
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return true;
+
+        // 가려는 쪽은 조종이 원하는 속도로 본다. 아직 경로가 안 잡혔으면 남은 목적지로 대신한다 —
+        // 출발하는 첫 프레임이 정확히 그 경우다.
+        Vector3 direction = agent.desiredVelocity;
+        direction.y = 0f;
+        if (direction.sqrMagnitude <= 0.0001f && agent.hasPath)
+        {
+            direction = agent.steeringTarget - transform.position;
+            direction.y = 0f;
+        }
+
+        // 돌 방향을 못 찾았으면 붙들고 있을 이유가 없다. 여기서 false를 돌려주면
+        // 목적지가 잡히지 않는 동안 회전이 영영 코드에 묶인다.
+        if (direction.sqrMagnitude <= 0.0001f) return true;
+
+        Vector3 forward = transform.forward;
+        forward.y = 0f;
+        if (forward.sqrMagnitude <= 0.0001f) return true;
+
+        if (Vector3.Angle(forward, direction) <= toleranceDegrees) return true;
+
+        FaceDirection(transform.position + direction, rotationSpeed);
+        return false;
+    }
+
     // 상대를 충분히 마주 보고 있는가. 타깃이 없으면 판단할 근거가 없으니 true로 둔다.
     public bool IsFacingTarget(float toleranceDegrees)
     {
