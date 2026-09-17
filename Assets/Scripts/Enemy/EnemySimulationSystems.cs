@@ -653,10 +653,30 @@ public partial struct EnemyCombatSystem : ISystem
             // 멈춰 서는 거리(1.0m)와 사거리(1.2m)가 달라서 그 사이 20cm 구간에서는 미끄러지며
             // 제자리걸음을 했고, 상대가 그 경계에서 오가면 두 클립이 매 프레임 뒤바뀌었다.
             // 속도는 가속으로 이미 완만해져 있어(lerp) 그 자체가 경계에서의 떨림을 막아 준다.
-            float speedSq = math.lengthsq(motion.velocity);
+            float speed = math.length(motion.velocity);
             float walkThreshold = stats.moveSpeed * 0.25f;
-            Loop(ref animation, speedSq > walkThreshold * walkThreshold ? EnemyClip.Run : EnemyClip.Idle, dt);
+            if (speed > walkThreshold)
+            {
+                Loop(ref animation, EnemyClip.Run, dt * RunPlaybackRate(speed, stats));
+                return;
+            }
+
+            Loop(ref animation, EnemyClip.Idle, dt);
         }
+
+        // 달리기 클립의 재생 배속. 다리가 실제로 땅을 밀어내는 속도와 몸이 나아가는 속도를 맞춘다.
+        //
+        // 예전에는 늘 1배속이었다. 고블린 Run 클립은 2.29m/s짜리인데 4m/s로 달리니, 다리는 천천히
+        // 도는데 몸은 1.75배로 미끄러져 나가 "쏜살같이 날아오는" 그림이 됐다. 게임오브젝트 고블린은
+        // UnitController.ApplyMoveAnimationSpeed가 같은 계산(0.6~2.2배로 자름)으로 맞추고 있었다.
+        private static float RunPlaybackRate(float speed, in EnemyStats stats)
+        {
+            if (stats.runClipSpeed <= 0.01f) return 1f;
+            return math.clamp(speed / stats.runClipSpeed, MinRunPlaybackRate, MaxRunPlaybackRate);
+        }
+
+        private const float MinRunPlaybackRate = 0.6f;
+        private const float MaxRunPlaybackRate = 2.2f;
 
         // 쥔 자리로 한 수를 냈다. 휘두르는 동안은 자리를 빼앗기지 않게 만료를 뒤로 민다.
         private void CommitSlot(ref EnemyTactics tactics, in EnemyStats stats)
@@ -769,12 +789,8 @@ public partial struct EnemyCombatSystem : ISystem
                     transform.Position += direction * step;
                 }
 
-                if (distance > 0.001f)
-                {
-                    quaternion facing = quaternion.LookRotationSafe(Flat(toAlly / distance), math.up());
-                    transform.Rotation = math.slerp(transform.Rotation, facing,
-                        math.saturate(stats.turnSpeed * dt));
-                }
+                // 무는 상대를 보는 회전은 이동 시스템이 한다(EnemyMovementSystem.TickFacing, 휘두르는 속도).
+                // 예전에는 여기서도 따로 돌려서, 같은 프레임에 두 번 돌았다.
             }
 
             if (action.timer > 0f) return;
@@ -949,6 +965,21 @@ public partial struct EnemyMovementSystem : ISystem
     private const float KnockbackDecay = 12f;
     private const float KnockbackEpsilon = 0.01f;
 
+    // 감속의 바닥. 0까지 내리면 문턱 바로 앞에서 영영 기어간다.
+    private const float MinArrivalFactor = 0.2f;
+
+    // 멈춰 설 거리 몇 m 앞에서부터 감속할 것인가.
+    //
+    // 속도는 가속 lerp로 목표 속도를 따라가고, 목표 속도는 남은 거리에 비례한다. 그 둘을 합치면
+    // 남은 거리가 d'' + a·d' + (a·v/L)·d = 0 을 따른다(a = 가속, v = 최고 속도, L = 이 거리).
+    // L이 4v/a보다 짧으면 덜 감쇠돼 멈춰 설 거리를 지나쳤다 되돌아오고(1m로 뒀을 때 30cm 앞에서도
+    // 2.4m/s였다), 길면 한참 앞에서부터 기어온다. 4v/a가 딱 임계 감쇠라 지나치지 않고 가장 빨리 선다.
+    // 고블린(4m/s, 가속 8)이면 2m다.
+    private static float ArrivalSlowDistance(in EnemyStats stats)
+    {
+        return math.clamp(4f * stats.moveSpeed / math.max(0.01f, stats.acceleration), 0.5f, 4f);
+    }
+
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
@@ -995,37 +1026,41 @@ public partial struct EnemyMovementSystem : ISystem
                                action.kind == EnemyActionKind.Bite ||
                                action.kind == EnemyActionKind.Dead;
 
+            bool hasTarget = target.allyIndex >= 0 && target.allyIndex < allies.Length &&
+                             allies[target.allyIndex].alive != 0;
+
+            float3 toTarget = float3.zero;
+            if (hasTarget)
+            {
+                toTarget = allies[target.allyIndex].position - transform.Position;
+                toTarget.y = 0f;
+            }
+
             float3 desired = float3.zero;
 
-            if (!holdsGround && target.allyIndex >= 0 && target.allyIndex < allies.Length)
+            if (!holdsGround && hasTarget)
             {
-                EnemyWorldBridge.AllyState ally = allies[target.allyIndex];
-                if (ally.alive != 0)
+                float distance = math.length(toTarget);
+
+                // 칼을 들 자리를 못 얻은 놈은 한 걸음 떨어진 데서 멈춘다. 얼마나 떨어질지만
+                // 개체마다 다르고(EnemyTactics.waitDistance), 둘레의 어디에 설지는 정하지 않는다 —
+                // 방위는 무리가 서로 밀치며 정한다. 이미 그보다 안쪽에 있으면(방금 휘두르고 자리를
+                // 내준 놈) 물러나지도 않는다. 등을 돌려 달아나는 그림이 되기 때문이다.
+                float standoff = tactics.role == EnemyCombatRole.Waiter
+                    ? math.max(stats.standoffDistance, tactics.waitDistance)
+                    : stats.standoffDistance;
+
+                // 멈춰 설 거리 안에 들어오면 더 밀지 않는다. 계속 밀면 서로 파고들어
+                // 분리하는 힘과 싸우느라 그 자리에서 떨게 된다.
+                if (distance > standoff && distance > 0.001f)
                 {
-                    float3 toAlly = ally.position - transform.Position;
-                    toAlly.y = 0f;
-                    float distance = math.length(toAlly);
-
-                    // 칼을 들 자리를 못 얻은 놈은 한 걸음 떨어진 데서 멈춘다. 얼마나 떨어질지만
-                    // 개체마다 다르고(EnemyTactics.waitDistance), 둘레의 어디에 설지는 정하지 않는다 —
-                    // 방위는 무리가 서로 밀치며 정한다. 이미 그보다 안쪽에 있으면(방금 휘두르고 자리를
-                    // 내준 놈) 물러나지도 않는다. 등을 돌려 달아나는 그림이 되기 때문이다.
-                    float standoff = stats.standoffDistance;
-                    if (tactics.role == EnemyCombatRole.Waiter)
-                    {
-                        // 달려오던 속도로는 멈추기까지 v/가속만큼 더 미끄러진다(아래 lerp의 합).
-                        // 그만큼 앞에서 밀기를 멈춰야 기다리는 거리에 실제로 선다 — 안 그러면 0.5m씩
-                        // 파고들어, 기다린다면서 칼 든 놈 등에 붙어 선다.
-                        float braking = math.length(motion.velocity) / math.max(0.01f, stats.acceleration);
-                        standoff = math.max(standoff, tactics.waitDistance) + braking;
-                    }
-
-                    // 멈춰 설 거리 안에 들어오면 더 밀지 않는다. 계속 밀면 서로 파고들어
-                    // 분리하는 힘과 싸우느라 그 자리에서 떨게 된다.
-                    if (distance > standoff && distance > 0.001f)
-                    {
-                        desired += toAlly / distance;
-                    }
+                    // 다 와 갈수록 약하게 민다(도착 감속).
+                    //
+                    // 예전에는 멈춰 설 거리의 문턱까지 최고 속도로 밀다가 거기서 딱 끊었다. 가속 lerp만
+                    // 남아 0.5m를 더 미끄러지며 섰고, 그 그림이 "상대 코앞까지 쏜살같이 달려와 박힌다"였다.
+                    // 게임오브젝트 고블린 시절에는 NavMeshAgent의 자동 감속이 이 일을 했다.
+                    float arrival = math.saturate((distance - standoff) / ArrivalSlowDistance(stats));
+                    desired += toTarget / distance * math.max(MinArrivalFactor, arrival);
                 }
             }
 
@@ -1067,7 +1102,13 @@ public partial struct EnemyMovementSystem : ISystem
             // 맞은 것이 몸에 남지 않는다.
             float moveSpeed = stats.moveSpeed * motion.SlowFactor(now) * impact.FlinchFactor(now);
 
-            float3 wanted = math.normalizesafe(desired) * (holdsGround ? 0f : moveSpeed);
+            // 속도는 미는 힘의 크기를 따른다(1에서 자른다).
+            //
+            // 예전에는 방향만 남기고(normalize) 늘 최고 속도를 냈다. 그래서 표적 쪽으로 밀 일이 없는 놈
+            // (멈춰 설 거리 안, 자리를 기다리는 놈)도 이웃과 살짝만 겹치면 그 방향으로 4m/s로 튀었고,
+            // 밀치는 방향이 매 프레임 바뀌어 무리 전체가 제자리에서 빠르게 흔들렸다.
+            float strength = math.min(1f, math.length(desired));
+            float3 wanted = math.normalizesafe(desired) * (holdsGround ? 0f : moveSpeed * strength);
             motion.desiredDirection = math.normalizesafe(desired);
             motion.velocity = math.lerp(motion.velocity, wanted, math.saturate(stats.acceleration * dt));
 
@@ -1088,23 +1129,61 @@ public partial struct EnemyMovementSystem : ISystem
                 impact.knockbackRemaining -= step;
             }
 
-            // 가는 쪽을 본다. 붙어 있는 동안에는 겨눈 아군을 본다.
-            float3 facing = motion.velocity;
-            if (holdsGround || math.lengthsq(facing) < 0.01f)
+            TickFacing(ref transform, motion, stats, action, hasTarget, toTarget, dt);
+        }
+
+        // 어느 쪽을 볼 것인가.
+        //
+        // 겨눈 상대가 있으면 그 상대를 본다 — 붙으러 가든, 자리를 기다리든, 휘두르든. 게임오브젝트 고블린이
+        // 쫓는 내내 표적을 보던 것(ChaseBehavior.FaceTarget)과 같다.
+        //
+        // 예전에는 "가는 쪽"을 봤다. 멀리서 달려올 때는 가는 쪽이 곧 표적 쪽이라 차이가 없었지만, 붙은 뒤에는
+        // 속도가 거의 전부 이웃에게 밀린 성분이라 방향이 프레임마다 뒤집혔고, 몸이 그걸 따라 돌았다.
+        // 실측(고블린 24 대 아군 2, 표적 8m 안): 칼 안 든 동안 평균 90~223도/초로 돌았고, 절반 가까이
+        // 표적을 등지거나 옆을 보고 있었다.
+        //
+        // 회전은 초당 각도로 제한한다(지수 감쇠가 아니다 — 아군 쪽 FaceDirection 주석과 같은 이유).
+        // 휘두르는 중에는 훨씬 느리게 돈다. 제자리에서 베는 모션 위에서 몸이 홱 돌면 발이 미끄러진다.
+        // 무너졌거나 쓰러진 동안은 돌지 않는다.
+        private static void TickFacing(ref LocalTransform transform, in EnemyMotion motion, in EnemyStats stats,
+            in EnemyAction action, bool hasTarget, float3 toTarget, float dt)
+        {
+            if (action.kind == EnemyActionKind.Stagger || action.kind == EnemyActionKind.Dead) return;
+
+            float3 facing = hasTarget ? toTarget : motion.velocity;
+            facing.y = 0f;
+            if (math.lengthsq(facing) <= 0.0001f) return;
+
+            bool swinging = action.kind == EnemyActionKind.Windup ||
+                            action.kind == EnemyActionKind.Recover ||
+                            action.kind == EnemyActionKind.HitReact ||
+                            action.kind == EnemyActionKind.Leap ||
+                            action.kind == EnemyActionKind.Bite;
+            float degreesPerSecond = swinging ? stats.swingTurnRate : stats.turnRate;
+
+            quaternion wanted = quaternion.LookRotationSafe(math.normalize(facing), math.up());
+
+            // 회전 속도가 0 이하면 제한 없음(곧바로 돈다)으로 본다 — 수치를 채우지 않은 원본·테스트용.
+            // 히트스톱으로 dt가 0이 된 것과 헷갈리면 안 된다(그때는 돌지 않아야 한다).
+            if (degreesPerSecond <= 0f)
             {
-                if (target.allyIndex >= 0 && target.allyIndex < allies.Length)
-                {
-                    facing = allies[target.allyIndex].position - transform.Position;
-                }
+                transform.Rotation = wanted;
+                return;
             }
 
-            facing.y = 0f;
-            if (math.lengthsq(facing) > 0.0001f)
-            {
-                quaternion wantedRotation = quaternion.LookRotationSafe(math.normalize(facing), math.up());
-                transform.Rotation = math.slerp(transform.Rotation, wantedRotation,
-                    math.saturate(stats.turnSpeed * dt));
-            }
+            transform.Rotation = RotateTowards(transform.Rotation, wanted, math.radians(degreesPerSecond) * dt);
+        }
+
+        // 초당 각도 제한 회전. 이번 프레임에 돌 수 있는 각도(라디안)만큼만 목표 쪽으로 돈다.
+        private static quaternion RotateTowards(quaternion from, quaternion to, float maxRadians)
+        {
+            if (maxRadians <= 0f) return from;
+
+            float dot = math.abs(math.dot(from.value, to.value));
+            if (dot >= 0.99999f) return to;
+
+            float angle = 2f * math.acos(math.min(dot, 1f));
+            return angle <= maxRadians ? to : math.slerp(from, to, maxRadians / angle);
         }
     }
 }

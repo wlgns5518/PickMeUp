@@ -51,8 +51,19 @@ public struct EnemyStats : IComponentData
     // 이동. NavMeshAgent가 없으므로 가속과 반경을 직접 들고 있는다.
     public float moveSpeed;
     public float acceleration;
-    public float turnSpeed;
     public float radius;
+
+    // 몸을 돌리는 속도(도/초). 0이면 곧바로 돈다.
+    //
+    // 예전 turnSpeed는 지수 감쇠 배율(8)이었다 — 초당 각도가 아니라 "남은 각도의 몇 %를 좁히나"라서
+    // 큰 각도일수록 빨리 돌았고, 무리에 밀려 가는 방향이 뒤집힐 때마다 홱 돌았다.
+    // 게임오브젝트 고블린의 rotationSpeed(720)·attackTurnSpeed(120)와 같은 뜻으로 바꿨다.
+    public float turnRate;
+    public float swingTurnRate;
+
+    // 달리기 클립이 원래 나아가는 속도(m/s). 실제 속도를 이 값으로 나눠 재생 배속을 정한다.
+    // 0이면 클립 제 속도로 돈다. 고블린 Run은 2.29 — 4m/s로 달리면서 1배속으로 돌면 땅을 미끄러진다.
+    public float runClipSpeed;
 
     // 멈춰 설 거리. 사거리보다 조금 안쪽이라 도착하자마자 휘두를 수 있다.
     public float standoffDistance;

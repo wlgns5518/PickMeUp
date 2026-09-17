@@ -45,7 +45,8 @@ public class EnemyEcsTests
 
         moveSpeed = 4f,
         acceleration = 8f,
-        turnSpeed = 8f,
+        turnRate = 720f,
+        swingTurnRate = 120f,
         radius = 0.5f,
         standoffDistance = 1.0f,
 
@@ -1057,5 +1058,142 @@ public class EnemyEcsTests
 
         Assert.AreNotEqual(EnemyActionKind.HitReact, manager.GetComponentData<EnemyAction>(enemy).kind);
         Assert.Less(manager.GetComponentData<EnemyMotion>(enemy).SlowFactor(world.Time.ElapsedTime), 1f);
+    }
+
+    // ---------------------------------------------------------------- 발놀림
+    //
+    // "고블린이 너무 빠르게 접근하고 마음대로 회전한다"를 잡은 규칙 넷. 게임오브젝트 고블린 시절에는
+    // NavMeshAgent와 UnitController가 해 주던 일이라, 엔티티로 옮기면서 조용히 빠졌던 것들이다.
+
+    private static float3 Forward(in LocalTransform transform)
+    {
+        float3 forward = transform.Forward();
+        forward.y = 0f;
+        return math.normalizesafe(forward);
+    }
+
+    [Test]
+    public void 붙은_뒤_이웃에게_밀려도_표적을_본다()
+    {
+        EnemyStats stats = DefaultStats();
+        AddAlly(new float3(0f, 0f, 0f), attackSlots: 1);
+
+        // 둘이 표적 앞에서 옆으로 겹쳐 있다. 서로 밀어내는 힘은 옆으로 난다.
+        Entity a = CreateEnemyFacing(new float3(0.25f, 0f, 2.2f), float3.zero, stats);
+        Entity b = CreateEnemyFacing(new float3(-0.25f, 0f, 2.2f), float3.zero, stats);
+
+        Tick(0.05f, 20);
+
+        foreach (Entity enemy in new[] { a, b })
+        {
+            LocalTransform transform = manager.GetComponentData<LocalTransform>(enemy);
+            if (IsSwinging(manager.GetComponentData<EnemyAction>(enemy).kind)) continue;
+
+            float3 toTarget = math.normalizesafe(-new float3(transform.Position.x, 0f, transform.Position.z));
+            Assert.Greater(math.dot(Forward(transform), toTarget), 0.9f,
+                "옆으로 밀리는 방향을 따라 몸이 돌면 무리 전체가 제자리에서 빙글빙글 돈다");
+        }
+    }
+
+    [Test]
+    public void 이웃에게_살짝_밀리는_힘만으로는_전속력으로_튀지_않는다()
+    {
+        EnemyStats stats = DefaultStats();
+
+        // 표적이 없다. 반지름 합(1.0m)보다 조금 가깝다.
+        Entity a = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        CreateEnemy(new float3(0.9f, 0f, 0f), stats);
+
+        float maxSpeed = 0f;
+        for (int i = 0; i < 20; i++)
+        {
+            Tick(0.05f);
+            maxSpeed = math.max(maxSpeed, math.length(manager.GetComponentData<EnemyMotion>(a).velocity));
+        }
+
+        Assert.Less(maxSpeed, stats.moveSpeed * 0.5f, "10cm 겹친 것을 풀자고 4m/s로 튀면 안 된다");
+    }
+
+    [Test]
+    public void 멈춰_설_거리에_다가갈수록_느려진다()
+    {
+        EnemyStats stats = DefaultStats();
+        AddAlly(new float3(0f, 0f, 0f));
+        Entity enemy = CreateEnemyFacing(new float3(0f, 0f, 8f), float3.zero, stats);
+
+        // 휘두르지 못하게 재사용 대기를 멀리 밀어 둔다(휘두르기 시작하면 제자리에 서 버려서 감속을 볼 수 없다).
+        // 자리 요청을 막으면 안 된다 — 자리를 못 얻은 놈은 한 걸음 떨어진 데서 기다리므로 멈춰 설 거리까지 오지 않는다.
+        EnemyAction action = manager.GetComponentData<EnemyAction>(enemy);
+        action.nextAttackTime = 999d;
+        manager.SetComponentData(enemy, action);
+
+        float farSpeed = 0f;
+        float nearSpeed = -1f;
+        float closest = float.MaxValue;
+        for (int i = 0; i < 80; i++)
+        {
+            Tick(0.05f);
+            float z = manager.GetComponentData<LocalTransform>(enemy).Position.z;
+            float speed = math.length(manager.GetComponentData<EnemyMotion>(enemy).velocity);
+            closest = math.min(closest, z);
+
+            if (z > 4f) farSpeed = math.max(farSpeed, speed);
+            if (nearSpeed < 0f && z < stats.standoffDistance + 0.3f) nearSpeed = speed;
+        }
+
+        Assert.Greater(farSpeed, stats.moveSpeed * 0.8f, "멀 때는 제 속도로 달려온다");
+        Assert.GreaterOrEqual(nearSpeed, 0f, "멈춰 설 거리 근처까지는 와야 한다");
+        Assert.Less(nearSpeed, stats.moveSpeed * 0.5f, "코앞까지 최고 속도로 달려와 박히면 안 된다");
+        Assert.Greater(closest, stats.standoffDistance - 0.25f, "멈춰 설 거리를 크게 지나쳐 파고들지 않는다");
+    }
+
+    [Test]
+    public void 달리기_클립은_실제_속도에_맞춰_돈다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.runClipSpeed = 2f;
+        AddAlly(new float3(0f, 0f, 0f));
+        Entity enemy = CreateEnemyFacing(new float3(0f, 0f, 30f), float3.zero, stats);
+        stats.detectRange = 40f;
+        manager.SetComponentData(enemy, stats);
+
+        // 최고 속도에 오를 때까지 달리게 둔다.
+        Tick(0.05f, 20);
+        EnemyAnimation before = manager.GetComponentData<EnemyAnimation>(enemy);
+        Assert.AreEqual(EnemyClip.Run, before.clip);
+        float speed = math.length(manager.GetComponentData<EnemyMotion>(enemy).velocity);
+
+        Tick(0.05f);
+        EnemyAnimation after = manager.GetComponentData<EnemyAnimation>(enemy);
+
+        // 구간표가 없는 월드라 클립 길이는 1초로 본다. 4m/s ÷ 2m/s = 2배속이면 0.05초에 0.1이 간다.
+        float advanced = math.frac(after.normalizedTime - before.normalizedTime + 1f);
+        float expected = 0.05f * math.clamp(speed / stats.runClipSpeed, 0.6f, 2.2f);
+        Assert.AreEqual(expected, advanced, 0.01f, "다리가 몸보다 느리게 돌면 땅을 미끄러진다");
+    }
+
+    [Test]
+    public void 휘두르는_중에는_천천히_돈다()
+    {
+        EnemyStats stats = DefaultStats();
+        AddAlly(new float3(0f, 0f, 0f));
+        Entity enemy = CreateEnemyFacing(new float3(0f, 0f, 1.05f), float3.zero, stats);
+
+        Tick(0.05f, 2);
+        Assert.AreEqual(EnemyActionKind.Windup, manager.GetComponentData<EnemyAction>(enemy).kind);
+        float3 forwardBefore = Forward(manager.GetComponentData<LocalTransform>(enemy));
+
+        // 표적이 옆으로 90도 돌아갔다.
+        EnemyWorldBridge.AllyState ally = EnemyWorldBridge.AllyStates[0];
+        ally.position = new float3(1.05f, 0f, 1.05f);
+        EnemyWorldBridge.AllyStates[0] = ally;
+
+        Tick(0.05f, 2);
+        float3 forwardAfter = Forward(manager.GetComponentData<LocalTransform>(enemy));
+        float turned = math.degrees(math.acos(math.clamp(math.dot(forwardBefore, forwardAfter), -1f, 1f)));
+
+        Assert.LessOrEqual(turned, stats.swingTurnRate * 0.1f + 1f,
+            "칼을 들어올린 채로 몸이 홱 돌면 발이 미끄러진다");
+        Assert.Greater(turned, 0f, "그래도 상대를 따라 조금은 돈다");
     }
 }

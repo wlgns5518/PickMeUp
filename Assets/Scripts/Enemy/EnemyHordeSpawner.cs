@@ -45,7 +45,14 @@ public class EnemyHordeSpawner : MonoBehaviour
     [Header("이동")]
     [SerializeField] private float moveSpeed = 4f;
     [SerializeField] private float acceleration = 8f;
-    [SerializeField] private float turnSpeed = 8f;
+    [Tooltip("몸을 돌리는 속도(도/초). 게임오브젝트 고블린의 rotationSpeed와 같은 값이다.")]
+    [SerializeField, Min(0f)] private float turnRate = 720f;
+    [Tooltip("휘두르는 중(준비·회수·도약·물기·움찔)에 도는 속도(도/초). 제자리에서 베는 모션 위에서 " +
+             "몸이 홱 돌면 발이 미끄러진다. 게임오브젝트 고블린의 attackTurnSpeed와 같은 값이다.")]
+    [SerializeField, Min(0f)] private float swingTurnRate = 120f;
+    [Tooltip("달리기 클립이 원래 나아가는 속도(m/s). 실제 속도를 이 값으로 나눠 재생 배속을 맞춘다(0.6~2.2배). " +
+             "고블린 Run = 2.29.")]
+    [SerializeField, Min(0f)] private float runClipSpeed = 2.29f;
     [Tooltip("서로 밀어내는 반경. 아군 NavMeshAgent의 반지름(0.5)과 같은 값으로 두면 " +
              "두 세계의 간격이 눈에 띄게 어긋나지 않는다.")]
     [SerializeField] private float radius = 0.5f;
@@ -164,7 +171,9 @@ public class EnemyHordeSpawner : MonoBehaviour
 
             moveSpeed = moveSpeed,
             acceleration = acceleration,
-            turnSpeed = turnSpeed,
+            turnRate = turnRate,
+            swingTurnRate = swingTurnRate,
+            runClipSpeed = runClipSpeed,
             radius = radius,
             standoffDistance = standoffDistance,
 
