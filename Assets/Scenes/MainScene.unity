@@ -2032,9 +2032,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::FloorSelectUI
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   battleSceneName: Floor1~9
-  visibleFloorCount: 9
+  floorsPerPage: 10
+  pageColumns: 5
   panelPadding: {x: 30, y: 26}
-  floorColumns: 3
   openOnStart: 0
   bannerWidth: 900
 --- !u!4 &247532115
