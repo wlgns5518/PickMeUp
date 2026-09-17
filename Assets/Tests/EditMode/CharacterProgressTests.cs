@@ -182,4 +182,82 @@ public class CharacterProgressTests
         Assert.IsFalse(character.HasSkill("stale"));
         Assert.AreEqual(1, character.SkillCount);
     }
+
+    // ---------------------------------------------------------------- 첫 전투 패닉
+    //
+    // 1성은 생애 첫 전투에서 전투 내내 패닉으로 굳는다. 2성은 공포로 시작할 뿐 굳지 않는다.
+    // 둘째 전투부터는 1성도 굳지 않는다.
+
+    private static UnitEmotion NewEmotion()
+    {
+        return new GameObject("EmotionTest").AddComponent<UnitEmotion>();
+    }
+
+    [Test]
+    public void 전투에_나설_때마다_출전_횟수가_오른다()
+    {
+        Assert.IsTrue(CharacterProgress.IsFirstBattle(character));
+
+        CharacterProgress.MarkBattleEntered(character);
+
+        Assert.AreEqual(1, CharacterProgress.BattlesFoughtOf(character));
+        Assert.IsFalse(CharacterProgress.IsFirstBattle(character));
+    }
+
+    [Test]
+    public void 일성은_첫_전투를_패닉으로_굳은_채_시작한다()
+    {
+        UnitEmotion emotion = NewEmotion();
+        try
+        {
+            emotion.Configure(new HiddenStats { mental = 50 }, 1, firstBattle: true);
+
+            Assert.IsTrue(emotion.IsPanicLocked);
+            Assert.IsTrue(emotion.IsActionBlocked, "칼 한 번 못 휘둘러야 한다");
+            Assert.IsTrue(emotion.Has(EmotionState.Panic));
+
+            // 디스펠로도 풀리지 않는다(사제가 걷어낼 수 있는 것은 공포지 굳은 패닉이 아니다).
+            emotion.Dispel();
+            Assert.IsTrue(emotion.IsActionBlocked);
+        }
+        finally
+        {
+            Object.DestroyImmediate(emotion.gameObject);
+        }
+    }
+
+    [Test]
+    public void 일성도_두번째_전투부터는_굳지_않는다()
+    {
+        UnitEmotion emotion = NewEmotion();
+        try
+        {
+            emotion.Configure(new HiddenStats(), 1, firstBattle: false);
+
+            Assert.IsFalse(emotion.IsPanicLocked);
+            Assert.IsFalse(emotion.IsActionBlocked);
+        }
+        finally
+        {
+            Object.DestroyImmediate(emotion.gameObject);
+        }
+    }
+
+    [Test]
+    public void 이성은_첫_전투라도_굳지_않는다()
+    {
+        UnitEmotion emotion = NewEmotion();
+        try
+        {
+            emotion.Configure(new HiddenStats(), 2, firstBattle: true);
+
+            Assert.IsFalse(emotion.IsPanicLocked);
+            Assert.IsFalse(emotion.IsActionBlocked);
+            Assert.IsTrue(emotion.Has(EmotionState.Fear), "2성은 여전히 공포로 시작한다");
+        }
+        finally
+        {
+            Object.DestroyImmediate(emotion.gameObject);
+        }
+    }
 }

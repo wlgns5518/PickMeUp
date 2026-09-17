@@ -134,19 +134,18 @@ public class EnemyHordeSpawner : MonoBehaviour
     [SerializeField] private float hpPerLevel = 0.15f;
     [SerializeField] private float damagePerLevel = 0.1f;
 
-    // healthMultiplier는 부르는 쪽이 넘긴다(CharacterBattleSpawner.debugHealthMultiplier).
+    // 레벨이 오를수록 체력과 공격력이 선형으로 는다. 레벨은 부르는 쪽이 층에서 뽑는다
+    // (CharacterBattleSpawner — 층 + 1~2).
     //
-    // 이 값을 여기서 들고 있지 않는 이유: 아군과 게임오브젝트 적이 같은 손잡이 하나를 쓰는데,
-    // 엔티티만 제 값을 따로 가지면 그 셋이 조용히 어긋난다. 실제로 그랬다 — 엔티티에만
-    // 배율이 안 걸려 체력이 1/100이었고, 전투가 3초 만에 끝났다.
-    public EnemyStats BuildStats(int level, float healthMultiplier = 1f)
+    // 한때 양 진영 체력에 100배를 곱하는 임시 손잡이(debugHealthMultiplier)가 여기로 넘어왔다.
+    // 전투 흐름을 오래 보려던 것이고, 1층부터 밸런스를 잡기 시작하면서 걷어냈다(2026-09).
+    public EnemyStats BuildStats(int level)
     {
         int steps = Mathf.Max(0, level - 1);
-        float health = Mathf.Max(0.01f, healthMultiplier);
 
         return new EnemyStats
         {
-            maxHp = Mathf.Max(1, Mathf.RoundToInt(maxHp * (1f + hpPerLevel * steps) * health)),
+            maxHp = Mathf.Max(1, Mathf.RoundToInt(maxHp * (1f + hpPerLevel * steps))),
             attackDamage = Mathf.Max(1, Mathf.RoundToInt(attackDamage * (1f + damagePerLevel * steps))),
 
             attackRange = attackRange,
@@ -206,7 +205,7 @@ public class EnemyHordeSpawner : MonoBehaviour
     }
 
     // 층 하나를 시작할 때 부른다. 돌려주는 값은 실제로 만들어진 마리 수.
-    public int SpawnWave(int count, Vector3 center, float spread, int level, uint seed = 1, float healthMultiplier = 1f)
+    public int SpawnWave(int count, Vector3 center, float spread, int level, uint seed = 1)
     {
         // 무엇으로 그릴지 먼저 알려 준다. 굽지 않았으면 보이지 않을 뿐 전투는 그대로 돈다.
         if (animationLibrary != null && animationLibrary.IsBaked)
@@ -216,7 +215,7 @@ public class EnemyHordeSpawner : MonoBehaviour
 
         EnemyHorde.ConfigureBlood(bloodEffectPrefabs, bloodColor, bloodEffectOffset);
 
-        EnemyStats stats = BuildStats(level, healthMultiplier);
+        EnemyStats stats = BuildStats(level);
         return EnemyHorde.Spawn(stats, count, center, spread, seed);
     }
 }

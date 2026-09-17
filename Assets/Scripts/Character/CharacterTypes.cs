@@ -124,8 +124,13 @@ public static class CharacterRules
 
     public static bool IsShield(WeaponType w) => w == WeaponType.Shield;
 
-    // 1~2성은 멘탈이 약함 — 첫 전투 100% 공포/패닉
+    // 1~2성은 멘탈이 약함 — 전투를 공포(능력치 감소) 상태로 시작한다.
     public static bool IsFragileMental(int stars) => stars <= 2;
+
+    // 1성은 생애 첫 전투에서 전투 내내 패닉으로 굳는다. 아무것도 하지 못한다 —
+    // 도망도, 회복약도, 지휘관의 후퇴 명령도 듣지 못한다(패닉이 행동 트리의 사망 바로 아래다).
+    // 살아남느냐는 전투가 정한다(적이 그 캐릭터를 따로 노리지는 않는다).
+    public static bool PanicsThroughFirstBattle(int stars) => stars <= 1;
 
     // 한국어 표시 이름
     private static readonly Dictionary<JobType, string> JobKr = new Dictionary<JobType, string>

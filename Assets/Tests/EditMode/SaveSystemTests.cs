@@ -176,4 +176,68 @@ public class SaveSystemTests
         Assert.IsFalse(SaveSystem.HasSave);
         Assert.IsFalse(SaveSystem.Load(new List<CharacterSO>()));
     }
+
+    [Test]
+    public void 출전_횟수가_왕복한다()
+    {
+        CharacterSO so = NewCharacter("Hero_Veteran");
+        var roster = new List<CharacterSO> { so };
+
+        try
+        {
+            CharacterProgress.MarkBattleEntered(so);
+            CharacterProgress.MarkBattleEntered(so);
+            SaveSystem.Save(roster);
+
+            CharacterProgress.Clear();
+            Assert.IsTrue(CharacterProgress.IsFirstBattle(so));
+
+            SaveSystem.Load(roster);
+            Assert.AreEqual(2, CharacterProgress.BattlesFoughtOf(so));
+            Assert.IsFalse(CharacterProgress.IsFirstBattle(so));
+        }
+        finally
+        {
+            Object.DestroyImmediate(so);
+        }
+    }
+
+    [Test]
+    public void 출전_기록이_없던_세이브의_캐릭터는_아직_첫_전투를_치르지_않았다()
+    {
+        // 레벨까지 올린 캐릭터라도 battlesFought 칸이 없으면 첫 전투 전이다(2026-09 결정).
+        CharacterSO so = NewCharacter("Hero_Grown");
+        var roster = new List<CharacterSO> { so };
+
+        try
+        {
+            string json =
+                "{\"highestClearedFloor\":9,\"characters\":[{" +
+                "\"id\":\"" + so.Id + "\",\"assetName\":\"Hero_Grown\",\"level\":10,\"exp\":0,\"expToNext\":55," +
+                "\"strength\":18,\"intelligence\":16,\"vitality\":18,\"agility\":16," +
+                "\"fallen\":false,\"stress\":0.0,\"skillIds\":[]}]}";
+            File.WriteAllText(SaveSystem.SavePath, json);
+
+            Assert.IsTrue(SaveSystem.Load(roster));
+            Assert.AreEqual(10, so.Level);
+            Assert.IsTrue(CharacterProgress.IsFirstBattle(so));
+        }
+        finally
+        {
+            Object.DestroyImmediate(so);
+        }
+    }
+
+    [Test]
+    public void 깬_층은_꼭대기를_넘지_않는다()
+    {
+        FloorProgress.RestoreCleared(250);
+        Assert.AreEqual(FloorProgress.LastFloor, FloorProgress.HighestCleared);
+        Assert.AreEqual(FloorProgress.LastFloor, FloorProgress.HighestUnlocked, "100층을 깨도 101층은 열리지 않는다");
+        Assert.IsFalse(FloorProgress.IsUnlocked(FloorProgress.LastFloor + 1));
+
+        FloorProgress.RestoreCleared(0);
+        FloorProgress.MarkCleared(FloorProgress.LastFloor + 5);
+        Assert.AreEqual(FloorProgress.LastFloor, FloorProgress.HighestCleared);
+    }
 }

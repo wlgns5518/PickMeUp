@@ -50,6 +50,8 @@ public static class SaveSystem
         public int agility;
         public bool fallen;
         public float stress;
+        // 전투에 나선 횟수. 이 필드가 없던 세이브는 0으로 읽힌다.
+        public int battlesFought;
         // 합성으로 배운 스킬. 예전에는 저장하지 않아서 게임을 껐다 켜면 통째로 사라졌다.
         public List<string> skillIds = new List<string>();
     }
@@ -109,6 +111,7 @@ public static class SaveSystem
                 agility = entry.Agility,
                 fallen = PartyRoster.IsFallen(so),
                 stress = CharacterStress.Get(so),
+                battlesFought = entry.BattlesFought,
             };
             record.skillIds.AddRange(entry.SkillIds);
             data.characters.Add(record);
@@ -280,6 +283,7 @@ public static class SaveSystem
 
             CharacterProgress.Restore(so, p.level, p.exp, p.expToNext,
                 p.strength, p.intelligence, p.vitality, p.agility, p.skillIds);
+            CharacterProgress.RestoreBattlesFought(so, p.battlesFought);
 
             if (p.fallen) PartyRoster.MarkFallen(so);
             // 저장된 값은 저장 시점 기준이다. Set으로 넣으면 그 사이 흐른 자리비움 시간이

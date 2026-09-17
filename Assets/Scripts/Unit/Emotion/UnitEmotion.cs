@@ -27,6 +27,11 @@ public class UnitEmotion : MonoBehaviour
     private float bleedTickTimer;
     private EmotionState state;
 
+    // 이번 전투 내내 패닉으로 굳어 있는가(1성의 생애 첫 전투). 시간이 지나도, 디스펠로도 풀리지 않는다.
+    private bool panicLocked;
+
+    public bool IsPanicLocked => panicLocked;
+
     // 이 유닛의 감정이 바뀔 때 발생. UnitController가 에이전트 속도를 다시 계산하는 데 쓴다.
     public event Action<UnitEmotion> OnStateChanged;
 
@@ -52,7 +57,8 @@ public class UnitEmotion : MonoBehaviour
     }
 
     // 스포너가 CharacterSO를 전투 유닛에 얹을 때 호출. 히든 스탯을 감정 저항으로 옮긴다.
-    public void Configure(HiddenStats hidden, int starCount)
+    // firstBattle: 이 캐릭터가 생애 처음으로 전투에 나서는가(CharacterProgress.IsFirstBattle).
+    public void Configure(HiddenStats hidden, int starCount, bool firstBattle = false)
     {
         if (hidden != null)
         {
@@ -60,8 +66,12 @@ public class UnitEmotion : MonoBehaviour
             profile.stress = Mathf.Max(0, hidden.stress);
         }
 
-        // 1~2성은 멘탈이 약해 첫 전투에서 반드시 공포에 빠진다(CharacterRules.IsFragileMental).
+        // 1~2성은 멘탈이 약해 공포에 빠진 채로 전투를 시작한다(CharacterRules.IsFragileMental).
         profile.fragileFirstBattle = CharacterRules.IsFragileMental(starCount);
+
+        // 1성의 생애 첫 전투는 공포로 끝나지 않는다 — 전장에 서는 순간 패닉으로 굳어 끝까지 풀리지 않는다.
+        // 원작에서 처음 소환된 1성이 칼 한 번 못 휘두르고 스러지는 그 장면이다.
+        panicLocked = firstBattle && CharacterRules.PanicsThroughFirstBattle(starCount);
         ResetForBattle();
     }
 
@@ -69,6 +79,12 @@ public class UnitEmotion : MonoBehaviour
     {
         fearGauge = profile.fragileFirstBattle ? profile.fearThreshold : 0f;
         panicTimer = 0f;
+        if (panicLocked)
+        {
+            fearGauge = profile.panicThreshold;
+            panicTimer = Mathf.Max(0.01f, profile.panicDuration);
+        }
+
         brokenTimer = 0f;
         bleedRemaining = 0f;
         bleedTickTimer = 0f;
@@ -202,6 +218,14 @@ public class UnitEmotion : MonoBehaviour
 
     private void UpdatePanic(float deltaTime)
     {
+        // 굳은 패닉은 시간이 흘러도 풀리지 않는다. 타이머를 깎지 않는 것으로 충분하다 —
+        // 상태 계산(RecomputeState)과 공포 게이지 갱신(UpdateFear)이 전부 이 타이머를 보고 멈춘다.
+        if (panicLocked)
+        {
+            panicTimer = Mathf.Max(panicTimer, 0.01f);
+            return;
+        }
+
         if (panicTimer > 0f)
         {
             panicTimer -= deltaTime;

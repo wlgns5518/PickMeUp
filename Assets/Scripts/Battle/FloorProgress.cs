@@ -9,6 +9,9 @@ public static class FloorProgress
 {
     public const int FirstFloor = 1;
 
+    // 탑의 꼭대기. 이 층을 깨면 더 열리는 층이 없다.
+    public const int LastFloor = 100;
+
     // 깬 층 중 가장 높은 번호. 0이면 아직 아무 층도 깨지 못한 상태.
     public static int HighestCleared { get; private set; }
 
@@ -16,8 +19,8 @@ public static class FloorProgress
     // 씬을 넘어가야 하므로 static으로 들고 간다.
     public static int SelectedFloor { get; private set; } = FirstFloor;
 
-    // 깬 층의 바로 다음 층까지 선택할 수 있다.
-    public static int HighestUnlocked => HighestCleared + 1;
+    // 깬 층의 바로 다음 층까지 선택할 수 있다. 꼭대기를 넘지는 않는다.
+    public static int HighestUnlocked => Mathf.Min(HighestCleared + 1, LastFloor);
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetOnPlay()
@@ -44,13 +47,13 @@ public static class FloorProgress
     public static void MarkCleared(int floor)
     {
         if (floor < FirstFloor) return;
-        HighestCleared = Mathf.Max(HighestCleared, floor);
+        HighestCleared = Mathf.Clamp(Mathf.Max(HighestCleared, floor), 0, LastFloor);
     }
 
     // 세이브에서 읽어온 해금 상태를 얹는다.
     public static void RestoreCleared(int highestCleared)
     {
-        HighestCleared = Mathf.Max(0, highestCleared);
+        HighestCleared = Mathf.Clamp(highestCleared, 0, LastFloor);
         if (SelectedFloor > HighestUnlocked) SelectedFloor = HighestUnlocked;
     }
 }

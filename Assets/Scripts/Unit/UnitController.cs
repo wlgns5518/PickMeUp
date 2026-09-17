@@ -364,7 +364,9 @@ public partial class UnitController : MonoBehaviour
 
         if (emotion != null && source != null)
         {
-            emotion.Configure(source.hiddenStats, source.starCount);
+            // 출전 횟수는 스포너가 이 뒤에 올린다(CharacterBattleSpawner.SpawnAllies). 여기서 읽는 값이
+            // "이번이 처음인가"다.
+            emotion.Configure(source.hiddenStats, source.starCount, CharacterProgress.IsFirstBattle(source));
         }
 
         // 스탯은 이미 MapStats에서 장비 보정을 받았다. 여기서는 화면에 보이는 쪽만 맞춘다.

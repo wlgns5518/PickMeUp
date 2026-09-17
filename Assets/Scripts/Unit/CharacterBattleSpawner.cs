@@ -29,8 +29,13 @@ public class CharacterBattleSpawner : MonoBehaviour
     [SerializeField] private Vector3 enemySpawnFallbackOffset = new Vector3(2.5f, 0f, 0f);
 
     [Header("Floor Scaling")]
-    [Tooltip("적 수 = 고른 층 + 이 값. 층이 오를수록 적 수도 같이 늘어난다(예: 1층=2마리, 9층=10마리).")]
-    [SerializeField] private int enemyCountOffset = 1;
+    [Tooltip("적 수 = 이 값 + 층^enemyCountExponent(반올림). 기본값이면 1층 6마리, 10층 37마리, 50층 359마리, 100층 1005마리다.\n\n" +
+             "1층이 2마리일 때는 너무 쉽게 깨졌다 — 첫 층부터 둘러싸여 고전해야 한다(2026-09).")]
+    [SerializeField, Min(0)] private int enemyCountBase = 5;
+    [Tooltip("층에 따라 적 수가 불어나는 기울기. 1이면 층+1(예전 공식, 100층 101마리), 1.5면 100층에서 1000마리를 넘는다.\n\n" +
+             "직선이 아니라 거듭제곱인 이유: 낮은 층은 한두 마리 차이가 곧 난이도라 천천히 늘고, " +
+             "높은 층은 대군전이라 한 층에 수십 마리씩 늘어야 체감이 된다.")]
+    [SerializeField, Min(0.1f)] private float enemyCountExponent = 1.5f;
     [Tooltip("적 레벨 = 고른 층 + 이 범위(포함)에서 뽑은 오프셋. 몬스터마다 독립적으로 뽑는다.")]
     [SerializeField] private int enemyLevelOffsetMin = 1;
     [SerializeField] private int enemyLevelOffsetMax = 2;
@@ -64,12 +69,6 @@ public class CharacterBattleSpawner : MonoBehaviour
     [Tooltip("마나 = baseMana + 지능 x manaPerIntelligence. 지능이 높을수록 스킬을 자주 쓴다.")]
     [SerializeField] private int baseMana = 30;
     [SerializeField] private int manaPerIntelligence = 4;
-
-    [Header("Debug (임시)")]
-    [Tooltip("양쪽 진영의 최대 체력에 곱한다. 전투가 한두 방에 끝나서 흐름을 볼 수 없을 때 " +
-             "길이만 늘려 보려고 둔 임시 손잡이다. 밸런싱은 baseAttackDamage/attackDamagePerStrength 쪽이 " +
-             "맡아야 하므로, 확인이 끝나면 1로 되돌린다.")]
-    [SerializeField, Min(0.01f)] private float debugHealthMultiplier = 100f;
 
     // 아군을 세우기 전에 몸부터 챙긴다.
     //
@@ -108,6 +107,10 @@ public class CharacterBattleSpawner : MonoBehaviour
             Vector3 position = GetSpawnPosition(allySpawnPoints, i, allySpawnFallbackOffset);
             UnitController unit = SpawnUnit(body, UnitTeam.Ally, MapStats(so, body), position, so.characterName, so);
 
+            // 전장에 섰으면 전투를 치른 것이다. 세우는 순간(Configure) 첫 전투인지를 이미 읽었으므로 그 뒤에 센다.
+            // 파일에는 전투가 끝날 때 남는다(BattleManager → SaveSystem).
+            if (unit != null) CharacterProgress.MarkBattleEntered(so);
+
             // HP와 마나는 Configure가 만회복시키지만 스트레스만은 이어진다.
             // Configure가 hiddenStats 값으로 되돌려 놓으므로 반드시 그 뒤에 덮어써야 한다.
             if (unit != null && unit.Emotion != null)
@@ -119,11 +122,21 @@ public class CharacterBattleSpawner : MonoBehaviour
 
     private void SpawnEnemies()
     {
-        // 메인 씬에서 고른 층이 난이도를 정한다. 적 수는 층수 + enemyCountOffset로 늘어난다.
-        int floor = Mathf.Max(FloorProgress.FirstFloor, FloorProgress.SelectedFloor);
-        int count = floor + enemyCountOffset;
+        // 메인 씬에서 고른 층이 난이도를 정한다.
+        int floor = Mathf.Clamp(FloorProgress.SelectedFloor, FloorProgress.FirstFloor, FloorProgress.LastFloor);
+        int count = EnemyCountForFloor(floor);
 
         SpawnEnemyEntities(floor, count);
+    }
+
+    // 층의 적 수(Floor Scaling의 enemyCountBase / enemyCountExponent 툴팁 참조).
+    //
+    // 필드 이름이 예전 enemyCountOffset이 아닌 이유: 층 씬에 그 이름으로 1이 저장돼 있어서, 기본값만 바꾸면
+    // 씬 값이 이겨 1층이 계속 2마리였다. 이름을 바꿔 씬의 옛 값을 버린다.
+    public int EnemyCountForFloor(int floor)
+    {
+        int clamped = Mathf.Clamp(floor, FloorProgress.FirstFloor, FloorProgress.LastFloor);
+        return Mathf.Max(1, enemyCountBase + Mathf.RoundToInt(Mathf.Pow(clamped, enemyCountExponent)));
     }
 
     // 적을 엔티티로 띄운다.
@@ -148,10 +161,7 @@ public class CharacterBattleSpawner : MonoBehaviour
         Vector3 center = GetEnemySpawnPosition(0);
         float spread = Mathf.Max(2f, Mathf.Sqrt(count) * 1.2f);
 
-        // 체력 배율은 여기서 넘긴다. 아군과 게임오브젝트 적이 같은 손잡이를 쓰므로
-        // 엔티티만 빠지면 셋이 조용히 어긋난다(BuildStats 주석 참조).
-        entityEnemySettings.SpawnWave(count, center, spread, level, (uint)(floor * 7919 + 13),
-            debugHealthMultiplier);
+        entityEnemySettings.SpawnWave(count, center, spread, level, (uint)(floor * 7919 + 13));
     }
 
     // 층이 높아지면 스폰 지점 수를 금방 넘어선다. 남는 적은 배치 중심을 둘러싸고 뭉친다.
@@ -311,7 +321,7 @@ public class CharacterBattleSpawner : MonoBehaviour
             attackDamage = baseAttackDamage + so.Strength * attackDamagePerStrength,
         };
 
-        stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * job.HpMultiplier * debugHealthMultiplier));
+        stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * job.HpMultiplier));
         stats.attackDamage = Mathf.Max(1, Mathf.RoundToInt(stats.attackDamage * job.AttackMultiplier * weapon.AttackMultiplier * weaponPower));
         stats.skillDamage = stats.attackDamage * 2;
 

@@ -26,6 +26,10 @@ public static class CharacterProgress
         public int Vitality;
         public int Agility;
         public readonly List<string> SkillIds = new List<string>();
+
+        // 전투에 나선 횟수. 1성의 생애 첫 전투를 가르는 데 쓴다(CharacterRules.PanicsThroughFirstBattle).
+        // 이긴 판만이 아니라 나선 판을 센다 — 첫 전투에서 쓰러져도 첫 전투는 치른 것이다.
+        public int BattlesFought;
     }
 
     private static readonly Dictionary<CharacterSO, Entry> entries = new Dictionary<CharacterSO, Entry>();
@@ -68,6 +72,18 @@ public static class CharacterProgress
     // ---- 읽기 ------------------------------------------------------------
 
     public static int LevelOf(CharacterSO character) => character != null ? Of(character).Level : 1;
+
+    public static int BattlesFoughtOf(CharacterSO character) => character != null ? Of(character).BattlesFought : 0;
+
+    // 아직 한 번도 전투에 나서지 않았는가.
+    public static bool IsFirstBattle(CharacterSO character) => BattlesFoughtOf(character) == 0;
+
+    // 전투에 나섰다. 스포너가 이 캐릭터를 전장에 세운 직후에 부른다(세운 순간의 판단이 끝난 뒤).
+    public static void MarkBattleEntered(CharacterSO character)
+    {
+        if (character == null) return;
+        Of(character).BattlesFought++;
+    }
 
     public static int ExpOf(CharacterSO character) => character != null ? Of(character).Exp : 0;
 
@@ -218,6 +234,14 @@ public static class CharacterProgress
         {
             if (!string.IsNullOrEmpty(skillIds[i])) entry.SkillIds.Add(skillIds[i]);
         }
+    }
+
+    // 세이브에 남은 출전 횟수를 얹는다. 이 값이 없던 시절의 세이브는 0으로 읽혀, 이미 성장한
+    // 캐릭터도 아직 첫 전투를 치르지 않은 것으로 본다(2026-09 결정).
+    public static void RestoreBattlesFought(CharacterSO character, int battlesFought)
+    {
+        if (character == null) return;
+        Of(character).BattlesFought = Mathf.Max(0, battlesFought);
     }
 
     public static void Clear() => entries.Clear();
