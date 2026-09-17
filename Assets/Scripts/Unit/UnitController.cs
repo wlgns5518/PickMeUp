@@ -148,6 +148,12 @@ public partial class UnitController : MonoBehaviour
     // 이 유닛의 판단 전체. 어떤 동작이 있고 무엇이 무엇보다 먼저인지는 UnitBehaviorTree에 있다.
     private BehaviorTree<UnitController> brain;
 
+    // 클립의 타격 이벤트를 받아 넘겨주는 자리(Animator와 같은 오브젝트). 구독에 쓰는 델리게이트는
+    // Awake에서 한 번만 만든다 — 메서드 그룹을 += 할 때마다 새 델리게이트가 할당되기 때문이다.
+    private UnitAnimationEvents animationEvents;
+    private Action attackHitHandler;
+    private Action skillHitHandler;
+
     public UnitTeam Team => team;
     public UnitEmotion Emotion => emotion;
     // 이 전투 유닛이 어떤 로스터 캐릭터인지. 사망 시 영구 사망 처리에 쓴다.
@@ -389,6 +395,7 @@ public partial class UnitController : MonoBehaviour
     {
         if (agent == null) agent = GetComponent<NavMeshAgent>();
         if (animator == null) animator = GetComponentInChildren<Animator>();
+        BindAnimationEvents();
         if (scanner == null) scanner = GetComponent<TargetScanner>();
         if (bodyCollider == null) bodyCollider = GetComponent<Collider>();
         // 시야 판정이 자기 몸(과 래그돌 콜라이더)을 장애물로 세지 않도록 레지스트리에 넘길 목록.
@@ -622,12 +629,44 @@ public partial class UnitController : MonoBehaviour
     {
         UnitRegistry.Register(this);
         if (emotion != null) emotion.OnStateChanged += HandleEmotionChanged;
+        SubscribeAnimationEvents(true);
     }
 
     private void OnDisable()
     {
         UnitRegistry.Unregister(this);
         if (emotion != null) emotion.OnStateChanged -= HandleEmotionChanged;
+        SubscribeAnimationEvents(false);
+    }
+
+    // 타격 이벤트를 받는 컴포넌트를 Animator 옆에 둔다(UnitAnimationEvents 주석 참조).
+    //
+    // 몸은 런타임에 세워지는 경우가 많아(CharacterBodyFactory) 프리팹에 미리 붙여 둘 수 없다.
+    // 스폰 때 한 번 붙이는 것이라 매 프레임 비용은 없다.
+    private void BindAnimationEvents()
+    {
+        if (attackHitHandler == null) attackHitHandler = ResolveAttackHit;
+        if (skillHitHandler == null) skillHitHandler = ResolveSkillHit;
+        if (animator == null) return;
+
+        animationEvents = animator.GetComponent<UnitAnimationEvents>();
+        if (animationEvents == null) animationEvents = animator.gameObject.AddComponent<UnitAnimationEvents>();
+    }
+
+    private void SubscribeAnimationEvents(bool subscribe)
+    {
+        // 플레이 중 스크립트를 고쳐 도메인 리로드가 일어나면 Awake 없이 OnEnable만 다시 불린다.
+        // 그때 비직렬화 필드(이 컴포넌트 참조와 델리게이트)가 비어 있어 칼이 닿아도 아무 일이 없게 된다.
+        if (subscribe && (animationEvents == null || attackHitHandler == null)) BindAnimationEvents();
+        if (animationEvents == null) return;
+
+        // 두 번 붙지 않게 먼저 뗀다. 도메인 리로드 뒤 OnEnable이 다시 불리는 경로가 있다.
+        animationEvents.AttackHit -= attackHitHandler;
+        animationEvents.SkillHit -= skillHitHandler;
+        if (!subscribe) return;
+
+        animationEvents.AttackHit += attackHitHandler;
+        animationEvents.SkillHit += skillHitHandler;
     }
 
     private void Start()
@@ -644,6 +683,8 @@ public partial class UnitController : MonoBehaviour
 
         if (scanner != null) scanner.Tick();
         if (emotion != null) emotion.Tick(Time.deltaTime);
+        // 받아 둔 집중 표적을 틈이 나는 대로 주 표적에 적용한다. 트리가 이번 틱에 그 표적을 놓고 고르도록 먼저 돈다.
+        TickCommand();
         // 사망/패닉/경직/회복약/치료처럼 무엇을 하고 있든 걸리는 판단은 트리 위쪽 가지가
         // 들고 있다(UnitBehaviorTree 참조 — 예전에는 그 판단이 여기 있었다).
         brain?.Tick();
@@ -739,6 +780,7 @@ public partial class UnitController : MonoBehaviour
         if (target == CurrentTarget && IsTargetValid()) return true;
         if (!target.IsAlive || !IsHostileTo(target)) return false;
         if (IsTargetChangeLocked()) return false;
+        if (IsCommandBlockingRetarget(target)) return false;
 
         if (IsTargetValid())
         {
@@ -774,6 +816,7 @@ public partial class UnitController : MonoBehaviour
         // 못한다 — 실측에서 마법사만 혼자 다른 적을 때리고 있던 원인이 이것이었다.
         if (IsAttackAnimationLocked) return false;
         if (Time.time < lastTargetChangeTime + targetChangeInterval) return false;
+        if (IsCommandBlockingRetarget(target)) return false;
 
         AssignTarget(target);
         ClearMoveDestination();
@@ -817,6 +860,7 @@ public partial class UnitController : MonoBehaviour
     {
         if (IsDead || target == null || target.IsDead || !UnitRegistry.AreEnemies(this, target)) return;
         if (IsTargetChangeLocked()) return;
+        if (IsCommandBlockingRetarget(target)) return;
 
         bool acceptedTarget = HasUsableTarget() ? TrySetTarget(target) : ForceSetSharedTarget(target);
         if (!acceptedTarget) return;
@@ -1547,31 +1591,44 @@ public partial class UnitController : MonoBehaviour
         TakeDamage(damage, attacker, applyKnockback, fromSkill, 0f);
     }
 
-    // poiseDamage: 이 피격이 강인도를 얼마나 깎는지. ApplyAttackDamage/ApplySkillDamage만 실제 값을
+    // poiseDamage: 이 피격이 강인도를 얼마나 깎는지. ResolveAttackHit/ResolveSkillHit만 실제 값을
     // 넘긴다 — 그 밖의 경로(예: TakeBleedDamage 계열)는 경직을 유발하지 않는다.
     public void TakeDamage(int damage, UnitController attacker, bool applyKnockback, bool fromSkill, float poiseDamage)
     {
+        TakeDamage(damage, attacker, applyKnockback, fromSkill, poiseDamage, 1f);
+    }
+
+    // impactWeight: 이 한 방의 무게. 1이 평타이고 콤보 마무리·스킬·실드 배시가 더 크다.
+    // 히트스톱 시간과 즉시 밀림에 곱해진다 — 같은 칼이라도 마무리 일격은 더 오래 멈칫해야 한다.
+    public void TakeDamage(int damage, UnitController attacker, bool applyKnockback, bool fromSkill, float poiseDamage,
+        float impactWeight)
+    {
         TakeDamage(damage, attacker,
             attacker != null ? attacker.transform.position : Vector3.zero, attacker != null,
-            Unity.Entities.Entity.Null, applyKnockback, fromSkill, poiseDamage);
+            Unity.Entities.Entity.Null, applyKnockback, fromSkill, poiseDamage, impactWeight);
     }
 
     // 엔티티가 된 적이 때렸다(EnemyWorldBridge.DrainHitsOnAllies가 부른다).
     //
     // 때린 쪽이 UnitController가 아니므로 참조 대신 위치와 Entity만 온다. 방어 각도, 배후 판정,
-    // 강인도, 퍼펙트 가드까지 규칙은 전부 같은 경로를 탄다 — 다른 것은 딱 둘이다:
-    //  - 반격 표적 지정(ForceSetAttackTarget)은 하지 않는다. 아군의 CurrentTarget이 아직
-    //    UnitController 타입이라 엔티티를 담지 못한다(다음 단계에서 손잡이 타입으로 바꾼다).
-    //  - 히트스톱을 때린 쪽에 걸지 않는다. 적에게는 Animator가 없다.
+    // 강인도, 퍼펙트 가드, 넉백까지 규칙은 전부 같은 경로를 탄다 — 다른 것은 딱 둘이다:
+    //  - 반격 표적 지정(ForceSetAttackTarget)은 하지 않는다. 위협 가중치 비교가 UnitController를 전제로 한다.
+    //  - 때린 쪽의 멈칫은 여기서 걸지 않는다. 엔티티는 타격 프레임에 스스로 건다(EnemyCombatSystem).
+    //
+    // 넉백은 켜서 보낸다. 예전에는 꺼져 있었고 즉시 밀림도 때린 UnitController가 있어야만 걸려서,
+    // 고블린에게 맞은 영웅은 강인도가 깨져도 제자리에서 움찔만 했다 — 맞은 몸이 어디로도 밀리지 않았다.
     public void TakeEnemyDamage(int damage, Vector3 attackerPosition, Unity.Entities.Entity attackerEntity,
-        float poiseDamage = 0f)
+        float poiseDamage = 0f, float impactWeight = 1f)
     {
-        TakeDamage(damage, null, attackerPosition, true, attackerEntity, false, false, poiseDamage);
+        TakeDamage(damage, null, attackerPosition, true, attackerEntity, true, false, poiseDamage, impactWeight);
     }
 
     private void TakeDamage(int damage, UnitController attacker, Vector3 attackerPosition, bool hasAttackerPosition,
-        Unity.Entities.Entity attackerEntity, bool applyKnockback, bool fromSkill, float poiseDamage)
+        Unity.Entities.Entity attackerEntity, bool applyKnockback, bool fromSkill, float poiseDamage,
+        float impactWeight = 1f)
     {
+        if (impactWeight <= 0f) impactWeight = 1f;
+
         // 이미 죽은 유닛에 피가 튀거나 피격 상태로 되돌아가지 않도록 여기서 끊는다.
         if (IsDead) return;
 
@@ -1633,20 +1690,22 @@ public partial class UnitController : MonoBehaviour
         if (!wasBlocking) ApplyOnHitDebuffs(attacker, inFrontArc);
 
         // 칼이 닿은 순간 양쪽의 애니메이션을 아주 짧게 눌러 붙인다. 막힌 타격은 살에 박히는
-        // 것이 아니라 튕겨 나가는 것이라 더 짧게 끊는다.
-        ApplyImpactHitStop(attacker, wasBlocking ? 0.6f : 1f);
+        // 것이 아니라 튕겨 나가는 것이라 더 짧게 끊는다. 무거운 한 방일수록 길다.
+        ApplyImpactHitStop(attacker, (wasBlocking ? 0.6f : 1f) * impactWeight);
+
+        // 살에 닿은 한 대는 발을 무겁게 한다(피격 둔화). 막아낸 타격은 몸에 닿지 않았다.
+        if (!wasBlocking && dealt > 0) ApplyHitFlinch();
+
+        // 밀려날 방향은 때린 자리에서 나온다. 때린 쪽이 엔티티여도 위치는 온다.
+        //
+        // 예전에는 이 판단이 "때린 UnitController가 있는가" 안에 들어 있어서, 엔티티에게 맞으면
+        // 방향이 아예 잡히지 않았다 — 강인도가 깨져 피격 리액션이 나와도 제자리에서 움찔만 했다.
+        if (hasAttackerPosition && applyKnockback) SetKnockbackDirection(attackerPosition);
+        else ClearKnockback();
 
         if (attacker != null && !attacker.IsDead && attacker.isActiveAndEnabled && UnitRegistry.AreEnemies(this, attacker))
         {
             ForceSetAttackTarget(attacker);
-            if (applyKnockback)
-            {
-                SetKnockbackDirection(attacker.transform.position);
-            }
-            else
-            {
-                ClearKnockback();
-            }
         }
 
         if (stats.IsDead)
@@ -1693,7 +1752,7 @@ public partial class UnitController : MonoBehaviour
 
         // 강인도가 안 깨졌으면 애니메이션은 끊지 않는다 — 슈퍼아머는 아니라서 살짝 밀리기만 하고
         // 곧장 다시 싸운다(콤보 마무리나 스킬만 진짜 경직을 유발한다).
-        if (attacker != null) ApplyMicroPushback(attacker.transform.position);
+        if (hasAttackerPosition) ApplyMicroPushback(attackerPosition, impactWeight);
 
         // 영창은 여기서 끊지 않는다.
         //
@@ -1750,7 +1809,10 @@ public partial class UnitController : MonoBehaviour
 
     // 강인도가 깨지지 않은 일반 피격의 즉각적인 밀림. 피격 리액션의 시간 분산 넉백과 달리
     // 하던 동작을 바꾸지 않고 그 자리에서 한 번에 살짝 밀어서 타격감만 준다.
-    private void ApplyMicroPushback(Vector3 attackerPosition)
+    //
+    // agent.Move로 민다. 에이전트가 NavMesh 경계를 넘지 않게 잘라 주므로 벽이나 낭떠러지 밖으로
+    // 밀려 나가지 않는다 — transform을 직접 옮기면 다음 프레임에 에이전트가 도로 끌어오거나 떨어진다.
+    private void ApplyMicroPushback(Vector3 attackerPosition, float weight = 1f)
     {
         if (stats.poiseHitPushback <= 0f) return;
         if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
@@ -1759,7 +1821,7 @@ public partial class UnitController : MonoBehaviour
         direction.y = 0f;
         if (direction.sqrMagnitude <= 0.0001f) return;
 
-        agent.Move(direction.normalized * stats.poiseHitPushback);
+        agent.Move(direction.normalized * (stats.poiseHitPushback * Mathf.Max(0f, weight)));
     }
 
     private void SpawnBloodEffect(Vector3 attackerPosition, bool hasAttacker)
@@ -1806,16 +1868,22 @@ public partial class UnitController : MonoBehaviour
         // 출혈을 걸어둔 공격자가 lastAttacker로 남아 있어 기여가 사라지지 않는다.
         if (lastAttacker != null && lastAttacker != this) lastAttacker.Kills++;
 
+        // 동료가 쓰러지는 순간. 한 번의 죽음이 영구 소멸인 전투라 가장 크게 흔든다.
+        if (team != UnitTeam.Enemy) CombatImpulse.Emit(this, AllyDeathShake);
+
         UnitEmotion.BroadcastAllyDeath(this);
         OnAnyUnitDied?.Invoke(this);
     }
 
-    // 공격 클립의 애니메이션 이벤트가 부르는 실제 타격 순간.
+    // 공격 클립의 타격 프레임. 클립 이벤트 → UnitAnimationEvents.AttackHit → 여기.
+    //
+    // 공격을 "하기로 한 것"과 "닿았는가"가 여기서 갈린다. 앞의 것은 행동 트리가 정하고
+    // (AttackBehavior → TriggerAttack), 이 메서드는 그 결정을 모른 채 지금 이 순간의 거리와 각도만 본다.
     //
     // 예전에는 여기서 IsTargetValid만 보고 CurrentTarget에게 무조건 피해를 넣었다. 스윙이
     // 시작된 뒤 상대가 5m 밖으로 달아나도, 등 뒤로 돌아가도 그대로 맞았다 — 빗나감이라는
     // 것이 없으니 거리도 각도도 전투에서 아무 의미가 없었다. 이제 이 시점에 다시 잰다.
-    public void ApplyAttackDamage()
+    private void ResolveAttackHit()
     {
         // 시체가 휘두르던 칼의 이벤트가 뒤늦게 도착할 수 있다. 죽었으면 아무 일도 없다.
         if (IsDead) return;
@@ -1849,8 +1917,31 @@ public partial class UnitController : MonoBehaviour
         bool shieldBash = pendingIsKick && stats.role == JobRole.Vanguard;
 
         // 화살이 떠났으면 피해는 투사체가 도착할 때 들어간다(WeaponProjectile).
-        if (!fired) victim.TakeDamage(damage, this, shieldBash, false, poiseDamage);
+        if (fired) return;
+
+        // 한 방의 무게. 몸을 실은 실드 배시가 가장 무겁고, 콤보를 끝까지 이어 붙인 마무리가 그다음이다.
+        float impactWeight = shieldBash ? ShieldBashImpactWeight
+            : pendingIsKick ? KickImpactWeight
+            : pendingIsComboFinisher ? FinisherImpactWeight
+            : 1f;
+
+        victim.TakeDamage(damage, this, shieldBash, false, poiseDamage, impactWeight);
+
+        // 방어선이 적의 기세를 꺾는 순간은 화면에도 남긴다.
+        if (shieldBash) CombatImpulse.Emit(this, ShieldBashShake);
     }
+
+    // 한 방의 무게(히트스톱 시간·밀림 배율). 평타가 1이다.
+    private const float FinisherImpactWeight = 1.4f;
+    private const float KickImpactWeight = 1.3f;
+    private const float ShieldBashImpactWeight = 1.8f;
+    private const float SkillImpactWeight = 1.6f;
+
+    // 화면 흔들림 세기(0~1). CombatImpulse 주석의 "판을 가르는 순간"만 흔든다.
+    private const float ShieldBashShake = 0.35f;
+    private const float SkillHitShake = 0.5f;
+    private const float PerfectGuardShake = 0.45f;
+    private const float AllyDeathShake = 0.8f;
 
     // 주무기가 투사체를 들고 있으면 쏘고 true. 근접 무기는 false를 돌려주고 그 자리에서 때린다.
     private bool TryFireProjectile(TargetRef victim, int damage, float poiseDamage, bool fromSkill)
@@ -1871,7 +1962,8 @@ public partial class UnitController : MonoBehaviour
         return true;
     }
 
-    public void ApplySkillDamage()
+    // 스킬 모션의 타격 프레임. 클립 이벤트 → UnitAnimationEvents.SkillHit → 여기.
+    private void ResolveSkillHit()
     {
         if (IsDead) return;
 
@@ -1903,7 +1995,8 @@ public partial class UnitController : MonoBehaviour
 
         if (fired) return;
 
-        victim.TakeDamage(damage, this, true, true, poiseDamage);
+        victim.TakeDamage(damage, this, true, true, poiseDamage, SkillImpactWeight);
+        CombatImpulse.Emit(this, SkillHitShake);
         if (!locksVictim) return;
 
         // 흘려내기(퍼펙트 가드)에 걸렸으면 무너지는 쪽은 이쪽이다. TakeDamage 안에서
@@ -2665,7 +2758,7 @@ public partial class UnitController : MonoBehaviour
 
     // 실제로 다리가 움직이는 배율. 공포(전 능력치 감소)와 둔화(부위 억제)가 함께 곱해진다.
     // 피해량에는 감정만 곱한다(ScaleDamage) — 다리를 찔린 것과 겁에 질린 것은 다른 일이다.
-    private float MoveMultiplier => EmotionMultiplier * SlowMultiplier;
+    private float MoveMultiplier => EmotionMultiplier * SlowMultiplier * FlinchMultiplier;
 
     private void HandleEmotionChanged(UnitEmotion changed)
     {
@@ -2717,6 +2810,7 @@ public partial class UnitController : MonoBehaviour
     private void ForceSetAttackTarget(UnitController attacker)
     {
         if (attacker == CurrentTarget && IsTargetValid()) return;
+        if (IsCommandBlockingRetarget(attacker)) return;
         if (!ShouldSwitchAggroTo(attacker)) return;
 
         AssignTarget(attacker);

@@ -23,13 +23,29 @@ public class PartyFollowCamera : MonoBehaviour
     private Vector3 anchoredPosition;
     private bool hasAnchor;
 
+    // 흔들림을 뺀 카메라 자세. 따라가기(SmoothDamp)는 이 값 위에서만 돈다.
+    //
+    // transform에 흔들림을 더한 채로 다음 프레임의 SmoothDamp가 그 값을 출발점으로 삼으면,
+    // 흔들림이 따라가기 속도에 섞여 들어가 카메라가 충격 방향으로 흘러가 버린다.
+    private Vector3 smoothedPosition;
+    private Quaternion smoothedRotation;
+    private bool hasSmoothedPose;
+
     private UnitController focusTarget;
 
     // 지금 카메라가 잡고 있는 아군. UI가 어느 슬롯을 강조할지 판단할 때도 쓴다.
     public UnitController FocusTarget => focusTarget;
 
+    private void Awake()
+    {
+        // 큰 한 방의 흔들림을 받을 자리. 씬마다 카메라에 붙여 두지 않아도 되게 여기서 챙긴다 —
+        // 수치를 다듬고 싶으면 카메라에 CombatImpulse를 직접 붙이면 그 값이 쓰인다.
+        if (GetComponent<CombatImpulse>() == null) gameObject.AddComponent<CombatImpulse>();
+    }
+
     private void OnEnable()
     {
+        hasSmoothedPose = false;
         BattleManager.OnBattleStarted += HandleBattleStarted;
 
         // 도메인 리로드나 늦은 활성화로 시작 이벤트를 놓쳤을 수 있다. 이미 전투 중이면 여기서 잡는다.
@@ -105,11 +121,27 @@ public class PartyFollowCamera : MonoBehaviour
             }
         }
 
+        if (!hasSmoothedPose)
+        {
+            smoothedPosition = transform.position;
+            smoothedRotation = transform.rotation;
+            hasSmoothedPose = true;
+        }
+
         Vector3 targetPosition = anchoredPosition + offset;
-        transform.position = Vector3.SmoothDamp(transform.position, targetPosition, ref followVelocity, followSmoothTime);
+        smoothedPosition = Vector3.SmoothDamp(smoothedPosition, targetPosition, ref followVelocity, followSmoothTime);
 
         Quaternion targetRotation = Quaternion.Euler(lookRotationEuler);
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
+        smoothedRotation = Quaternion.Slerp(smoothedRotation, targetRotation, rotationSpeed * Time.deltaTime);
+
+        // 흔들림은 지금 보고 있는 캐릭터에게 일어난 한 방에서만 나온다(CombatImpulse.Emit이 거른다).
+        if (CombatImpulse.TrySample(position, out Vector3 shakeOffset, out Quaternion shakeRotation))
+        {
+            transform.SetPositionAndRotation(smoothedPosition + shakeOffset, smoothedRotation * shakeRotation);
+            return;
+        }
+
+        transform.SetPositionAndRotation(smoothedPosition, smoothedRotation);
     }
 
     private bool TryGetFocusPosition(out Vector3 position)

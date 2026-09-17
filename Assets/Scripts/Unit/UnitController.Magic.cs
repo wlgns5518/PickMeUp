@@ -62,6 +62,10 @@ public partial class UnitController
     // 광역 판정에 쓰는 공용 버퍼. 마법 한 번에 리스트를 새로 만들지 않는다.
     private static readonly List<TargetRef> SpellVictims = new List<TargetRef>(16);
 
+    // 광역 마법 착탄의 흔들림. 반경 3m짜리가 0.65, 5m 넘으면 끝까지 흔든다.
+    private const float AreaSpellShakeBase = 0.35f;
+    private const float AreaSpellShakePerMeter = 0.1f;
+
     private void CacheMagicAnimationHashes()
     {
         castAnimationHash = ResolveStateHash(castStateName);
@@ -267,7 +271,7 @@ public partial class UnitController
                 // 타격 이벤트가 탄환을 쐈는데, 이제 그 이벤트 자체가 오지 않으므로
                 // 영창을 마친 이 자리에서 직접 쏘지 않으면 아무것도 날아가지 않는다.
                 bool fired = TryFireProjectile(CurrentTarget, damage, spell.PoiseDamage, true);
-                if (!fired) CurrentTarget.TakeDamage(damage, this, true, true, spell.PoiseDamage);
+                if (!fired) CurrentTarget.TakeDamage(damage, this, true, true, spell.PoiseDamage, SkillImpactWeight);
 
                 // 둔화는 탄환에 실어 보낼 수 없어(WeaponProjectile은 피해만 옮긴다) 여기서 건다.
                 // 탄환이 닿기 직전에 걸리는 셈이지만 사거리 7.5m를 0.2초에 지나가므로 눈에 띄지 않는다.
@@ -282,6 +286,10 @@ public partial class UnitController
             UnitRegistry.FindEnemiesAround(this, aimPoint, spell.Radius, SpellVictims);
             for (int i = 0; i < SpellVictims.Count; i++) ApplySpellTo(SpellVictims[i], spell, damage);
             SpellVictims.Clear();
+
+            // 영창을 대가로 치른 한 방이 떨어지는 자리. 반경이 클수록 크게 흔든다 —
+            // 마법사의 "압도적인 한 방"이 화면에 남는 것은 이 순간뿐이다. 빗맞아도(맞은 놈이 없어도) 땅은 울린다.
+            CombatImpulse.Emit(this, Mathf.Clamp01(AreaSpellShakeBase + spell.Radius * AreaSpellShakePerMeter));
         }
     }
 
@@ -290,7 +298,7 @@ public partial class UnitController
         if (!victim.IsAlive) return;
 
         // 마법은 밀쳐낸다. fromSkill로 넘겨 평타와 다른 취급을 받게 한다(출혈 판정 등).
-        victim.TakeDamage(damage, this, true, true, spell.PoiseDamage);
+        victim.TakeDamage(damage, this, true, true, spell.PoiseDamage, SkillImpactWeight);
 
         // 속성이 남기는 것. 빙결은 묶고, 화염은 밀어내며 태우고, 전격은 무너뜨린다
         // (전격의 몫은 위 PoiseDamage가 이미 크게 잡혀 있다).

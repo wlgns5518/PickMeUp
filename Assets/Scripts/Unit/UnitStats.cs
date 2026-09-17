@@ -68,6 +68,11 @@ public class UnitStats
              "0이면 아무 편향 없이 거리만으로 노려진다.")]
     [Min(0f)] public float threatWeight = 1f;
 
+    [Tooltip("적이 이 유닛에게 동시에 칼을 들 수 있는 자리 수(공격 슬롯). 0이면 적 쪽 기본값(2)을 쓴다. " +
+             "자리를 못 얻은 적은 한 걸음 떨어져 틈을 본다 — 둘레 어디에 설지는 정하지 않는다. " +
+             "몸으로 막는 탱커만 넓다(CharacterBattleSpawner.ApplyRole).")]
+    [Min(0)] public int enemyAttackSlots;
+
     [Tooltip("적 진영의 후방(궁수/마법사/사제)을 얼마나 우선해서 찾아 들어가는가(미터 단위 편향). " +
              "암살자만 크다. 0이면 가장 가까운 적을 친다.")]
     [Min(0f)] public float backlinePreference;
@@ -303,6 +308,11 @@ public class UnitStats
     public float hitStopDuration = 0.06f;
     [Tooltip("히트스톱 동안의 애니메이션 재생 배속. 0에 가까울수록 완전히 멈춘다.")]
     [Range(0f, 1f)] public float hitStopScale = 0.12f;
+    [Tooltip("살에 닿은 한 대를 맞은 뒤 발이 무거워지는 시간(초). 0이면 끈다. " +
+             "막아낸 타격에는 걸리지 않는다. 움찔 모션이 끝나자마자 제 속도로 달리면 맞은 것이 몸에 남지 않는다.")]
+    [Min(0f)] public float hitFlinchDuration = 0.35f;
+    [Tooltip("피격 둔화 동안의 이동 속도 배율.")]
+    [Range(0.1f, 1f)] public float hitFlinchMoveMultiplier = 0.55f;
 
     [Header("Retreat")]
     [Tooltip("HP가 이 비율 이하로 떨어지면 거리를 벌리려 한다. 회복 수단이 없는 적도 이걸로 무작정 맞아 죽지 않는다.")]

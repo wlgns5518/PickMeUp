@@ -15,10 +15,11 @@ using System;
 //  2) 행동불가    — 패닉/빈사/붕괴. 스스로 아무것도 결정하지 못한다.
 //  3) 경직        — 자세가 무너졌다. 무너뜨린 쪽이 정한 시간만큼 열려 있다.
 //  4) 피격 리액션 — 강인도가 깨진 한 대.
-//  5) 회복약      — 제 앞가림이 먼저다.
-//  6) 아군 치유   — 이미 깎여 죽어 가는 아군이 먼저다.
-//  7) 아군 보호막 — 급한 불을 끈 뒤에 미리 걸어 둔다.
-//  8) 교전/순찰   — 나머지 전부.
+//  5) 후퇴 명령   — 지휘관이 물렸다. 스스로 고르는 모든 것보다 위다.
+//  6) 회복약      — 제 앞가림이 먼저다.
+//  7) 아군 치유   — 이미 깎여 죽어 가는 아군이 먼저다.
+//  8) 아군 보호막 — 급한 불을 끈 뒤에 미리 걸어 둔다.
+//  9) 교전/순찰   — 나머지 전부. 진형 유지 명령은 이 안의 맨 위에서 "쫓아 나가는 것"만 막는다.
 //
 // 3·4번이 5~7번보다 위에 있는 것이 예전 배열과 다른 점이다. 예전에는 경직과 피격이
 // 전역 전이가 아니라 평범한 상태였고, 대신 회복약/치유/보호막 쪽에 "경직 중에는 못 마신다"는
@@ -61,6 +62,10 @@ public static class UnitBehaviorTree
             new ChaseBehavior(unit));
 
         BTSelector<UnitController> combat = new BTSelector<UnitController>(unit, true,
+            // 진형 유지 명령. 손 닿는 적이 없으면 자리를 지키고, 있으면 아래 교전이 그 자리에서 받는다.
+            // 교전보다 위에 두는 이유는 "쫓아 나가는 것"을 막기 위해서다 — 아래로 내리면 추격이 먼저 잡힌다.
+            Guard(unit, () => unit.IsHoldOrdered && ShouldKeepHoldPosition(unit, engage), new HoldPositionBehavior(unit)),
+
             // 겨눌 상대가 있으면 싸운다.
             Guard(unit, () => HasEngagement(unit, engage), engage),
 
@@ -76,6 +81,13 @@ public static class UnitBehaviorTree
             Guard(unit, () => IsActionBlocked(unit), new PanicBehavior(unit)),
             Guard(unit, () => unit.HasPendingStagger, new StaggerBehavior(unit), true),
             Guard(unit, () => unit.HasPendingHitReaction, new HitBehavior(unit), true),
+            // 지휘관의 후퇴 명령. 여기가 "우선순위 이탈"이 일어나는 자리다 — 뿌리 셀렉터는 매 틱 위에서부터
+            // 다시 보므로, 명령이 서는 다음 틱에 아래의 공격·추격·영창·치유가 접히고 각자의 OnExit가
+            // 뒷정리(방패 내리기, 영창 흩기, 도약 착지)를 한다. 따로 끊는 코드를 두지 않는다.
+            //
+            // 반응 계층(사망·패닉·경직·피격) 아래에 두는 이유: 무너진 몸은 명령을 들어도 달리지 못한다.
+            // 위에 두면 후퇴 명령 한 번으로 경직을 빠져나가는 탈출기가 된다.
+            Guard(unit, () => unit.IsRetreatOrdered, new CommandRetreatBehavior(unit)),
             // 셋이 CanTendSelf를 각자 다시 묻는다. 한 번 가지 하나로 묶어 봤는데
             // (바깥 가드 하나 + 안쪽 셀렉터) 재 보니 손해였다 — 검사는 3번에서 1번이 되지만
             // 트리가 한 단 깊어져서, 가장 흔한 두 상황에서 오히려 느려졌다:
@@ -178,6 +190,9 @@ public static class UnitBehaviorTree
         // 죽고 사는 문제는 콤보 도중이라도 항상 본다 — 완주보다 목숨이 우선이다.
         if (unit.ShouldRetreatForSurvival()) return true;
 
+        // 진형을 지키라는 명령 중에는 간격을 재며 물러나지 않는다. 목숨이 걸린 후퇴(위)는 명령보다 위다.
+        if (unit.IsHoldOrdered) return false;
+
         // 여기서부터는 "붙잡혀서 제 간격을 잃었는가"다.
         if (!unit.ShouldKeepDistance()) return false;
 
@@ -272,7 +287,8 @@ public static class UnitBehaviorTree
     // CanLeapAttack이 "사거리 안이면 거짓"이므로 아래 공격 가지와 겹치지 않는다.
     private static bool WantsLeapAttack(UnitController unit)
     {
-        return !unit.IsAttackAnimationLocked && unit.CanLeapAttack();
+        // 덤벼드는 것은 자리를 떠나는 것이다. 진형을 지키는 중에는 뛰어나가지 않는다.
+        return !unit.IsAttackAnimationLocked && !unit.IsHoldOrdered && unit.CanLeapAttack();
     }
 
     // 암살자는 콤보를 한 바퀴 돌리고 나면 일단 빠진다. 그 사이에 은신이 걸리고,
@@ -280,7 +296,20 @@ public static class UnitBehaviorTree
     // 스킬보다 뒤에 둔 이유는 쓸 수 있는 한 방이 있으면 그것부터 꽂는 편이 낫기 때문이다.
     private static bool WantsStalk(UnitController unit)
     {
-        return !unit.IsAttackAnimationLocked && unit.IsComboRecoveryPoint && unit.ShouldStalk();
+        return !unit.IsAttackAnimationLocked && !unit.IsHoldOrdered && unit.IsComboRecoveryPoint && unit.ShouldStalk();
+    }
+
+    // 진형을 지키는 중에 교전 대신 자리 지키기를 할 것인가.
+    //
+    // 이미 나간 칼과 잠근 동작(방어 자세·스킬)은 끝까지 간다. 그다음은 자리다 — 싸우는 동안 밀려나
+    // 붙잡는 거리를 넘었으면(UnitController.HoldLeash) 다 돌아올 때까지 교전으로 넘어가지 않는다.
+    // 그 밖에는 겨눈 상대가 손 닿는 데 있을 때만 교전으로 내려보낸다 — 사거리 밖이면 추격이 잡히기
+    // 때문이다. 궁수·마법사는 사거리가 길어 자리를 지킨 채로 멀리 쏜다.
+    private static bool ShouldKeepHoldPosition(UnitController unit, BTSelector<UnitController> engage)
+    {
+        if (unit.IsAttackAnimationLocked || engage.RunningChildLocked) return false;
+        if (unit.IsReturningToHoldAnchor || unit.IsBeyondHoldLeash) return true;
+        return !(unit.HasUsableTarget() && unit.IsTargetInAttackRange());
     }
 
     private static BTGuard<UnitController> Guard(UnitController unit, Func<bool> condition,

@@ -15,7 +15,8 @@
         "Unity.Burst",
         "Unity.Collections",
         "Unity.Mathematics",
-        "glTFast"
+        "glTFast",
+        "Unity.Cinemachine"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

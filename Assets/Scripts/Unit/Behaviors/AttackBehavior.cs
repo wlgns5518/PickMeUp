@@ -19,6 +19,9 @@ public class AttackBehavior : UnitBehavior
 
     public override bool AcceptsCombatRedirect => false;
 
+    // 지휘관의 명령은 다음 스윙 틈에 받는다(UnitBehavior.YieldsTargetToCommand 주석).
+    public override bool YieldsTargetToCommand => true;
+
     protected override void OnEnter()
     {
         // 옆으로 돌면서도 상대를 봐야 한다 — 진행 방향과 90도까지 어긋나므로 회전은 코드가 잡는다.

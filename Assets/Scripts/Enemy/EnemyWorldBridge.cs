@@ -42,6 +42,10 @@ public static class EnemyWorldBridge
         // 붙잡는 스킬(물어뜯기)에 다시 당할 수 있는가. 아군 쪽 CanBeSkillVictim을 그대로 옮긴다 —
         // 이게 없으면 한 명에게 여럿이 동시에 물고 늘어져 그 자리에서 녹는다.
         public byte canBeBitten;
+
+        // 이 아군에게 동시에 칼을 들 수 있는 적 수(공격 슬롯). 0이면 기본값을 쓴다
+        // (EnemyAttackSlotSystem.DefaultSlotsPerAlly). 몸으로 막는 직군일수록 넓다(UnitStats.enemyAttackSlots).
+        public byte attackSlots;
     }
 
     public struct EnemyState
@@ -129,6 +133,15 @@ public static class EnemyWorldBridge
         // 피해와 따로 오는 경우가 있어(마법은 피해와 둔화를 따로 건다) 0이어도 처리한다.
         public float slowDuration;
         public float slowMultiplier;
+
+        // 칼이 닿은 순간 맞은 쪽이 멈칫하는 시간과 그동안의 배속. 때린 아군의 수치를 싣는다 —
+        // 무거운 무기에 맞은 놈이 더 오래 멈춰야 하므로 맞는 쪽이 아니라 때린 쪽이 정한다.
+        public float hitStopDuration;
+        public float hitStopScale;
+
+        // 이 한 방의 무게. 1이 평타이고 콤보 마무리·스킬·실드 배시가 더 크다. 0은 1로 친다.
+        // 넉백 거리에 곱해진다(히트스톱 시간에는 보내는 쪽이 이미 곱해서 싣는다).
+        public float impactWeight;
     }
 
     // 잡에서 볼 수 있는 손잡이.
@@ -227,6 +240,7 @@ public static class EnemyWorldBridge
 
         AllyByIndex.Clear();
         IndexByAlly.Clear();
+        EntityAttackersByAlly.Clear();
         ClearSnapshotLookups();
         IsReady = false;
     }
@@ -264,11 +278,23 @@ public static class EnemyWorldBridge
                 hp = stats != null ? stats.currentHp : 0,
                 maxHp = stats != null ? stats.maxHp : 1,
                 threatWeight = stats != null ? stats.threatWeight : 1f,
-                attackerCount = ally.AttackersFrom(UnitTeam.Enemy),
+                // 엔티티 적은 AddAttacker를 부르지 않으므로(TargetRef.AddAttacker 주석) 지난 프레임에
+                // 적 스냅샷을 내보내며 센 수를 더한다. 이 합이 빠져 있던 동안 표적 점수의 "이미 붙은 수"
+                // 항이 늘 0이라, 고블린 전원이 어그로 가중치대로 탱커 한 명에게만 몰렸다.
+                attackerCount = ally.AttackersFrom(UnitTeam.Enemy) + EntityAttackersOn(ally),
                 alive = (byte)(ally.IsDead ? 0 : 1),
                 canBeBitten = (byte)(ally.CanBeSkillVictim ? 1 : 0),
+                attackSlots = stats != null ? (byte)Mathf.Clamp(stats.enemyAttackSlots, 0, 255) : (byte)0,
             });
         }
+    }
+
+    // 이 아군을 겨누고 있는 엔티티 적 수(지난 프레임 집계). 적 스냅샷을 내보낼 때 함께 센다.
+    private static readonly Dictionary<UnitController, int> EntityAttackersByAlly = new Dictionary<UnitController, int>(32);
+
+    private static int EntityAttackersOn(UnitController ally)
+    {
+        return EntityAttackersByAlly.TryGetValue(ally, out int count) ? count : 0;
     }
 
     public static UnitController GetAlly(int index)
@@ -315,6 +341,26 @@ public static class EnemyWorldBridge
 
             aliveEnemyCount++;
             aliveEnemyHp += Mathf.Max(0f, enemy.hp);
+        }
+    }
+
+    // 적이 누구를 겨누는지 아군 쪽으로 옮겨 센다. 인덱스는 이번 프레임에만 유효하므로
+    // UnitController 참조로 바꿔 들고, 다음 프레임의 아군 스냅샷에 싣는다(PublishAllies).
+    public static void CountEntityAttackers()
+    {
+        EntityAttackersByAlly.Clear();
+        if (!IsReady) return;
+
+        for (int i = 0; i < EnemyStates.Length; i++)
+        {
+            EnemyState enemy = EnemyStates[i];
+            if (!enemy.IsAlive) continue;
+
+            UnitController ally = GetAlly(enemy.targetAllyIndex);
+            if (ally == null) continue;
+
+            EntityAttackersByAlly.TryGetValue(ally, out int count);
+            EntityAttackersByAlly[ally] = count + 1;
         }
     }
 
@@ -574,9 +620,11 @@ public static class EnemyWorldBridge
 
     // 아군이 적을 때렸다. 실제 적용은 ECS 쪽 시스템이 한다.
     public static void DamageEnemy(Entity enemy, int damage, float poiseDamage, float3 fromPosition,
-        UnitController attacker = null)
+        UnitController attacker = null, float impactWeight = 1f)
     {
         if (!IsReady || enemy == Entity.Null) return;
+
+        UnitStats stats = attacker != null ? attacker.Stats : null;
 
         HitsOnEnemies.Enqueue(new HitOnEnemy
         {
@@ -585,6 +633,9 @@ public static class EnemyWorldBridge
             poiseDamage = poiseDamage,
             fromPosition = fromPosition,
             attackerAllyIndex = IndexOfAlly(attacker),
+            hitStopDuration = stats != null ? stats.hitStopDuration * impactWeight : 0f,
+            hitStopScale = stats != null ? stats.hitStopScale : 1f,
+            impactWeight = impactWeight,
         });
     }
 
@@ -607,7 +658,8 @@ public static class EnemyWorldBridge
 
     // 아군이 흘려냈다(퍼펙트 가드). 피해 없이 그 자리에서 무너뜨린다 —
     // 아군 쪽 UnitController.Stagger가 하던 일을 적에게 거는 경로다.
-    public static void StaggerEnemy(Entity enemy, float duration, float3 fromPosition)
+    public static void StaggerEnemy(Entity enemy, float duration, float3 fromPosition,
+        float hitStopDuration = 0f, float hitStopScale = 1f)
     {
         if (!IsReady || enemy == Entity.Null || duration <= 0f) return;
 
@@ -619,6 +671,9 @@ public static class EnemyWorldBridge
             fromPosition = fromPosition,
             forceStagger = true,
             forceStaggerDuration = duration,
+            hitStopDuration = hitStopDuration,
+            hitStopScale = hitStopScale,
+            impactWeight = 1f,
         });
     }
 
@@ -644,6 +699,9 @@ public static class EnemyWorldBridge
         });
     }
 
+    private const float PinImpactWeight = 1.5f;
+    private const float PinShake = 0.5f;
+
     // 적이 아군을 때린 것을 실제 UnitController로 흘려보낸다. 메인 스레드에서만 부른다.
     public static void DrainHitsOnAllies()
     {
@@ -654,15 +712,23 @@ public static class EnemyWorldBridge
             UnitController ally = GetAlly(hit.allyIndex);
             if (ally == null || ally.IsDead) continue;
 
-            ally.TakeEnemyDamage(hit.damage, hit.fromPosition, hit.source, hit.poiseDamage);
+            // 붙잡아 무는 한 방은 평타보다 무겁다 — 더 오래 멈칫하고 더 밀린다.
+            bool pins = hit.forceStaggerDuration > 0f;
+            ally.TakeEnemyDamage(hit.damage, hit.fromPosition, hit.source, hit.poiseDamage,
+                pins ? PinImpactWeight : 1f);
 
             // 물린 아군은 그 자리에서 굳는다. 물어뜯기는 피해로 잡는 수가 아니라 한 명을
             // 판에서 빼는 수라, 이 경직이 빠지면 "물려도 그냥 계속 싸우는" 그림이 된다.
             //
-            // 피해 뒤에 부르는 것이 맞다. 아군 쪽 ApplySkillDamage도 TakeDamage 다음에
+            // 피해 뒤에 부르는 것이 맞다. 아군 쪽 ResolveSkillHit도 TakeDamage 다음에
             // TryForceStagger를 부르고, 흘려낸(퍼펙트 가드) 경우에는 무는 쪽이 대신 무너지므로
             // TryForceStagger가 스스로 면역을 보고 물러난다.
-            if (hit.forceStaggerDuration > 0f) ally.TryForceStagger(hit.forceStaggerDuration);
+            //
+            // 동료 하나가 판에서 빠지는 순간이라 화면에도 남긴다. 실제로 무너뜨렸을 때만이다.
+            if (pins && ally.TryForceStagger(hit.forceStaggerDuration))
+            {
+                CombatImpulse.Emit(ally, PinShake);
+            }
 
             // 물린 아군에게 면역 시간을 건다. 피해보다 먼저 걸면 안 된다 —
             // 이 한 대로 쓰러지는 경우까지 포함해 "맞고 나서" 세는 것이 맞다.

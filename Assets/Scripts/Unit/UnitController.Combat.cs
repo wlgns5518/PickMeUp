@@ -902,6 +902,7 @@ public partial class UnitController
         perfectGuardArmed = false;
 
         PlayBlockImpact();
+        CombatImpulse.Emit(this, PerfectGuardShake);
         // 흘려낸 쪽도 잠깐 멈춰야 "쳐냈다"가 읽힌다. 흘려진 쪽은 자세가 통째로 무너진다.
         ApplyHitStop(stats.hitStopDuration * 2f, stats.hitStopScale);
         if (attacker != null && !attacker.IsDead)
@@ -910,11 +911,12 @@ public partial class UnitController
             attacker.Stagger(stats.perfectGuardStaggerDuration);
         }
 
-        // 흘려낸 상대가 엔티티라면 브리지를 통해 무너뜨린다. 히트스톱은 걸지 않는다 —
-        // 적에게는 Animator가 없어서 눌러 붙일 재생 배속 자체가 없다(EnemyAnimation 주석 참조).
+        // 흘려낸 상대가 엔티티라면 브리지를 통해 무너뜨린다. 멈칫과 밀려남은 무너뜨리는 그 한 줄이
+        // 함께 싣고 간다 — 엔티티는 Animator 대신 시뮬레이션 시간을 눌러 멈춘다(EnemyImpact).
         if (attackerEntity != Unity.Entities.Entity.Null)
         {
-            EnemyWorldBridge.StaggerEnemy(attackerEntity, stats.perfectGuardStaggerDuration, transform.position);
+            EnemyWorldBridge.StaggerEnemy(attackerEntity, stats.perfectGuardStaggerDuration, transform.position,
+                stats.hitStopDuration * 2f, stats.hitStopScale);
         }
 
         // 패링은 여기서 끝나지 않는다. 쳐낸 그 자리에서 되받아치는 것이 패링의 값어치다 —
@@ -944,7 +946,34 @@ public partial class UnitController
         if (duration <= 0f) return;
 
         ApplyHitStop(duration, stats.hitStopScale);
-        if (attacker != null && !attacker.IsDead) attacker.ApplyHitStop(duration, stats.hitStopScale);
+        if (attacker != null && !attacker.IsDead && attacker.IsWithinHitStopReach(transform.position))
+        {
+            attacker.ApplyHitStop(duration, stats.hitStopScale);
+        }
+    }
+
+    // 손에 쥔 것으로 직접 쳤다고 볼 거리. 이보다 멀면 때린 쪽은 멈추지 않는다.
+    //
+    // 화살과 마법탄은 날아가는 동안 쏜 쪽이 이미 다음 동작에 들어가 있다. 도착하는 순간 9m 밖의
+    // 궁수가 시위를 당기다 말고 멈칫하면 부딪힌 것이 아니라 렉으로 보인다.
+    private const float HitStopReachMargin = 1f;
+
+    public bool IsWithinHitStopReach(Vector3 victimPosition)
+    {
+        float reach = SwingReach + HitStopReachMargin;
+        Vector3 offset = victimPosition - transform.position;
+        offset.y = 0f;
+        return offset.sqrMagnitude <= reach * reach;
+    }
+
+    // 엔티티를 쳤다(TargetRef.TakeDamage). 맞은 쪽의 멈칫은 브리지가 싣고 가고, 여기서는 친 쪽만 멈춘다.
+    //
+    // 예전에는 이 경로에 멈칫이 통째로 없었다. 게임오브젝트끼리 싸울 때 맞은 쪽 TakeDamage가 양쪽에
+    // 걸어 주던 것이라, 적이 엔티티가 된 뒤로 아군의 칼은 무엇을 베든 허공을 가르듯 지나갔다.
+    public void OnStruckEntity(Vector3 victimPosition, float impactWeight)
+    {
+        if (!IsWithinHitStopReach(victimPosition)) return;
+        ApplyHitStop(stats.hitStopDuration * Mathf.Max(0f, impactWeight), stats.hitStopScale);
     }
 
     // 막아낸 순간의 반동. 전용 모션이 없으면 방어 자세를 한 번 다시 잡아 최소한
@@ -1029,6 +1058,26 @@ public partial class UnitController
     // 애니메이션에도 함께 곱해야 느려진 다리가 땅을 헛돌지 않는다.
     public float SlowMultiplier => Time.time < slowUntil ? slowMultiplier : 1f;
 
+    // 피격 둔화. 살에 닿은 한 대를 맞은 직후 잠깐 발이 무겁다.
+    //
+    // 부위 억제(위 둔화)와 따로 둔다. 같은 자리에 넣으면 "더 센 쪽이 이기고 더 긴 쪽으로 늘린다"는
+    // 규칙에 섞여, 창수에게 1.6초 묶인 동안 스친 한 대가 그 1.6초 전체를 더 느리게 만든다.
+    private float flinchUntil;
+    private bool flinchWasActive;
+
+    public float FlinchMultiplier => Time.time < flinchUntil ? stats.hitFlinchMoveMultiplier : 1f;
+
+    public void ApplyHitFlinch()
+    {
+        if (IsDead || stats.hitFlinchDuration <= 0f) return;
+
+        flinchUntil = Mathf.Max(flinchUntil, Time.time + stats.hitFlinchDuration);
+        if (flinchWasActive) return;
+
+        flinchWasActive = true;
+        RefreshAgentSpeed();
+    }
+
     public void ApplySlow(float duration, float multiplier)
     {
         if (IsDead || duration <= 0f || multiplier >= 1f) return;
@@ -1050,9 +1099,11 @@ public partial class UnitController
     private void TickSlow()
     {
         bool active = Time.time < slowUntil;
-        if (active == slowWasActive) return;
+        bool flinching = Time.time < flinchUntil;
+        if (active == slowWasActive && flinching == flinchWasActive) return;
 
         slowWasActive = active;
+        flinchWasActive = flinching;
         if (!active) slowMultiplier = 1f;
         RefreshAgentSpeed();
     }
@@ -1459,9 +1510,12 @@ public partial class UnitController
         slowUntil = 0f;
         slowMultiplier = 1f;
         slowWasActive = false;
+        flinchUntil = 0f;
+        flinchWasActive = false;
         IsCasting = false;
         castHealTarget = null;
         ResetMagicRuntime();
+        ResetCommandRuntime();
         ClearHitStop();
     }
 }

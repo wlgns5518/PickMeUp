@@ -205,11 +205,13 @@ public readonly struct TargetRef : IEquatable<TargetRef>
         if (IsUnit) Unit.AddAttacker(team, delta);
     }
 
-    public void TakeDamage(int damage, UnitController attacker, bool applyKnockback, bool fromSkill, float poiseDamage)
+    // impactWeight: 이 한 방의 무게(UnitController.TakeDamage 주석). 히트스톱과 넉백에 곱해진다.
+    public void TakeDamage(int damage, UnitController attacker, bool applyKnockback, bool fromSkill, float poiseDamage,
+        float impactWeight = 1f)
     {
         if (IsUnit)
         {
-            Unit.TakeDamage(damage, attacker, applyKnockback, fromSkill, poiseDamage);
+            Unit.TakeDamage(damage, attacker, applyKnockback, fromSkill, poiseDamage, impactWeight);
             return;
         }
 
@@ -217,12 +219,19 @@ public readonly struct TargetRef : IEquatable<TargetRef>
 
         // 엔티티는 그 자리에서 건드리지 않는다. 시뮬레이션 도중에 구조를 바꾸면 돌고 있던
         // 잡이 전부 무효가 되므로, 큐에 넣고 ECS 쪽 시스템이 꺼내 적용한다.
+        // 맞은 놈의 멈칫과 밀려남도 같은 줄에 실려 간다.
         Vector3 from = attacker != null ? attacker.transform.position : Position;
-        EnemyWorldBridge.DamageEnemy(Entity, damage, poiseDamage, from, attacker);
+        EnemyWorldBridge.DamageEnemy(Entity, damage, poiseDamage, from, attacker, impactWeight);
+
+        if (attacker == null) return;
 
         // 기여도는 여기서 센다. 큐를 건너간 피해는 때린 쪽으로 돌아오지 않기 때문이다
         // (UnitController.CreditDamageDealt 주석 참조).
-        if (attacker != null) attacker.CreditDamageDealt(damage);
+        attacker.CreditDamageDealt(damage);
+
+        // 친 쪽은 지금 이 프레임에 멈춘다. 맞은 엔티티는 다음 시뮬레이션 틱에 멈추므로 한 프레임
+        // 어긋나지만, 멈칫 자체가 60~100ms라 그 차이는 보이지 않는다.
+        attacker.OnStruckEntity(Position, impactWeight);
     }
 
     public void MarkSkillVictim(float duration)

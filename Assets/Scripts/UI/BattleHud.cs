@@ -86,6 +86,12 @@ public class BattleHud : MonoBehaviour
         resultPanel = BattleResultPanel.Create(canvasRect, resolvedFont, starSpriteAsset);
         deathBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, starSpriteAsset,
             deathBannerWidth, deathBannerHoldSeconds);
+
+        // 지휘관 명령(집중 공격·후퇴·진형 유지)을 받는 입구와 그 상태 표시. 파티 패널과 같은 이유로
+        // 씬마다 배치하지 않고 HUD가 챙긴다.
+        PartyCommandInput commandInput = GetComponent<PartyCommandInput>();
+        if (commandInput == null) commandInput = gameObject.AddComponent<PartyCommandInput>();
+        commandInput.Bind(canvasRect, resolvedFont);
     }
 
     // 파티 슬롯을 누르면 그 캐릭터로 시점을 옮긴다.

@@ -73,6 +73,9 @@ public partial class EnemyBridgeOutputSystem : SystemBase
         // 이번 프레임의 값으로 푸는 자리다(TargetRef).
         EnemyWorldBridge.RebuildEnemyIndex();
 
+        // 적이 누구를 겨누는지 아군 쪽 머릿수로 옮겨 둔다. 다음 프레임의 표적 점수가 이걸 읽는다.
+        EnemyWorldBridge.CountEntityAttackers();
+
         // 적이 아군을 때린 것을 실제 UnitController로 흘려보낸다.
         EnemyWorldBridge.DrainHitsOnAllies();
 
@@ -112,6 +115,8 @@ public partial struct EnemyDamageSystem : ISystem
         var statsLookup = SystemAPI.GetComponentLookup<EnemyStats>(true);
         var transformLookup = SystemAPI.GetComponentLookup<LocalTransform>();
         var targetLookup = SystemAPI.GetComponentLookup<EnemyTarget>();
+        var tacticsLookup = SystemAPI.GetComponentLookup<EnemyTactics>();
+        var impactLookup = SystemAPI.GetComponentLookup<EnemyImpact>();
 
         while (bridge.hitsOnEnemies.TryDequeue(out EnemyWorldBridge.HitOnEnemy hit))
         {
@@ -123,6 +128,11 @@ public partial struct EnemyDamageSystem : ISystem
             EnemyAnimation animation = animationLookup[hit.enemy];
 
             if (action.kind == EnemyActionKind.Dead) continue;
+
+            bool hasImpact = impactLookup.HasComponent(hit.enemy);
+            EnemyImpact impact = hasImpact ? impactLookup[hit.enemy] : default;
+            bool hasTactics = tacticsLookup.HasComponent(hit.enemy);
+            EnemyTactics tactics = hasTactics ? tacticsLookup[hit.enemy] : default;
 
             // 발을 묶는 것은 피해와 따로 온다(마법은 둘을 따로 건다). 더 센 쪽이 이기고,
             // 같은 세기면 더 오래 가는 쪽으로 늘린다 — 아군 쪽 ApplySlow와 같은 규칙이다.
@@ -147,6 +157,13 @@ public partial struct EnemyDamageSystem : ISystem
                     motionLookup[hit.enemy] = motion;
                 }
             }
+
+            // 발만 묶고 몸에는 닿지 않은 것(빙결·억제가 피해와 따로 온 경우)은 여기서 끝난다.
+            //
+            // 예전에는 이것도 아래로 흘러가 움찔(HitReact)을 틀었다 — 피해 0짜리 둔화 한 줄이
+            // 휘두르려던 고블린을 매번 끊고 모션을 처음부터 다시 틀었다.
+            bool struck = hit.damage > 0 || hit.poiseDamage > 0f || hit.forceStagger;
+            if (!struck) continue;
 
             // 뒤를 잡혔으면 더 아프다. 아군 쪽 backstabDamageMultiplier와 같은 규칙인데,
             // 여기서는 적이 맞는 쪽이라 아군의 배후 공격에 값이 붙는다.
@@ -216,9 +233,18 @@ public partial struct EnemyDamageSystem : ISystem
                 animation.clip = EnemyClip.Death;
                 animation.normalizedTime = 0f;
 
+                // 쥐고 있던 칼 들 자리는 여기서 돌려준다. 다음 프레임에 세는 쪽도 시체를 걸러 내지만,
+                // 그 한 프레임 동안 자리가 차 있으면 기다리던 놈의 판단 박자가 그대로 헛돈다.
+                if (hasTactics) tactics.ReleaseSlot(now, 0f);
+
+                // 마무리 일격은 조금 더 멀리 밀려 쓰러진다.
+                if (hasImpact) ApplyImpact(ref impact, hit, stats, transform, now, 1.2f, false);
+
                 healthLookup[hit.enemy] = health;
                 actionLookup[hit.enemy] = action;
                 animationLookup[hit.enemy] = animation;
+                if (hasTactics) tacticsLookup[hit.enemy] = tactics;
+                if (hasImpact) impactLookup[hit.enemy] = impact;
                 continue;
             }
 
@@ -236,6 +262,11 @@ public partial struct EnemyDamageSystem : ISystem
                 }
             }
 
+            // 넉백 거리는 반응의 무게를 따른다. 무너진 놈이 가장 멀리, 움찔한 놈이 그 절반,
+            // 스윙 도중이라 버틴 놈도 반 뼘은 밀린다 — 버틴 한 대가 아무 흔적도 없으면 칼이 몸을
+            // 통과한 것처럼 보인다.
+            float knockbackScale = 0.15f;
+
             if (broken)
             {
                 // 무너진 뒤에는 잠깐 면역이다. 이게 없으면 여럿에게 둘러싸인 순간
@@ -249,6 +280,11 @@ public partial struct EnemyDamageSystem : ISystem
                 action.struckThisSwing = true;
                 animation.clip = EnemyClip.Stagger;
                 animation.normalizedTime = 0f;
+
+                knockbackScale = 1f;
+                // 무너졌으면 칼 들 자리를 내놓는다. 무너진 몇 초 동안 자리를 쥐고 있으면
+                // 곁에서 기다리던 놈이 그 빈틈을 채우지 못한다.
+                if (hasTactics) tactics.ReleaseSlot(now, stats.slotYieldDelay);
             }
             else if (action.kind != EnemyActionKind.Stagger)
             {
@@ -261,12 +297,44 @@ public partial struct EnemyDamageSystem : ISystem
                     action.animationLength = stats.hitReactionDuration;
                     animation.clip = DirectionalHitClip(transform, hit.fromPosition);
                     animation.normalizedTime = 0f;
+
+                    knockbackScale = 0.5f;
+                    // 도약·물기가 끊긴 경우다. 쥐고 있던 자리는 취소로 돌려준다.
+                    if (hasTactics) tactics.ReleaseSlot(now, stats.slotYieldDelay);
                 }
             }
+
+            if (hasImpact) ApplyImpact(ref impact, hit, stats, transform, now, knockbackScale, !broken && damage > 0);
 
             healthLookup[hit.enemy] = health;
             actionLookup[hit.enemy] = action;
             animationLookup[hit.enemy] = animation;
+            if (hasTactics) tacticsLookup[hit.enemy] = tactics;
+            if (hasImpact) impactLookup[hit.enemy] = impact;
+        }
+    }
+
+    // 한 대의 무게를 몸에 남긴다 — 멈칫(히트스톱), 밀려남(넉백), 무거워진 발(피격 둔화).
+    //
+    // 멈칫하는 시간은 때린 쪽이 정해 보낸다(무거운 무기일수록 길다). 밀려나는 거리는 맞은 쪽의
+    // 체급(stats.knockbackDistance)에 이 한 방의 무게와 반응의 무게를 곱한다.
+    private static void ApplyImpact(ref EnemyImpact impact, in EnemyWorldBridge.HitOnEnemy hit, in EnemyStats stats,
+        in LocalTransform transform, double now, float knockbackScale, bool flinch)
+    {
+        float weight = hit.impactWeight > 0f ? hit.impactWeight : 1f;
+
+        impact.ApplyHitStop(now, hit.hitStopDuration, hit.hitStopScale);
+
+        float3 away = transform.Position - hit.fromPosition;
+        away.y = 0f;
+        // 때린 쪽과 같은 자리에 겹쳐 있으면 방향이 없다. 그때는 뒤로 민다.
+        if (math.lengthsq(away) <= 0.0001f) away = -transform.Forward();
+        impact.ApplyKnockback(away, stats.knockbackDistance * knockbackScale * weight);
+
+        if (flinch && stats.hitFlinchDuration > 0f)
+        {
+            impact.flinchUntil = math.max(impact.flinchUntil, now + stats.hitFlinchDuration);
+            impact.flinchMoveMultiplier = stats.hitFlinchMoveMultiplier;
         }
     }
 
@@ -309,15 +377,20 @@ public partial struct EnemyCleanupSystem : ISystem
             .CreateCommandBuffer(state.WorldUnmanaged);
 
         float deltaTime = SystemAPI.Time.DeltaTime;
+        double now = SystemAPI.Time.ElapsedTime;
 
-        foreach (var (action, animation, entity) in
-                 SystemAPI.Query<RefRW<EnemyAction>, RefRW<EnemyAnimation>>().WithAll<EnemyTag>().WithEntityAccess())
+        foreach (var (action, animation, impact, entity) in
+                 SystemAPI.Query<RefRW<EnemyAction>, RefRW<EnemyAnimation>, RefRO<EnemyImpact>>()
+                     .WithAll<EnemyTag>().WithEntityAccess())
         {
             if (action.ValueRO.kind != EnemyActionKind.Dead) continue;
 
-            action.ValueRW.timer -= deltaTime;
+            // 마무리 일격의 멈칫은 쓰러지는 모션에도 걸린다. 그 한 박자가 "베어 넘겼다"를 만든다.
+            float dt = deltaTime * impact.ValueRO.TimeScale(now);
+
+            action.ValueRW.timer -= dt;
             float length = math.max(0.01f, action.ValueRO.animationLength);
-            animation.ValueRW.normalizedTime = math.saturate(animation.ValueRO.normalizedTime + deltaTime / length);
+            animation.ValueRW.normalizedTime = math.saturate(animation.ValueRO.normalizedTime + dt / length);
 
             if (action.ValueRO.timer <= 0f) ecb.DestroyEntity(entity);
         }

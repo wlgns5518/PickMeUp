@@ -32,6 +32,15 @@ public abstract class UnitBehavior : BTNode<UnitController>
     // 겨눌 상대를 바꾸면 안 되는 동작인가. 이미 나간 동작이 엉뚱한 쪽을 향하게 되는 것들이다.
     public virtual bool LocksTarget => false;
 
+    // 지휘관의 집중 공격 명령이 표적을 갈아 끼워도 되는가(UnitController.Command).
+    //
+    // LocksTarget에는 성격이 다른 둘이 섞여 있다. 몸을 이미 던져서 표적이 바뀌면 동작 자체가 깨지는 것
+    // (스킬·도약·빠지기)과, 스스로 고른 표적끼리 스윙마다 흔들리지 않게 붙들어 두는 것(공격)이다.
+    // 뒤의 것은 명령 앞에서는 풀려야 한다 — 안 그러면 붙어서 칼을 섞는 근접 유닛은 맞아서 동작이
+    // 끊기기 전까지 명령을 영영 듣지 못한다(실측: 전환이 전부 피격·경직 순간에만 일어났다).
+    // 이미 나간 칼은 여기서가 아니라 IsAttackAnimationLocked가 따로 막는다.
+    public virtual bool YieldsTargetToCommand => !LocksTarget;
+
     // 팀이 공유해 온 표적을 받고, 하던 것을 끊어 교전을 다시 잡아도 되는가.
     // 거짓이면 표적만 갈아 끼우고 지금 하던 동작은 그대로 끝낸다.
     public virtual bool AcceptsCombatRedirect => true;

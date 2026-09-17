@@ -19,7 +19,9 @@ public class EnemyEcsTests
     private EntityManager manager;
 
     private SystemHandle hashSystem;
+    private SystemHandle thinkSystem;
     private SystemHandle targetingSystem;
+    private SystemHandle slotSystem;
     private SystemHandle combatSystem;
     private SystemHandle movementSystem;
     private SystemHandle damageSystem;
@@ -68,7 +70,9 @@ public class EnemyEcsTests
         manager.CreateSingleton(EnemyWorldBridge.AsComponent());
 
         hashSystem = world.CreateSystem<EnemySpatialHashSystem>();
+        thinkSystem = world.CreateSystem<EnemyThinkSystem>();
         targetingSystem = world.CreateSystem<EnemyTargetingSystem>();
+        slotSystem = world.CreateSystem<EnemyAttackSlotSystem>();
         combatSystem = world.CreateSystem<EnemyCombatSystem>();
         movementSystem = world.CreateSystem<EnemyMovementSystem>();
         damageSystem = world.CreateSystem<EnemyDamageSystem>();
@@ -86,6 +90,7 @@ public class EnemyEcsTests
         Entity entity = manager.CreateEntity(
             typeof(EnemyTag), typeof(EnemyStats), typeof(EnemyHealth), typeof(EnemyMotion),
             typeof(EnemyTarget), typeof(EnemyAction), typeof(EnemyAnimation),
+            typeof(EnemyTactics), typeof(EnemyImpact),
             typeof(LocalTransform), typeof(LocalToWorld));
 
         manager.SetComponentData(entity, LocalTransform.FromPosition(position));
@@ -97,7 +102,8 @@ public class EnemyEcsTests
         return entity;
     }
 
-    private void AddAlly(float3 position, float threatWeight = 1f, int attackerCount = 0, bool canBeBitten = true)
+    private void AddAlly(float3 position, float threatWeight = 1f, int attackerCount = 0, bool canBeBitten = true,
+        byte attackSlots = 0)
     {
         EnemyWorldBridge.AllyStates.Add(new EnemyWorldBridge.AllyState
         {
@@ -110,6 +116,7 @@ public class EnemyEcsTests
             attackerCount = attackerCount,
             alive = 1,
             canBeBitten = (byte)(canBeBitten ? 1 : 0),
+            attackSlots = attackSlots,
         });
     }
 
@@ -121,9 +128,12 @@ public class EnemyEcsTests
             double elapsed = world.Time.ElapsedTime + deltaTime;
             world.SetTime(new TimeData(elapsed, deltaTime));
 
-            hashSystem.Update(world.Unmanaged);
+            // 실제 그룹의 순서와 같게 돌린다(EnemySimulationSystems 머리 주석).
             damageSystem.Update(world.Unmanaged);
+            hashSystem.Update(world.Unmanaged);
+            thinkSystem.Update(world.Unmanaged);
             targetingSystem.Update(world.Unmanaged);
+            slotSystem.Update(world.Unmanaged);
             combatSystem.Update(world.Unmanaged);
             movementSystem.Update(world.Unmanaged);
             world.EntityManager.CompleteAllTrackedJobs();
@@ -732,5 +742,320 @@ public class EnemyEcsTests
             targetAllyIndex = EnemyTarget.None,
             action = EnemyActionKind.Dead,
         });
+    }
+
+    // ---------------------------------------------------------------- 난전의 호흡
+    //
+    // 여기서 고정하는 것:
+    //  - 한 사람에게 동시에 칼을 드는 수는 자리(슬롯) 수를 넘지 않는다
+    //  - 자리를 못 얻은 놈은 한 걸음 떨어져 기다린다(둘레 어디인지는 정하지 않는다)
+    //  - 다 휘두르거나 끊기면 자리를 돌려주고, 기다리던 놈이 받는다
+    //  - 판단 박자가 마리마다 흩어져 있다
+    // 자리가 한 번 새면(돌려주지 않은 자리가 쌓이면) 그 아군에게는 영영 아무도 칼을 못 든다.
+    // 눈으로는 "고블린이 멍하니 서 있다"로만 보여서 원인을 찾기 어려운 자리다.
+
+    private Entity CreateEnemyFacing(float3 position, float3 lookAt, EnemyStats stats)
+    {
+        Entity entity = CreateEnemy(position, stats);
+        float3 forward = lookAt - position;
+        forward.y = 0f;
+        manager.SetComponentData(entity, LocalTransform.FromPositionRotation(
+            position, quaternion.LookRotationSafe(math.normalizesafe(forward, new float3(0f, 0f, 1f)), math.up())));
+        return entity;
+    }
+
+    private static bool IsSwinging(EnemyActionKind kind)
+    {
+        return kind == EnemyActionKind.Windup || kind == EnemyActionKind.Recover ||
+               kind == EnemyActionKind.Leap || kind == EnemyActionKind.Bite;
+    }
+
+    [Test]
+    public void 한_사람에게_동시에_칼을_드는_수는_슬롯_수를_넘지_않는다()
+    {
+        AddAlly(new float3(0f, 0f, 0f));
+
+        var enemies = new Entity[6];
+        for (int i = 0; i < enemies.Length; i++)
+        {
+            float angle = i * math.PI * 2f / enemies.Length;
+            float3 position = new float3(math.cos(angle), 0f, math.sin(angle)) * 1.05f;
+            enemies[i] = CreateEnemyFacing(position, float3.zero, DefaultStats());
+        }
+
+        int maxSwinging = 0;
+        for (int step = 0; step < 80; step++)
+        {
+            Tick(0.05f);
+
+            int swinging = 0;
+            int attackers = 0;
+            for (int i = 0; i < enemies.Length; i++)
+            {
+                if (IsSwinging(manager.GetComponentData<EnemyAction>(enemies[i]).kind)) swinging++;
+                if (manager.GetComponentData<EnemyTactics>(enemies[i]).role == EnemyCombatRole.Attacker) attackers++;
+            }
+
+            Assert.LessOrEqual(attackers, EnemyAttackSlotSystem.DefaultSlotsPerAlly, "자리는 둘뿐이다");
+            maxSwinging = math.max(maxSwinging, swinging);
+        }
+
+        Assert.LessOrEqual(maxSwinging, EnemyAttackSlotSystem.DefaultSlotsPerAlly,
+            "여섯이 둘러싸도 동시에 칼을 드는 것은 자리 수만큼이다");
+        Assert.Greater(maxSwinging, 0, "자리를 얻은 놈은 실제로 휘둘러야 한다");
+    }
+
+    [Test]
+    public void 자리를_못_얻은_놈은_한_걸음_떨어져_기다린다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.waitDistanceMin = 2.2f;
+        stats.waitDistanceMax = 2.2f;
+
+        AddAlly(new float3(0f, 0f, 0f), attackSlots: 1);
+        Entity holder = CreateEnemyFacing(new float3(0f, 0f, 1.05f), float3.zero, stats);
+        Entity waiter = CreateEnemyFacing(new float3(0f, 0f, -6f), float3.zero, stats);
+
+        Tick(0.05f, 60);
+
+        Assert.AreEqual(EnemyCombatRole.Attacker, manager.GetComponentData<EnemyTactics>(holder).role);
+        Assert.AreEqual(EnemyCombatRole.Waiter, manager.GetComponentData<EnemyTactics>(waiter).role);
+
+        float distance = math.length(manager.GetComponentData<LocalTransform>(waiter).Position);
+        Assert.Greater(distance, 1.9f, "칼 들 자리가 없으면 붙어 서지 않는다");
+        Assert.Less(distance, 3f, "그렇다고 멀찍이 떨어져 구경하지도 않는다");
+        Assert.IsFalse(IsSwinging(manager.GetComponentData<EnemyAction>(waiter).kind));
+    }
+
+    [Test]
+    public void 다_휘두르면_자리를_내주고_기다리던_놈이_받는다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.swingsPerSlotMin = 1;
+        stats.swingsPerSlotMax = 1;
+        stats.slotYieldDelay = 1.5f;
+
+        AddAlly(new float3(0f, 0f, 0f), attackSlots: 1);
+        Entity first = CreateEnemyFacing(new float3(0f, 0f, 1.05f), float3.zero, stats);
+        Entity second = CreateEnemyFacing(new float3(0f, 0f, -2.2f), float3.zero, stats);
+
+        Tick(0.05f);
+        Assert.AreEqual(EnemyCombatRole.Attacker, manager.GetComponentData<EnemyTactics>(first).role);
+
+        // 한 번 휘두르고(준비 0.4 + 회수 0.35) 자리를 내준다. 두 번째가 받아서 실제로 휘두른다.
+        bool secondSwung = false;
+        for (int step = 0; step < 60 && !secondSwung; step++)
+        {
+            Tick(0.05f);
+            secondSwung = IsSwinging(manager.GetComponentData<EnemyAction>(second).kind);
+        }
+
+        Assert.IsTrue(secondSwung, "앞의 놈이 휘두르기를 마치면 기다리던 놈이 칼을 든다");
+    }
+
+    [Test]
+    public void 무너지면_자리를_돌려준다()
+    {
+        EnemyStats stats = DefaultStats();
+        AddAlly(new float3(0f, 0f, 0f), attackSlots: 1);
+        Entity first = CreateEnemyFacing(new float3(0f, 0f, 1.05f), float3.zero, stats);
+        Entity second = CreateEnemyFacing(new float3(0f, 0f, -2.0f), float3.zero, stats);
+
+        Tick(0.05f, 2);
+        Assert.AreEqual(EnemyCombatRole.Attacker, manager.GetComponentData<EnemyTactics>(first).role);
+        Assert.AreNotEqual(EnemyCombatRole.Attacker, manager.GetComponentData<EnemyTactics>(second).role);
+
+        EnemyWorldBridge.StaggerEnemy(first, 2f, new float3(0f, 0f, 3f));
+        Tick(0.05f, 2);
+
+        Assert.AreNotEqual(EnemyCombatRole.Attacker, manager.GetComponentData<EnemyTactics>(first).role,
+            "무너진 놈이 자리를 쥐고 있으면 그 빈틈을 아무도 못 채운다");
+        Assert.AreEqual(EnemyCombatRole.Attacker, manager.GetComponentData<EnemyTactics>(second).role);
+    }
+
+    [Test]
+    public void 표적을_잃으면_자리도_돌려준다()
+    {
+        AddAlly(new float3(0f, 0f, 0f));
+        Entity enemy = CreateEnemyFacing(new float3(0f, 0f, 1.05f), float3.zero, DefaultStats());
+
+        Tick(0.05f);
+        Assert.AreEqual(EnemyCombatRole.Attacker, manager.GetComponentData<EnemyTactics>(enemy).role);
+
+        EnemyWorldBridge.AllyState ally = EnemyWorldBridge.AllyStates[0];
+        ally.alive = 0;
+        EnemyWorldBridge.AllyStates[0] = ally;
+
+        // 이미 나간 스윙은 끝까지 간다. 그 뒤에는 쥐고 있을 이유가 없다.
+        Tick(0.05f, 20);
+        Assert.AreNotEqual(EnemyCombatRole.Attacker, manager.GetComponentData<EnemyTactics>(enemy).role);
+    }
+
+    [Test]
+    public void 판단_박자는_마리마다_흩어져_있다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.thinkIntervalMin = 0.18f;
+        stats.thinkIntervalMax = 0.36f;
+
+        var enemies = new Entity[40];
+        for (int i = 0; i < enemies.Length; i++)
+        {
+            enemies[i] = CreateEnemy(new float3(i * 3f, 0f, 0f), stats);
+        }
+
+        int maxThinkingInOneFrame = 0;
+        int totalThinks = 0;
+        for (int step = 0; step < 50; step++)
+        {
+            Tick(0.02f);
+
+            int thinking = 0;
+            for (int i = 0; i < enemies.Length; i++)
+            {
+                if (manager.GetComponentData<EnemyTactics>(enemies[i]).thinking) thinking++;
+            }
+
+            maxThinkingInOneFrame = math.max(maxThinkingInOneFrame, thinking);
+            totalThinks += thinking;
+        }
+
+        float firstInterval = manager.GetComponentData<EnemyTactics>(enemies[0]).thinkInterval;
+        bool anyDifferent = false;
+        for (int i = 1; i < enemies.Length; i++)
+        {
+            float interval = manager.GetComponentData<EnemyTactics>(enemies[i]).thinkInterval;
+            Assert.That(interval, Is.InRange(0.18f, 0.36f));
+            if (math.abs(interval - firstInterval) > 0.001f) anyDifferent = true;
+        }
+
+        Assert.IsTrue(anyDifferent, "판단 주기가 전원 같으면 같은 프레임에 같이 움직인다");
+        Assert.Less(maxThinkingInOneFrame, enemies.Length / 2, "한 프레임에 무리의 절반 넘게 같이 판단하면 흩어진 것이 아니다");
+        Assert.Greater(totalThinks, enemies.Length * 2, "1초 동안 마리마다 여러 번은 판단해야 한다");
+    }
+
+    [Test]
+    public void 판단_박자가_오기_전에는_칼을_들지_않는다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.thinkIntervalMin = 10f;
+        stats.thinkIntervalMax = 10f;
+
+        AddAlly(new float3(0f, 0f, 0f));
+        Entity enemy = CreateEnemyFacing(new float3(0f, 0f, 1.05f), float3.zero, stats);
+
+        // 성격을 뽑게 한 번 돌린 뒤, 다음 판단을 멀리 밀어 둔다.
+        Tick(0.05f);
+        EnemyTactics tactics = manager.GetComponentData<EnemyTactics>(enemy);
+        tactics.nextThinkTime = world.Time.ElapsedTime + 5d;
+        manager.SetComponentData(enemy, tactics);
+
+        EnemyWorldBridge.HitsOnAllies.Clear();
+        Tick(0.05f, 10);
+        Assert.AreEqual(0, EnemyWorldBridge.HitsOnAllies.Count,
+            "사거리 안이라도 판단 박자가 아니면 새 스윙을 시작하지 않는다");
+        Assert.AreNotEqual(EnemyActionKind.Windup, manager.GetComponentData<EnemyAction>(enemy).kind);
+
+        // 박자가 오면 그 프레임에 표적을 잡고, 자리를 청하고, 칼을 든다.
+        tactics = manager.GetComponentData<EnemyTactics>(enemy);
+        tactics.nextThinkTime = world.Time.ElapsedTime;
+        manager.SetComponentData(enemy, tactics);
+
+        Tick(0.05f);
+        Assert.AreEqual(EnemyActionKind.Windup, manager.GetComponentData<EnemyAction>(enemy).kind);
+    }
+
+    // ---------------------------------------------------------------- 타격의 무게
+
+    [Test]
+    public void 무너지면_맞은_반대쪽으로_밀려난다()
+    {
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), DefaultStats());
+
+        // 앞(+Z)에서 강인도를 통째로 깎는다.
+        EnemyWorldBridge.DamageEnemy(enemy, 10, 120f, new float3(0f, 0f, 2f));
+        Tick(0.05f, 10);
+
+        float3 position = manager.GetComponentData<LocalTransform>(enemy).Position;
+        Assert.Less(position.z, -0.4f, "때린 쪽 반대로 밀려나야 한다(knockbackDistance 0.6)");
+        Assert.Greater(position.z, -0.7f, "밀린 거리는 한 방의 넉백을 넘지 않는다");
+    }
+
+    [Test]
+    public void 여러_번_맞아도_넉백은_합산되지_않는다()
+    {
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), DefaultStats());
+
+        for (int i = 0; i < 5; i++)
+        {
+            EnemyWorldBridge.DamageEnemy(enemy, 1, 120f, new float3(0f, 0f, 2f));
+        }
+
+        Tick(0.05f, 20);
+
+        float3 position = manager.GetComponentData<LocalTransform>(enemy).Position;
+        Assert.Greater(position.z, -0.7f, "같은 프레임의 다섯 대가 3m를 날려 보내면 난전이 아니라 핀볼이다");
+    }
+
+    [Test]
+    public void 히트스톱_동안은_준비_동작의_시간도_멈춘다()
+    {
+        AddAlly(new float3(0f, 0f, 0f));
+        Entity enemy = CreateEnemyFacing(new float3(0f, 0f, 1.05f), float3.zero, DefaultStats());
+
+        Tick(0.05f, 2);
+        Assert.AreEqual(EnemyActionKind.Windup, manager.GetComponentData<EnemyAction>(enemy).kind);
+        float timerBefore = manager.GetComponentData<EnemyAction>(enemy).timer;
+
+        EnemyWorldBridge.HitsOnEnemies.Enqueue(new EnemyWorldBridge.HitOnEnemy
+        {
+            enemy = enemy,
+            damage = 1,
+            fromPosition = float3.zero,
+            attackerAllyIndex = 0,
+            hitStopDuration = 0.5f,
+            hitStopScale = 0f,
+            impactWeight = 1f,
+        });
+
+        Tick(0.05f, 3);
+
+        EnemyAction action = manager.GetComponentData<EnemyAction>(enemy);
+        Assert.AreEqual(EnemyActionKind.Windup, action.kind, "스윙 도중에 맞은 한 대는 스윙을 끊지 않는다");
+        Assert.AreEqual(timerBefore, action.timer, 0.0001f, "멈칫하는 동안은 칼이 내려오지 않는다");
+    }
+
+    [Test]
+    public void 휘두른_칼이_닿으면_휘두른_쪽도_멈칫한다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.hitStopDuration = 0.08f;
+        stats.hitStopScale = 0.1f;
+
+        AddAlly(new float3(0f, 0f, 0f));
+        Entity enemy = CreateEnemyFacing(new float3(0f, 0f, 1.05f), float3.zero, stats);
+
+        bool struck = false;
+        for (int step = 0; step < 30 && !struck; step++)
+        {
+            Tick(0.05f);
+            struck = EnemyWorldBridge.HitsOnAllies.Count > 0;
+        }
+
+        Assert.IsTrue(struck);
+        Assert.Greater(manager.GetComponentData<EnemyImpact>(enemy).hitStopUntil, world.Time.ElapsedTime,
+            "맞은 쪽만 멈추면 부딪힌 것이 아니라 렉으로 보인다");
+    }
+
+    [Test]
+    public void 피해_없는_둔화는_움찔을_일으키지_않는다()
+    {
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), DefaultStats());
+
+        EnemyWorldBridge.SlowEnemy(enemy, 2f, 0.5f, new float3(0f, 0f, 2f));
+        Tick(0.05f);
+
+        Assert.AreNotEqual(EnemyActionKind.HitReact, manager.GetComponentData<EnemyAction>(enemy).kind);
+        Assert.Less(manager.GetComponentData<EnemyMotion>(enemy).SlowFactor(world.Time.ElapsedTime), 1f);
     }
 }

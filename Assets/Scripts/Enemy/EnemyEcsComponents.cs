@@ -30,7 +30,7 @@ public struct EnemyStats : IComponentData
     public int attackDamage;
 
     // 사거리와 타격 판정. 스윙이 시작된 뒤 상대가 벗어나면 빗나가야 하므로
-    // 타격 순간에 다시 잰다(EnemyCombatSystem) — 아군 쪽 ApplyAttackDamage와 같은 규칙이다.
+    // 타격 순간에 다시 잰다(EnemyCombatSystem) — 아군 쪽 ResolveAttackHit와 같은 규칙이다.
     public float attackRange;
     public float attackArcAngle;
     public float attackHitTolerance;
@@ -89,13 +89,187 @@ public struct EnemyStats : IComponentData
     // 이게 이 동작의 전부다 — 물어뜯기는 피해로 잡는 수가 아니라 한 명을 판에서 빼는 수다.
     // 강인도를 깎아 깨지기를 기다리는 것과는 다르므로, 무는 순간에는 강인도 피해를 아예 넘기지
     // 않는다. 둘 다 넣으면 그 한 방으로 강인도가 먼저 깨지면서 면역 시간이 켜지고, 정작 경직이
-    // 그 면역에 막힌다(아군 쪽 UnitController.ApplySkillDamage 주석과 같은 이유다).
+    // 그 면역에 막힌다(아군 쪽 UnitController.ResolveSkillHit 주석과 같은 이유다).
     public float biteStaggerDuration;
 
     // 이 리그가 가진 콤보 단수. 굽힌 클립 수에서 나오므로 스포너가 아니라 EnemyHorde가 채운다 —
     // 리그마다 단수가 다르고, 없는 클립을 가리키면 그 스윙만 서 있는 그림이 된다.
     // 0이나 1이면 콤보 없이 1단만 반복한다.
     public byte comboSteps;
+
+    // ---------------------------------------------------------------- 난전의 호흡
+    //
+    // 아래가 없던 시절에는 사거리 안의 모든 고블린이 쿨다운이 도는 그 프레임에 같이 휘둘렀다.
+    // 같은 프레임에 스폰돼 같은 쿨다운(1.1초)을 쓰니 박자까지 완전히 같았다 — 한 명을 둘러싼
+    // 여섯 마리가 한 몸처럼 칼을 올리고 내렸다. 자리를 나눠 주는 대신(포메이션 슬롯) 판단하는
+    // 순간과 칼을 들 권리를 흩어 놓는다. 서 있는 자리는 여전히 뒤엉킨다.
+
+    // 판단 주기(초). 마리마다 이 사이에서 한 번 뽑아 들고 간다. 반응(피격·경직·사망)은
+    // 이 주기와 무관하게 그 프레임에 일어나고, 새 수를 고르는 것(표적·슬롯·공격 개시)만 여기 묶인다.
+    public float thinkIntervalMin;
+    public float thinkIntervalMax;
+
+    // 공격 슬롯을 청할 거리. 이보다 멀면 슬롯을 따지지 않고 붙으러 간다(Chaser).
+    public float slotRequestRange;
+
+    // 슬롯 하나로 휘두를 수 있는 횟수(도약·물기도 한 번으로 친다). 다 쓰면 내려놓는다.
+    public byte swingsPerSlotMin;
+    public byte swingsPerSlotMax;
+
+    // 슬롯을 내려놓은 뒤 다시 줄을 서기까지(초). 방금 휘두른 놈이 곧바로 다시 쥐면 기다리던
+    // 놈들 차례가 영영 오지 않는다.
+    public float slotYieldDelay;
+
+    // 슬롯을 쥐고도 이만큼 휘두르지 못하면 내려놓는다(초). 상대가 달아나는 중이면 붙잡고 있을
+    // 이유가 없다 — 그동안 곁에서 기다리던 놈이 칼을 못 든다.
+    public float slotHoldTimeout;
+
+    // 슬롯을 못 얻었을 때 표적과 벌려 두는 거리. 마리마다 이 사이에서 한 번 뽑는다 —
+    // 둘레의 어느 자리인지는 정하지 않는다. 거리만 정하고 방위는 무리가 밀치며 정한다.
+    public float waitDistanceMin;
+    public float waitDistanceMax;
+
+    // 공격 재사용 대기에 섞는 흔들림(비율). 0.2면 0.8~1.2배.
+    public float attackCooldownJitter;
+
+    // ---------------------------------------------------------------- 타격의 무게
+
+    // 칼이 닿은 순간 휘두른 쪽이 스스로 멈칫하는 시간과 그동안의 재생 배속.
+    // 아군 쪽 UnitStats.hitStopDuration/hitStopScale과 같은 뜻이다.
+    public float hitStopDuration;
+    public float hitStopScale;
+
+    // 한 대 맞은 뒤 발이 무거워지는 시간과 배율. 움찔 모션이 끝나고도 곧바로 제 속도로
+    // 달려들지 못해야 맞은 것이 몸에 남는다.
+    public float hitFlinchDuration;
+    public float hitFlinchMoveMultiplier;
+}
+
+// 교전 중 맡은 임시 역할.
+//
+// 같은 무리라도 한 순간에 칼을 드는 놈, 곁에서 틈을 보는 놈, 아직 달려오는 놈이 섞여 있어야
+// 각자 판단하는 것처럼 보인다. 역할은 고정이 아니라 판단할 때마다 다시 정해지고, 칼을 들 권리
+// (Attacker)는 표적 한 명당 몇 자리뿐이다(EnemyAttackSlotSystem).
+public enum EnemyCombatRole : byte
+{
+    // 아직 멀다. 표적에게 붙으러 간다.
+    Chaser,
+
+    // 붙었지만 칼을 들 자리가 없다. 한 걸음 떨어져 틈을 본다.
+    Waiter,
+
+    // 공격 슬롯을 쥐었다. 이 역할만 휘두르고, 덤벼들고, 문다.
+    Attacker,
+}
+
+// 판단 박자와 공격 슬롯. 아군의 행동 트리가 매 틱 하는 "지금 무엇을 할까"를 적은 여기에 적힌
+// 박자에만 한다.
+//
+// 슬롯 수는 적이 세지 않는다. 매 프레임 Attacker 역할을 쥔 엔티티를 표적별로 다시 센다 —
+// 따로 카운터를 들고 다니면 죽거나 표적을 잃은 놈이 돌려주지 않은 자리가 쌓여 결국 아무도
+// 칼을 못 들게 된다. 들고 있는 역할 자체가 곧 슬롯이다.
+public struct EnemyTactics : IComponentData
+{
+    public EnemyCombatRole role;
+
+    // 슬롯을 쥔 상대(아군 스냅샷 인덱스). role이 Attacker일 때만 의미가 있다.
+    public int slotAllyIndex;
+
+    // 이번 슬롯으로 남은 스윙 수.
+    public byte swingsLeft;
+
+    // 이때까지 휘두르지 못하면 슬롯을 내려놓는다. 스윙을 시작할 때마다 뒤로 민다.
+    public double slotExpireTime;
+
+    // 이 시각 전에는 슬롯을 청하지 않는다.
+    public double nextSlotRequestTime;
+
+    // 다음 판단 시각(SystemAPI.Time.ElapsedTime 기준). 코루틴이나 yield 없이 시계 비교 하나로 돈다.
+    public double nextThinkTime;
+
+    // 이 개체의 판단 주기. 처음 판단할 때 stats의 범위에서 뽑는다.
+    public float thinkInterval;
+
+    // 이번 프레임이 판단 박자인가. EnemyThinkSystem이 세우고 같은 프레임의 뒤 시스템들이 읽는다.
+    public bool thinking;
+
+    // 슬롯이 없을 때 표적과 벌려 두는 거리. 처음 판단할 때 뽑는다.
+    public float waitDistance;
+
+    // 개체마다 따로 도는 난수. 스포너가 씨를 뿌리고, 비어 있으면 EnemyThinkSystem이 채운다.
+    public Random random;
+
+    // 판단 주기·기다리는 거리 같은 이 개체의 성격을 이미 뽑았는가.
+    public bool primed;
+
+    // 칼을 들 권리를 내려놓는다. 다 휘둘렀을 때, 끊겼을 때, 표적을 잃었을 때 전부 여기로 온다.
+    public void ReleaseSlot(double now, float yieldDelay)
+    {
+        if (role != EnemyCombatRole.Attacker) return;
+
+        role = EnemyCombatRole.Waiter;
+        slotAllyIndex = EnemyTarget.None;
+        swingsLeft = 0;
+
+        // 물러서 있는 시간도 흩는다. 같은 스윙에 같이 끊긴 둘이 같은 프레임에 다시 줄을 서지 않게.
+        float jitter = random.state != 0 ? random.NextFloat(0.7f, 1.3f) : 1f;
+        nextSlotRequestTime = now + math.max(0f, yieldDelay) * jitter;
+    }
+}
+
+// 맞은 무게. 히트스톱·넉백·피격 둔화가 여기 모인다.
+//
+// 엔티티에는 Animator가 없어서 아군처럼 재생 배속을 누를 수 없다. 대신 시뮬레이션이 쓰는
+// 시간 자체를 눌러 붙인다 — 타이머도, 클립 진행도도, 이동도 같은 배율로 느려지므로 셋이
+// 서로 어긋나지 않는다.
+public struct EnemyImpact : IComponentData
+{
+    public double hitStopUntil;
+    public float hitStopScale;
+
+    // 밀려날 방향과 남은 거리. 이동 시스템이 감쇠 곡선으로 풀어낸다.
+    public float3 knockbackDirection;
+    public float knockbackRemaining;
+
+    public double flinchUntil;
+    public float flinchMoveMultiplier;
+
+    // 이번 프레임에 이 개체에게 흐르는 시간의 배율.
+    public float TimeScale(double now)
+    {
+        return now < hitStopUntil ? math.saturate(hitStopScale) : 1f;
+    }
+
+    public float FlinchFactor(double now)
+    {
+        return now < flinchUntil && flinchMoveMultiplier > 0f ? flinchMoveMultiplier : 1f;
+    }
+
+    // 이미 걸린 멈춤보다 짧으면 덮지 않는다. 여럿에게 연달아 맞는 동안 멈춤이 짧아지면
+    // 무거운 한 방의 멈칫이 뒤따른 가벼운 한 방에 잘린다.
+    public void ApplyHitStop(double now, float duration, float scale)
+    {
+        if (duration <= 0f) return;
+
+        double until = now + duration;
+        if (until <= hitStopUntil) return;
+
+        hitStopUntil = until;
+        hitStopScale = scale;
+    }
+
+    // 밀려나는 거리는 더하지 않고 큰 쪽을 남긴다. 사방에서 두들겨 맞는 놈이 합산으로 멀리
+    // 튕겨 나가면 난전이 아니라 핀볼이 된다.
+    public void ApplyKnockback(float3 direction, float distance)
+    {
+        if (distance <= 0f) return;
+
+        direction.y = 0f;
+        if (math.lengthsq(direction) <= 0.0001f) return;
+
+        if (distance >= knockbackRemaining) knockbackDirection = math.normalize(direction);
+        knockbackRemaining = math.max(knockbackRemaining, distance);
+    }
 }
 
 // 매 프레임 바뀌는 것.

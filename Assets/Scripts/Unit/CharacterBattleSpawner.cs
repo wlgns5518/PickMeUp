@@ -372,6 +372,9 @@ public class CharacterBattleSpawner : MonoBehaviour
     {
         stats.role = job.Role;
         stats.threatWeight = job.ThreatWeight;
+        // 몸으로 막는 탱커는 한 번에 더 많은 적이 붙게 둔다. 어그로(threatWeight)로 끌어당긴 적이
+        // 전부 곁에서 줄만 서 있으면 방어선이 아니라 구경꾼을 모은 것이다. 나머지는 적 쪽 기본값(2).
+        stats.enemyAttackSlots = job.Role == JobRole.Vanguard ? 3 : 0;
         stats.backlinePreference = job.BacklinePreference;
         stats.peelBonus = job.PeelBonus;
         stats.focusBonus = job.FocusBonus;

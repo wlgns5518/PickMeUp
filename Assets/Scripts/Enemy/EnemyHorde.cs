@@ -95,6 +95,8 @@ public static class EnemyHorde
             typeof(EnemyTarget),
             typeof(EnemyAction),
             typeof(EnemyAnimation),
+            typeof(EnemyTactics),
+            typeof(EnemyImpact),
             typeof(LocalTransform),
             typeof(LocalToWorld));
 
@@ -173,6 +175,16 @@ public static class EnemyHorde
             manager.SetComponentData(entity, new EnemyMotion());
             manager.SetComponentData(entity, new EnemyTarget { allyIndex = EnemyTarget.None });
             manager.SetComponentData(entity, new EnemyAction { kind = EnemyActionKind.Idle });
+            manager.SetComponentData(entity, new EnemyImpact());
+
+            // 개체마다 다른 난수 씨. 판단 주기와 기다리는 거리 같은 성격은 첫 판단 때 이 씨로 뽑힌다
+            // (EnemyThinkSystem). 엔티티 인덱스로 뿌리면 층이 바뀌어도 같은 자리의 놈이 같은 성격이 된다.
+            manager.SetComponentData(entity, new EnemyTactics
+            {
+                role = EnemyCombatRole.Chaser,
+                slotAllyIndex = EnemyTarget.None,
+                random = new Unity.Mathematics.Random(random.NextUInt(1, uint.MaxValue)),
+            });
 
             // 같은 클립이라도 시작 지점을 흩어 놓는다. 그러지 않으면 1000마리가 완전히
             // 같은 박자로 숨 쉬는 그림이 되어, 무리가 아니라 복사본으로 보인다.

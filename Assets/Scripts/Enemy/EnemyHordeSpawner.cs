@@ -89,6 +89,39 @@ public class EnemyHordeSpawner : MonoBehaviour
     [Header("어그로")]
     [SerializeField] private float threatWeight = 1f;
 
+    [Header("난전의 호흡 (판단 박자)")]
+    [Tooltip("마리마다 이 범위에서 판단 주기(초)를 하나 뽑는다. 표적을 고르고, 칼 들 자리를 청하고, " +
+             "스윙을 시작하는 것은 이 박자에만 한다. 맞고 움찔하는 반응은 박자를 기다리지 않는다.")]
+    [SerializeField] private float thinkIntervalMin = 0.18f;
+    [SerializeField] private float thinkIntervalMax = 0.36f;
+    [Tooltip("공격 재사용 대기에 섞는 흔들림(비율). 0.2면 0.8~1.2배. 0이면 전원이 같은 박자로 휘두른다.")]
+    [SerializeField, Range(0f, 0.5f)] private float attackCooldownJitter = 0.2f;
+
+    [Header("공격 슬롯 (한 사람에게 동시에 칼을 드는 수)")]
+    [Tooltip("표적과 이 거리(미터) 안에 들어오면 칼 들 자리를 청한다. 자리 수 자체는 맞는 쪽이 정한다 " +
+             "(UnitStats.enemyAttackSlots, 0이면 2). 0이면 사거리·도약 거리에 1.5m를 더한 값을 쓴다.")]
+    [SerializeField] private float slotRequestRange = 4.5f;
+    [Tooltip("자리 하나로 휘두르는 횟수(도약·물기도 한 번). 다 쓰면 곁에서 기다리던 놈에게 넘긴다.")]
+    [SerializeField, Range(1, 7)] private int swingsPerSlotMin = 1;
+    [SerializeField, Range(1, 7)] private int swingsPerSlotMax = 3;
+    [Tooltip("자리를 내놓은 뒤 다시 청하기까지(초). 실제로는 0.7~1.3배로 흔들린다.")]
+    [SerializeField] private float slotYieldDelay = 0.9f;
+    [Tooltip("자리를 쥐고도 이만큼(초) 휘두르지 못하면 내려놓는다. 상대가 달아나는 중일 때다.")]
+    [SerializeField] private float slotHoldTimeout = 2.5f;
+    [Tooltip("자리를 못 얻었을 때 표적과 벌려 두는 거리(미터). 마리마다 이 사이에서 하나 뽑는다. " +
+             "어느 방향에 설지는 정하지 않는다 — 무리가 서로 밀치며 정한다.")]
+    [SerializeField] private float waitDistanceMin = 2.0f;
+    [SerializeField] private float waitDistanceMax = 2.9f;
+
+    [Header("타격의 무게")]
+    [Tooltip("칼이 닿은 순간 휘두른 쪽이 멈칫하는 시간(초). 도약은 1.5배, 물기는 2배.")]
+    [SerializeField] private float hitStopDuration = 0.05f;
+    [Tooltip("멈칫하는 동안의 시간 배율. 0에 가까울수록 완전히 멈춘다.")]
+    [SerializeField, Range(0f, 1f)] private float hitStopScale = 0.1f;
+    [Tooltip("살에 닿은 한 대를 맞은 뒤 발이 무거워지는 시간(초). 무너졌을 때는 걸지 않는다(이미 못 움직인다).")]
+    [SerializeField] private float hitFlinchDuration = 0.4f;
+    [SerializeField, Range(0.1f, 1f)] private float hitFlinchMoveMultiplier = 0.5f;
+
     [Header("층별 배율")]
     [Tooltip("층이 하나 오를 때마다 체력에 곱해지는 비율. CharacterBattleSpawner와 같은 규칙이다.")]
     [SerializeField] private float hpPerLevel = 0.15f;
@@ -143,6 +176,23 @@ public class EnemyHordeSpawner : MonoBehaviour
             knockbackDistance = knockbackDistance,
 
             threatWeight = threatWeight,
+
+            thinkIntervalMin = Mathf.Max(0f, thinkIntervalMin),
+            thinkIntervalMax = Mathf.Max(thinkIntervalMin, thinkIntervalMax),
+            attackCooldownJitter = attackCooldownJitter,
+
+            slotRequestRange = slotRequestRange,
+            swingsPerSlotMin = (byte)Mathf.Clamp(swingsPerSlotMin, 1, 255),
+            swingsPerSlotMax = (byte)Mathf.Clamp(Mathf.Max(swingsPerSlotMin, swingsPerSlotMax), 1, 255),
+            slotYieldDelay = slotYieldDelay,
+            slotHoldTimeout = slotHoldTimeout,
+            waitDistanceMin = waitDistanceMin,
+            waitDistanceMax = Mathf.Max(waitDistanceMin, waitDistanceMax),
+
+            hitStopDuration = hitStopDuration,
+            hitStopScale = hitStopScale,
+            hitFlinchDuration = hitFlinchDuration,
+            hitFlinchMoveMultiplier = hitFlinchMoveMultiplier,
         };
     }
 
