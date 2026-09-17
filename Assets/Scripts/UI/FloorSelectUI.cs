@@ -18,10 +18,6 @@ using UnityEngine.UI;
 [DisallowMultipleComponent]
 public class FloorSelectUI : FacilityWindow
 {
-    [Header("Scene")]
-    [Tooltip("모든 층이 함께 쓰는 전투 씬. 난이도는 고른 층 번호로 조정된다. Build Settings에 등록돼 있어야 한다.")]
-    [SerializeField] private string battleSceneName = "Floor1~9";
-
     [Header("Layout")]
     [Tooltip("한 쪽에 늘어놓을 층 버튼 개수. 층이 100개라 한 화면에 다 깔지 않고 쪽으로 넘긴다.")]
     [SerializeField, Min(1)] private int floorsPerPage = 10;
@@ -236,15 +232,9 @@ public class FloorSelectUI : FacilityWindow
             return;
         }
 
-        if (string.IsNullOrEmpty(battleSceneName))
-        {
-            Debug.LogError("[FloorSelectUI] 전투 씬 이름이 비어 있습니다.");
-            return;
-        }
-
-        // 모든 층이 같은 씬을 쓴다. 고른 층은 FloorProgress.SelectedFloor로 전달되고,
-        // 스포너가 그 값으로 적 수와 능력치를 키운다.
-        string sceneName = battleSceneName;
+        // 다섯 층마다 전장 맵이 바뀐다(FloorProgress.BattleSceneName). 같은 구간의 층끼리는 씬이 같고,
+        // 고른 층은 FloorProgress.SelectedFloor로 전달돼 스포너가 그 값으로 적 수와 능력치를 키운다.
+        string sceneName = FloorProgress.BattleSceneName(floor);
         if (!Application.CanStreamedLevelBeLoaded(sceneName))
         {
             Debug.LogError($"[FloorSelectUI] 씬 '{sceneName}'을 불러올 수 없습니다. Build Settings에 등록됐는지 확인하세요.");

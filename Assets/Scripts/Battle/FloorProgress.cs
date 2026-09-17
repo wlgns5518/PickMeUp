@@ -12,6 +12,11 @@ public static class FloorProgress
     // 탑의 꼭대기. 이 층을 깨면 더 열리는 층이 없다.
     public const int LastFloor = 100;
 
+    // 층은 다섯 개씩 한 구간으로 묶이고, 구간마다 전장 맵이 따로 있다(1~5층 평야, 6~10층 협곡 …).
+    // 구간의 마지막 층(5의 배수)에는 나중에 특별 미션이 붙는다. 미션이 생기기 전까지는
+    // 같은 구간의 맵에서 일반 전투로 치른다.
+    public const int FloorsPerStage = 5;
+
     // 깬 층 중 가장 높은 번호. 0이면 아직 아무 층도 깨지 못한 상태.
     public static int HighestCleared { get; private set; }
 
@@ -29,6 +34,22 @@ public static class FloorProgress
         // 실제 해금 상태는 세이브에서 다시 읽어 온다.
         HighestCleared = 0;
         SelectedFloor = FirstFloor;
+    }
+
+    // 층이 속한 구간의 첫 층. 7층이면 6.
+    public static int StageFirstFloor(int floor)
+    {
+        int clamped = Mathf.Clamp(floor, FirstFloor, LastFloor);
+        return FirstFloor + (clamped - FirstFloor) / FloorsPerStage * FloorsPerStage;
+    }
+
+    // 층이 싸우는 전투 씬. 씬 이름이 곧 구간이다(7층이면 "Floor6~10").
+    // 씬은 PickMeUp/전투 맵 메뉴가 만들고, Build Settings에 등록돼 있어야 불러올 수 있다.
+    public static string BattleSceneName(int floor)
+    {
+        int first = StageFirstFloor(floor);
+        int last = Mathf.Min(first + FloorsPerStage - 1, LastFloor);
+        return $"Floor{first}~{last}";
     }
 
     public static bool IsUnlocked(int floor)

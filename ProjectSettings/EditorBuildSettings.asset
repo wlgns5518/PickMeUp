@@ -9,6 +9,63 @@ EditorBuildSettings:
     path: Assets/Scenes/MainScene.unity
     guid: 99c9720ab356a0642a771bea13969a05
   - enabled: 1
-    path: Assets/Scenes/Floor1~9.unity
+    path: Assets/Scenes/Floor1~5.unity
     guid: b5fa952751d2a894caa636b6b00fd6cd
+  - enabled: 1
+    path: Assets/Scenes/Floor6~10.unity
+    guid: df3fbdc836104be419d71e541fb52ddd
+  - enabled: 1
+    path: Assets/Scenes/Floor11~15.unity
+    guid: 14d7b1a0cb086de4e942b73a7c2c9a83
+  - enabled: 1
+    path: Assets/Scenes/Floor16~20.unity
+    guid: ebdadfbcd7cae3d4aaff0d2fd7cc4c53
+  - enabled: 1
+    path: Assets/Scenes/Floor21~25.unity
+    guid: cb18cdfa0a332564fb858836ab3cc2d0
+  - enabled: 1
+    path: Assets/Scenes/Floor26~30.unity
+    guid: d3939a6958960b745a63a76df821bd14
+  - enabled: 1
+    path: Assets/Scenes/Floor31~35.unity
+    guid: 5daff372d08ea39419b568deb9226c5a
+  - enabled: 1
+    path: Assets/Scenes/Floor36~40.unity
+    guid: ee756befa92f3744bad392a496975649
+  - enabled: 1
+    path: Assets/Scenes/Floor41~45.unity
+    guid: e4a6952e710609946b9259706d459095
+  - enabled: 1
+    path: Assets/Scenes/Floor46~50.unity
+    guid: 27f7cce31bf4f644fa4d9a22b0af1505
+  - enabled: 1
+    path: Assets/Scenes/Floor51~55.unity
+    guid: a7b3592924504844ca72a9e032edd3b0
+  - enabled: 1
+    path: Assets/Scenes/Floor56~60.unity
+    guid: 327770e2a4f88364c9727c1229d44a67
+  - enabled: 1
+    path: Assets/Scenes/Floor61~65.unity
+    guid: d8e847f325b54ee4c9cf9277d78bd537
+  - enabled: 1
+    path: Assets/Scenes/Floor66~70.unity
+    guid: 8403c360bf46fcb41b59952f60a067b1
+  - enabled: 1
+    path: Assets/Scenes/Floor71~75.unity
+    guid: 979d959be42af8b45b88386f14b894dd
+  - enabled: 1
+    path: Assets/Scenes/Floor76~80.unity
+    guid: a13606802c0144c4e8079491043bbadb
+  - enabled: 1
+    path: Assets/Scenes/Floor81~85.unity
+    guid: 6eee48b7d919d3a48b6689f5ba1cd253
+  - enabled: 1
+    path: Assets/Scenes/Floor86~90.unity
+    guid: d96f9e0af849cd64ea0f9f77d918209a
+  - enabled: 1
+    path: Assets/Scenes/Floor91~95.unity
+    guid: b6ab4b18caa015e4c8f8aad295a65083
+  - enabled: 1
+    path: Assets/Scenes/Floor96~100.unity
+    guid: 76c7475fbc5f12644823a2782744f928
   m_configObjects: {}
