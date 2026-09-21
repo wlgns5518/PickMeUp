@@ -302,6 +302,131 @@ public partial struct EnemyTargetingSystem : ISystem
     }
 }
 
+// ---------------------------------------------------------------- 정찰
+
+// 표적을 잃은 놈이 전장을 돌며 다시 찾는다(EnemyStats 정찰 절 주석).
+//
+// 여기서 정하는 것은 "어디로 걸어갈까"뿐이다. 실제로 걷는 것은 이동 시스템이고(EnemyMovementSystem),
+// 찾았는지는 표적 시스템이 평소대로 정한다 — 표적이 없는 동안은 시야각을 따지지 않으므로(blind)
+// 걷다가 탐지 거리 안에 들어온 아군을 곧바로 잡는다. 잡으면 다시 여기로 와서 그 자리를 기억해 둔다.
+[UpdateInGroup(typeof(EnemySimulationGroup))]
+[UpdateAfter(typeof(EnemyTargetingSystem))]
+[UpdateBefore(typeof(EnemyCombatSystem))]
+public partial struct EnemyPatrolSystem : ISystem
+{
+    // 정찰 지점에 닿았다고 보는 거리. 무리가 같은 곳을 찾을 때 서로 밀려 정확히 닿지 못하므로 넉넉히 둔다.
+    private const float ArrivalRadius = 1.2f;
+
+    // 한 지점을 향해 이만큼(초)을 걸어도 닿지 못하면 포기하고 다음 지점을 고른다. 무리에 막혔거나 밀려난 경우다.
+    private const float WaypointTimeout = 15f;
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        if (!SystemAPI.TryGetSingleton(out EnemyWorldBridge.BridgeData bridge)) return;
+        if (!bridge.allies.IsCreated) return;
+
+        var job = new PatrolJob
+        {
+            allies = bridge.allies.AsArray(),
+            now = SystemAPI.Time.ElapsedTime,
+        };
+
+        state.Dependency = job.ScheduleParallel(state.Dependency);
+    }
+
+    [BurstCompile]
+    private partial struct PatrolJob : IJobEntity
+    {
+        [ReadOnly] public NativeArray<EnemyWorldBridge.AllyState> allies;
+        public double now;
+
+        private void Execute(Entity entity, ref EnemyTactics tactics, in EnemyTarget target, in EnemyStats stats,
+            in EnemyAction action, in LocalTransform transform)
+        {
+            if (action.kind == EnemyActionKind.Dead)
+            {
+                tactics.patrolling = false;
+                return;
+            }
+
+            // 겨누는 상대가 있으면 정찰할 일이 없다. 그 자리만 기억해 둔다 — 놓치면 여기서부터 찾는다.
+            int index = target.allyIndex;
+            if (index >= 0 && index < allies.Length && allies[index].alive != 0)
+            {
+                tactics.searchCenter = allies[index].position;
+                tactics.searchRadius = stats.searchRadiusStart;
+                tactics.searchPrimed = true;
+                tactics.lostTargetTime = now;
+                tactics.patrolling = false;
+                tactics.hasWaypoint = false;
+                return;
+            }
+
+            if (!stats.CanPatrol)
+            {
+                tactics.patrolling = false;
+                return;
+            }
+
+            // 아무도 본 적이 없으면 태어난 자리 둘레부터 찾는다.
+            if (!tactics.searchPrimed)
+            {
+                tactics.searchCenter = transform.Position;
+                tactics.searchRadius = stats.searchRadiusStart;
+                tactics.lostTargetTime = now;
+                tactics.searchPrimed = true;
+            }
+
+            if (now - tactics.lostTargetTime < stats.patrolDelay)
+            {
+                tactics.patrolling = false;
+                return;
+            }
+
+            tactics.patrolling = true;
+            if (tactics.random.state == 0) tactics.random = Random.CreateFromIndex((uint)entity.Index);
+
+            if (tactics.hasWaypoint)
+            {
+                float3 offset = tactics.waypoint - transform.Position;
+                offset.y = 0f;
+                bool arrived = math.lengthsq(offset) <= ArrivalRadius * ArrivalRadius;
+                if (!arrived && now < tactics.waypointGiveUpTime) return;
+
+                // 닿았으면 잠깐 둘러본다. 포기했으면 곧바로 다음 지점으로 간다.
+                tactics.hasWaypoint = false;
+                float pauseMin = math.max(0f, stats.patrolPauseMin);
+                float pause = tactics.random.NextFloat(pauseMin, math.max(pauseMin, stats.patrolPauseMax));
+                tactics.nextWaypointTime = arrived ? now + pause : now;
+            }
+
+            if (now < tactics.nextWaypointTime) return;
+
+            PickWaypoint(ref tactics, stats);
+        }
+
+        // 마지막으로 본 자리를 중심으로 반경 안의 한 점을 고른다. 고를 때마다 반경을 넓혀, 같은 자리만
+        // 맴돌지 않고 결국 전장 전체를 덮는다. 전장 밖으로는 나가지 않는다(정찰 절 주석).
+        private void PickWaypoint(ref EnemyTactics tactics, in EnemyStats stats)
+        {
+            float radius = math.max(1f, tactics.searchRadius);
+            float2 offset = tactics.random.NextFloat2Direction() * (math.sqrt(tactics.random.NextFloat()) * radius);
+
+            float3 extent = new float3(stats.patrolHalfExtents.x, 0f, stats.patrolHalfExtents.y);
+            float3 point = tactics.searchCenter + new float3(offset.x, 0f, offset.y);
+            point = math.clamp(point, stats.patrolCenter - extent, stats.patrolCenter + extent);
+
+            tactics.waypoint = point;
+            tactics.hasWaypoint = true;
+            tactics.waypointGiveUpTime = now + WaypointTimeout;
+
+            float widest = 2f * math.max(stats.patrolHalfExtents.x, stats.patrolHalfExtents.y);
+            tactics.searchRadius = math.min(radius + math.max(0f, stats.searchRadiusGrowth), widest);
+        }
+    }
+}
+
 // ---------------------------------------------------------------- 공격 슬롯
 
 // 표적 한 명에게 동시에 칼을 들 수 있는 적 수를 제한한다.
@@ -577,7 +702,10 @@ public partial struct EnemyCombatSystem : ISystem
                 // 겨눌 상대가 사라졌으면 콤보도 처음으로 돌아간다. 다음에 붙는 상대에게
                 // 5단부터 시작하면 그 앞 네 단을 건너뛴 셈이 된다.
                 action.comboIndex = 0;
-                Loop(ref animation, EnemyClip.Idle, dt);
+
+                // 표적이 없어도 걸을 수 있다 — 정찰을 돌거나(EnemyPatrolSystem) 무리에 밀린다. 예전처럼
+                // 제자리 모션을 고정해 두면 정찰하는 놈이 선 채로 미끄러진다. 서 있으면 여기서도 제자리다.
+                TickLocomotion(ref animation, motion.smoothedSpeed, stats, dt);
                 return;
             }
 
@@ -1102,7 +1230,12 @@ public partial struct EnemyMovementSystem : ISystem
     // 고블린(4m/s, 가속 8)이면 2m다.
     private static float ArrivalSlowDistance(in EnemyStats stats)
     {
-        return math.clamp(4f * stats.moveSpeed / math.max(0.01f, stats.acceleration), 0.5f, 4f);
+        return ArrivalSlowDistance(stats.moveSpeed, stats);
+    }
+
+    private static float ArrivalSlowDistance(float speed, in EnemyStats stats)
+    {
+        return math.clamp(4f * speed / math.max(0.01f, stats.acceleration), 0.5f, 4f);
     }
 
     [BurstCompile]
@@ -1162,6 +1295,23 @@ public partial struct EnemyMovementSystem : ISystem
             }
 
             float3 desired = float3.zero;
+
+            // 표적 없이 정찰 지점을 향하는 중인가(EnemyPatrolSystem). 걸음이 느려지고, 가는 쪽을 본다.
+            bool patrolling = !hasTarget && tactics.patrolling && tactics.hasWaypoint;
+            float speedLimit = patrolling && stats.patrolSpeed > 0f ? math.min(stats.patrolSpeed, stats.moveSpeed) : stats.moveSpeed;
+
+            if (!holdsGround && patrolling)
+            {
+                float3 toWaypoint = tactics.waypoint - transform.Position;
+                toWaypoint.y = 0f;
+                float distance = math.length(toWaypoint);
+                if (distance > 0.001f)
+                {
+                    // 붙으러 갈 때와 같은 도착 감속. 기준 속도만 정찰 걸음으로 잡는다.
+                    float arrival = math.saturate(distance / ArrivalSlowDistance(speedLimit, stats));
+                    desired += toWaypoint / distance * math.max(MinArrivalFactor, arrival);
+                }
+            }
 
             if (!holdsGround && hasTarget)
             {
@@ -1264,7 +1414,7 @@ public partial struct EnemyMovementSystem : ISystem
             // 가속에는 걸지 않는다 — 묶인 것은 다리이지 반응이 아니다.
             // 방금 맞은 놈은 발이 무겁다(피격 둔화). 움찔 모션이 끝나자마자 제 속도로 달려들면
             // 맞은 것이 몸에 남지 않는다.
-            float moveSpeed = stats.moveSpeed * motion.SlowFactor(now) * impact.FlinchFactor(now);
+            float moveSpeed = speedLimit * motion.SlowFactor(now) * impact.FlinchFactor(now);
 
             // 속도는 미는 힘의 크기를 따른다(1에서 자른다).
             //

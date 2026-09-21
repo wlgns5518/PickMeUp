@@ -22,6 +22,7 @@ public class EnemyEcsTests
     private SystemHandle hashSystem;
     private SystemHandle thinkSystem;
     private SystemHandle targetingSystem;
+    private SystemHandle patrolSystem;
     private SystemHandle slotSystem;
     private SystemHandle combatSystem;
     private SystemHandle movementSystem;
@@ -74,6 +75,7 @@ public class EnemyEcsTests
         hashSystem = world.CreateSystem<EnemySpatialHashSystem>();
         thinkSystem = world.CreateSystem<EnemyThinkSystem>();
         targetingSystem = world.CreateSystem<EnemyTargetingSystem>();
+        patrolSystem = world.CreateSystem<EnemyPatrolSystem>();
         slotSystem = world.CreateSystem<EnemyAttackSlotSystem>();
         combatSystem = world.CreateSystem<EnemyCombatSystem>();
         movementSystem = world.CreateSystem<EnemyMovementSystem>();
@@ -159,6 +161,7 @@ public class EnemyEcsTests
             hashSystem.Update(world.Unmanaged);
             thinkSystem.Update(world.Unmanaged);
             targetingSystem.Update(world.Unmanaged);
+            patrolSystem.Update(world.Unmanaged);
             slotSystem.Update(world.Unmanaged);
             combatSystem.Update(world.Unmanaged);
             movementSystem.Update(world.Unmanaged);
@@ -1629,5 +1632,109 @@ public class EnemyEcsTests
         Assert.LessOrEqual(turned, stats.swingTurnRate * 0.1f + 1f,
             "칼을 들어올린 채로 몸이 홱 돌면 발이 미끄러진다");
         Assert.Greater(turned, 0f, "그래도 상대를 따라 조금은 돈다");
+    }
+
+    // ---------------------------------------------------------------- 정찰
+    //
+    // 여기서 고정하는 것:
+    //  - 표적이 없으면 한동안 둘러본 뒤 정찰을 나선다(걷기 모션, 정찰 걸음)
+    //  - 정찰은 전장 밖으로 나가지 않는다
+    //  - 탐지 거리 밖으로 달아난 아군도 결국 찾아낸다 — 이게 없어서 생존자가 도망친 판이 끝나지 않았다
+    //  - 정찰 범위가 없으면 예전처럼 제자리에 선다
+
+    private static EnemyStats PatrolStats(float halfExtent)
+    {
+        EnemyStats stats = DefaultStats();
+        stats.patrolCenter = float3.zero;
+        stats.patrolHalfExtents = new float2(halfExtent, halfExtent);
+        stats.patrolDelay = 0.5f;
+        stats.patrolSpeed = 1.5f;
+        stats.patrolPauseMin = 0.2f;
+        stats.patrolPauseMax = 0.4f;
+        stats.searchRadiusStart = 4f;
+        stats.searchRadiusGrowth = 6f;
+        return stats;
+    }
+
+    [Test]
+    public void 표적이_없으면_둘러본_뒤_정찰을_나선다()
+    {
+        PublishClipSpeeds(walkSpeed: 1.52f, runSpeed: 1.67f);
+        Entity enemy = CreateEnemy(float3.zero, PatrolStats(30f));
+
+        Tick(0.05f, 6);   // 0.3초 — 아직 둘러보는 중
+        Assert.IsFalse(manager.GetComponentData<EnemyTactics>(enemy).patrolling, "표적을 잃자마자 흩어지면 둘러볼 틈이 없다");
+        Assert.AreEqual(0f, math.length(manager.GetComponentData<LocalTransform>(enemy).Position), 0.01f);
+
+        bool walked = false;
+        for (int i = 0; i < 60; i++)
+        {
+            Tick(0.05f);
+            if (manager.GetComponentData<EnemyAnimation>(enemy).clip == EnemyClip.Walk) walked = true;
+        }
+
+        Assert.IsTrue(manager.GetComponentData<EnemyTactics>(enemy).patrolling);
+        Assert.Greater(math.length(manager.GetComponentData<LocalTransform>(enemy).Position), 0.5f, "정찰 지점으로 걸어가야 한다");
+        Assert.IsTrue(walked, "정찰 걸음은 걷기 클립으로 보여야 한다 — 달리면 쫓는 것처럼 보이고, 서 있으면 미끄러진다");
+        Assert.LessOrEqual(math.length(manager.GetComponentData<EnemyMotion>(enemy).velocity), 1.5f + 0.01f);
+    }
+
+    [Test]
+    public void 정찰은_전장_밖으로_나가지_않는다()
+    {
+        const float halfExtent = 5f;
+        Entity enemy = CreateEnemy(float3.zero, PatrolStats(halfExtent));
+
+        float widest = 0f;
+        for (int i = 0; i < 1200; i++)   // 60초 — 반경이 전장을 몇 번이고 넘도록 넓어진다
+        {
+            Tick(0.05f);
+            float3 p = manager.GetComponentData<LocalTransform>(enemy).Position;
+            widest = math.max(widest, math.max(math.abs(p.x), math.abs(p.z)));
+        }
+
+        Assert.LessOrEqual(widest, halfExtent + 0.05f, "적은 지형 높이를 모르므로 평평한 전장 밖으로 나가면 땅에 파묻힌다");
+        Assert.Greater(widest, 2f, "그래도 전장 안은 돌아다녀야 한다");
+    }
+
+    [Test]
+    public void 탐지_거리_밖으로_달아난_아군도_정찰로_찾아낸다()
+    {
+        Entity enemy = CreateEnemy(float3.zero, PatrolStats(30f));
+        AddAlly(new float3(22f, 0f, -14f));   // 26m — 탐지 거리(8m)의 세 배 밖
+
+        bool found = false;
+        for (int i = 0; i < 2400 && !found; i++)   // 최대 120초
+        {
+            Tick(0.05f);
+            found = manager.GetComponentData<EnemyTarget>(enemy).allyIndex == 0;
+        }
+
+        Assert.IsTrue(found, "찾으러 가지 않으면 도망친 생존자와 제자리의 적이 영영 닿지 않아 전투가 끝나지 않는다");
+    }
+
+    [Test]
+    public void 정찰_범위가_없으면_제자리에_선다()
+    {
+        Entity enemy = CreateEnemy(float3.zero, DefaultStats());
+
+        Tick(0.05f, 100);   // 5초
+
+        Assert.IsFalse(manager.GetComponentData<EnemyTactics>(enemy).patrolling);
+        Assert.AreEqual(0f, math.length(manager.GetComponentData<LocalTransform>(enemy).Position), 0.01f);
+    }
+
+    [Test]
+    public void 싸우는_동안은_정찰하지_않고_그_자리를_기억한다()
+    {
+        Entity enemy = CreateEnemy(float3.zero, PatrolStats(30f));
+        AddAlly(new float3(0f, 0f, 5f));
+
+        Tick(0.05f, 40);   // 2초 — 정찰을 나설 시간은 한참 지났다
+
+        EnemyTactics tactics = manager.GetComponentData<EnemyTactics>(enemy);
+        Assert.IsFalse(tactics.patrolling, "겨누는 상대가 있으면 정찰할 일이 없다");
+        Assert.AreEqual(0f, math.distance(tactics.searchCenter, EnemyWorldBridge.AllyStates[0].position), 0.01f,
+            "놓치면 마지막으로 본 자리부터 찾아야 한다");
     }
 }

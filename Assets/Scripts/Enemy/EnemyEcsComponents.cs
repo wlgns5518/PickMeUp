@@ -154,6 +154,36 @@ public struct EnemyStats : IComponentData
     // 달려들지 못해야 맞은 것이 몸에 남는다.
     public float hitFlinchDuration;
     public float hitFlinchMoveMultiplier;
+
+    // ---------------------------------------------------------------- 정찰
+    //
+    // 표적을 잃은 놈이 할 일. 이게 없던 동안 표적이 없는 적은 그 자리에 서 있기만 했다 — 탐지 거리(8m)
+    // 밖으로 달아난 아군을 아무도 찾으러 가지 않아서, 체력이 바닥나 도망친 생존자와 제자리의 고블린이
+    // 서로 닿지 못한 채 전투가 끝나지 않았다(플레이 테스트에서 25초 넘게 아무 일도 일어나지 않았다).
+    //
+    // 정찰은 마지막으로 본 자리에서 원을 넓혀 가며 돈다(EnemyPatrolSystem). 방금까지 싸우던 곳 둘레부터
+    // 훑고, 못 찾으면 점점 멀리 나간다 — 아무 데나 떠돌면 전장 반대편만 헤매다 시간을 보낸다.
+
+    // 정찰할 수 있는 범위(전장). 적은 지형 높이를 모르므로 평평한 전장 밖으로 나가면 땅에 파묻힌다.
+    // 반폭이 0이면 정찰하지 않는다(테스트, 전장 정보가 없는 원본).
+    public float3 patrolCenter;
+    public float2 patrolHalfExtents;
+
+    // 표적을 잃고 이만큼(초) 지나야 정찰을 나선다. 곧바로 나서면 방금 쓰러뜨린 자리에서 둘러볼 틈도 없이 흩어진다.
+    public float patrolDelay;
+
+    // 정찰 걸음(m/s). 걷기 클립이 발을 땅에 붙이는 속도 안이어야 한다(구운 걷기 보폭 1.52m/s의 0.5~1.3배).
+    public float patrolSpeed;
+
+    // 정찰 지점에 닿은 뒤 둘러보는 시간(초). 이 사이에서 뽑는다.
+    public float patrolPauseMin;
+    public float patrolPauseMax;
+
+    // 첫 정찰 반경과, 지점 하나를 돌 때마다 넓히는 폭(미터).
+    public float searchRadiusStart;
+    public float searchRadiusGrowth;
+
+    public bool CanPatrol => patrolHalfExtents.x > 0f && patrolHalfExtents.y > 0f;
 }
 
 // 교전 중 맡은 임시 역할.
@@ -212,6 +242,27 @@ public struct EnemyTactics : IComponentData
 
     // 판단 주기·기다리는 거리 같은 이 개체의 성격을 이미 뽑았는가.
     public bool primed;
+
+    // ---------------------------------------------------------------- 정찰(EnemyPatrolSystem)
+
+    // 표적을 마지막으로 본 자리. 정찰은 여기서 원을 넓혀 가며 돈다. 아무도 본 적이 없으면 태어난 자리다.
+    public float3 searchCenter;
+    public float searchRadius;
+    public bool searchPrimed;
+
+    // 표적이 없어진 시각. 표적을 쥐고 있는 동안에는 매 프레임 지금으로 민다.
+    public double lostTargetTime;
+
+    // 지금 걸어가는 정찰 지점. 닿지 못하고 이 시각을 넘기면 포기하고 다음 지점을 고른다.
+    public float3 waypoint;
+    public bool hasWaypoint;
+    public double waypointGiveUpTime;
+
+    // 지점에 닿은 뒤 둘러보다가 다음 지점을 고르는 시각.
+    public double nextWaypointTime;
+
+    // 정찰 중인가. 이동 시스템이 이 값으로 정찰 걸음을 낸다.
+    public bool patrolling;
 
     // 칼을 들 권리를 내려놓는다. 다 휘둘렀을 때, 끊겼을 때, 표적을 잃었을 때 전부 여기로 온다.
     public void ReleaseSlot(double now, float yieldDelay)
@@ -351,7 +402,7 @@ public struct EnemyTarget : IComponentData
 // 청크마다 분기가 늘어나기만 한다.
 public enum EnemyActionKind : byte
 {
-    // 표적이 없다. 제자리에서 둘러본다.
+    // 표적이 없다. 제자리에서 둘러보거나, 한동안 아무도 못 찾았으면 정찰을 돈다(EnemyPatrolSystem).
     Idle,
 
     // 표적에게 붙는 중.

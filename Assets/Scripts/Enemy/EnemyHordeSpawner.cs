@@ -1,4 +1,6 @@
+using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.AI;
 
 // 층 하나 분량의 적을 부르는 컴포넌트. 기존 CharacterBattleSpawner의 적 스폰 자리를 대신한다.
 //
@@ -137,6 +139,26 @@ public class EnemyHordeSpawner : MonoBehaviour
     [SerializeField] private float hitFlinchDuration = 0.4f;
     [SerializeField, Range(0.1f, 1f)] private float hitFlinchMoveMultiplier = 0.5f;
 
+    [Header("정찰 (표적을 잃었을 때)")]
+    [Tooltip("표적을 잃고 이만큼(초) 지나면 정찰을 나선다. 마지막으로 본 자리에서 원을 넓혀 가며 돈다.\n\n" +
+             "이게 없으면 탐지 거리 밖으로 도망친 생존자를 아무도 찾으러 가지 않아 전투가 끝나지 않는다.")]
+    [SerializeField, Min(0f)] private float patrolDelay = 3f;
+    [Tooltip("정찰 걸음(m/s). 걷기 클립 보폭(구운 값 1.52m/s)의 0.5~1.3배 안이어야 발이 미끄러지지 않는다.")]
+    [SerializeField, Min(0f)] private float patrolSpeed = 1.5f;
+    [Tooltip("정찰 지점에 닿은 뒤 둘러보는 시간(초). 마리마다 이 사이에서 뽑는다.")]
+    [SerializeField, Min(0f)] private float patrolPauseMin = 1f;
+    [SerializeField, Min(0f)] private float patrolPauseMax = 2.5f;
+    [Tooltip("첫 정찰 반경(미터). 마지막으로 본 자리 둘레부터 찾는다.")]
+    [SerializeField, Min(0f)] private float searchRadiusStart = 6f;
+    [Tooltip("지점 하나를 돌 때마다 정찰 반경을 넓히는 폭(미터). 못 찾으면 점점 멀리 나가 결국 전장 전체를 덮는다.")]
+    [SerializeField, Min(0f)] private float searchRadiusGrowth = 6f;
+    [Tooltip("정찰 범위를 전장 가장자리에서 이만큼(미터) 안쪽으로 줄인다.\n\n" +
+             "범위는 아군이 설 수 있는 NavMesh에서 잰다. 적은 지형 높이를 모르므로 평평한 전장을 벗어나면 " +
+             "땅에 파묻히거나 뜬다 — 아군이 갈 수 없는 곳까지 찾으러 갈 이유도 없다.")]
+    [SerializeField, Min(0f)] private float patrolEdgeMargin = 2f;
+    [Tooltip("NavMesh가 없을 때 쓰는 정찰 범위(원점 중심 반폭, 미터). 0이면 정찰하지 않는다.")]
+    [SerializeField, Min(0f)] private float fallbackPatrolHalfExtent = 38f;
+
     [Header("층별 배율")]
     [Tooltip("층이 하나 오를 때마다 체력에 곱해지는 비율. CharacterBattleSpawner와 같은 규칙이다.")]
     [SerializeField] private float hpPerLevel = 0.15f;
@@ -209,7 +231,40 @@ public class EnemyHordeSpawner : MonoBehaviour
             hitStopScale = hitStopScale,
             hitFlinchDuration = hitFlinchDuration,
             hitFlinchMoveMultiplier = hitFlinchMoveMultiplier,
+
+            // 정찰 범위는 전투를 열 때 한 번 잰다(ResolvePatrolArea). 여기서는 걸음과 박자만 싣는다.
+            patrolDelay = patrolDelay,
+            patrolSpeed = patrolSpeed,
+            patrolPauseMin = patrolPauseMin,
+            patrolPauseMax = Mathf.Max(patrolPauseMin, patrolPauseMax),
+            searchRadiusStart = searchRadiusStart,
+            searchRadiusGrowth = searchRadiusGrowth,
         };
+    }
+
+    // 정찰할 수 있는 범위. 아군이 설 수 있는 NavMesh의 테두리에서 가장자리 여유만큼 안으로 줄인다.
+    //
+    // 전장 크기를 숫자로 적어 두지 않는 이유: 맵마다 생성기가 NavMesh를 다시 굽고(BattleMapBuilder),
+    // 적이 찾아야 할 상대는 그 판 위에만 설 수 있다. 판을 재면 맵이 바뀌어도 따라온다.
+    // 전투를 열 때 한 번만 부른다 — 삼각형을 전부 받아 오므로 매 프레임 부를 것이 아니다.
+    private bool ResolvePatrolArea(out Vector3 center, out Vector2 halfExtents)
+    {
+        NavMeshTriangulation mesh = NavMesh.CalculateTriangulation();
+        if (mesh.vertices != null && mesh.vertices.Length > 0)
+        {
+            var bounds = new Bounds(mesh.vertices[0], Vector3.zero);
+            for (int i = 1; i < mesh.vertices.Length; i++) bounds.Encapsulate(mesh.vertices[i]);
+
+            center = bounds.center;
+            halfExtents = new Vector2(
+                Mathf.Max(0f, bounds.extents.x - patrolEdgeMargin),
+                Mathf.Max(0f, bounds.extents.z - patrolEdgeMargin));
+            return halfExtents.x > 0f && halfExtents.y > 0f;
+        }
+
+        center = Vector3.zero;
+        halfExtents = new Vector2(fallbackPatrolHalfExtent, fallbackPatrolHalfExtent);
+        return fallbackPatrolHalfExtent > 0f;
     }
 
     // 층 하나를 시작할 때 부른다. 돌려주는 값은 실제로 만들어진 마리 수.
@@ -224,6 +279,14 @@ public class EnemyHordeSpawner : MonoBehaviour
         EnemyHorde.ConfigureBlood(bloodEffectPrefabs, bloodColor, bloodEffectOffset);
 
         EnemyStats stats = BuildStats(level);
+
+        // 적은 지형을 모르므로 정찰 지점의 높이는 전장 바닥에 맞춘다(스폰 높이와 같다).
+        if (ResolvePatrolArea(out Vector3 patrolCenter, out Vector2 patrolHalfExtents))
+        {
+            stats.patrolCenter = new float3(patrolCenter.x, center.y, patrolCenter.z);
+            stats.patrolHalfExtents = patrolHalfExtents;
+        }
+
         return EnemyHorde.Spawn(stats, count, center, spread, seed);
     }
 }
