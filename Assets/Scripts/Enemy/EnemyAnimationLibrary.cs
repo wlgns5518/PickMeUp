@@ -27,6 +27,14 @@ public class EnemyAnimationLibrary : ScriptableObject
 
         // 초 단위 길이. 재생 속도를 클립 길이에 맞추는 데 쓴다.
         public float length;
+
+        // 이 클립이 표현하는 이동 속도(m/s). 다리가 그만큼 땅을 민다는 뜻이다.
+        //
+        // 베이커가 루트 모션을 걷어내면서 함께 잰 값이라(EnemyAnimationBaker.MeasureDrift) 손으로
+        // 적지 않는다. 리타깃된 클립은 리그 크기(humanScale)만큼 보폭이 줄어드는데, 원본 클립의
+        // averageSpeed를 그대로 적으면 그 축소가 빠진다 — 고블린은 humanScale이 0.73이라
+        // Run이 2.29가 아니라 1.67로 걷는다. 0이면 제자리 클립이라 잴 것이 없다는 뜻이다.
+        public float groundSpeed;
     }
 
     [Tooltip("스킨 정보(뼈 번호·가중치)를 UV2/UV3에 넣어 둔 메시. 베이커가 만든다.")]
@@ -71,7 +79,7 @@ public class EnemyAnimationLibrary : ScriptableObject
             int index = (int)range.clip;
             if (index < 0 || index >= count) continue;
 
-            lookup[index] = new float4(range.startFrame, range.frameCount, range.length, 0f);
+            lookup[index] = new float4(range.startFrame, range.frameCount, range.length, range.groundSpeed);
         }
 
         return lookup;

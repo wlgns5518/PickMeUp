@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using Unity.Collections;
 using Unity.Core;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -84,6 +85,30 @@ public class EnemyEcsTests
     {
         if (world != null && world.IsCreated) world.Dispose();
         EnemyWorldBridge.Dispose();
+
+        // 구간표는 월드가 내려가도 따라 사라지지 않는다. 실제로는 렌더 시스템이 치우는데
+        // (EnemyAnimationRenderSystem.OnDestroy) 여기서는 그 시스템을 세우지 않는다.
+        if (publishedClipRanges.IsCreated) publishedClipRanges.Dispose();
+    }
+
+    private NativeArray<float4> publishedClipRanges;
+
+    // 구워 둔 클립 구간표를 흉내 낸다. 이게 있어야 시뮬레이션이 걷기 클립을 쓴다.
+    private void PublishClipSpeeds(float walkSpeed, float runSpeed)
+    {
+        int count = System.Enum.GetValues(typeof(EnemyClip)).Length;
+        publishedClipRanges = new NativeArray<float4>(count, Allocator.Persistent);
+
+        // x = 시작 줄, y = 프레임 수, z = 길이(초), w = 이 클립이 표현하는 이동 속도.
+        for (int i = 0; i < count; i++) publishedClipRanges[i] = new float4(0f, 2f, 1f, 0f);
+        publishedClipRanges[(int)EnemyClip.Walk] = new float4(0f, 48f, 0.8f, walkSpeed);
+        publishedClipRanges[(int)EnemyClip.Run] = new float4(0f, 52f, 0.867f, runSpeed);
+
+        manager.CreateSingleton(new EnemyAnimationLookup
+        {
+            clipRanges = publishedClipRanges,
+            textureHeight = 1283f,
+        });
     }
 
     private Entity CreateEnemy(float3 position, EnemyStats stats)
@@ -323,6 +348,371 @@ public class EnemyEcsTests
         float3 pb = manager.GetComponentData<LocalTransform>(b).Position;
 
         Assert.Greater(math.distance(pa, pb), 0.2f, "겹쳐 있던 둘이 벌어져야 한다");
+    }
+
+    [Test]
+    public void 한_사람에게_몰려도_반지름_합만큼은_벌어져_선다()
+    {
+        EnemyStats stats = DefaultStats();
+        AddAlly(new float3(0f, 0f, 0f));
+
+        // 마흔 마리가 한 사람에게 몰린다. 칼을 들 자리는 둘뿐이라 나머지는 둘레에서 밀친다.
+        //
+        // 여기가 밀어내는 힘만으로는 안 되던 자리다. 표적 쪽으로 미는 힘(최대 1)과 밀려나는
+        // 힘(겹친 비율 × 2.2)이 맞서는 지점이 겹친 비율 0.45라, 앞뒤로 눌리면 파고든 채로 평형에
+        // 들었다 — 이 배치에서 재면 가장 가까운 둘이 0.73m였다. 화면에서는 몸이 서로 통과해 보인다.
+        var random = Unity.Mathematics.Random.CreateFromIndex(7);
+        var crowd = new Entity[40];
+        for (int i = 0; i < crowd.Length; i++)
+        {
+            float2 offset = random.NextFloat2Direction() * random.NextFloat(0.5f, 4f);
+            crowd[i] = CreateEnemyFacing(new float3(offset.x, 0f, offset.y), float3.zero, stats);
+        }
+
+        Tick(1f / 60f, 240);
+
+        float minimum = stats.radius * 2f;
+        float closest = float.MaxValue;
+        for (int i = 0; i < crowd.Length; i++)
+        {
+            for (int j = i + 1; j < crowd.Length; j++)
+            {
+                float3 a = manager.GetComponentData<LocalTransform>(crowd[i]).Position;
+                float3 b = manager.GetComponentData<LocalTransform>(crowd[j]).Position;
+                closest = math.min(closest, math.distance(a, b));
+            }
+        }
+
+        // 한 프레임 전 자리를 보고 푸는 구조라 순간적으로는 조금 파고들 수 있다.
+        Assert.Greater(closest, minimum * 0.8f,
+            $"가장 가까운 두 마리가 {closest:F2}m다 — 반지름 합({minimum:F2}m) 가까이는 지켜져야 한다");
+    }
+
+    [Test]
+    public void 휘두르는_중에도_겹친_이웃에게서_밀려난다()
+    {
+        EnemyStats stats = DefaultStats();
+        AddAlly(new float3(0f, 0f, 0f));
+
+        Entity swinging = CreateEnemyFacing(new float3(0f, 0f, 1f), float3.zero, stats);
+        Entity neighbour = CreateEnemyFacing(new float3(0.15f, 0f, 1f), float3.zero, stats);
+
+        // 칼을 들어올린 채로 굳혀 둔다. 이 구간에는 발을 떼지 않으므로(holdsGround),
+        // 겹침을 힘으로만 풀던 시절에는 스윙이 끝날 때까지 이웃이 몸을 통과한 채로 서 있었다.
+        // 0.75초짜리 스윙을 1.1초마다 도는 무리에서는 그 그림이 거의 늘 떠 있다.
+        manager.SetComponentData(swinging, new EnemyAction
+        {
+            kind = EnemyActionKind.Windup,
+            timer = 10f,
+            animationLength = 10f,
+        });
+
+        Tick(1f / 60f, 60);
+
+        Assert.AreEqual(EnemyActionKind.Windup, manager.GetComponentData<EnemyAction>(swinging).kind,
+            "테스트가 성립하려면 스윙이 끝나지 않아야 한다");
+
+        float3 a = manager.GetComponentData<LocalTransform>(swinging).Position;
+        float3 b = manager.GetComponentData<LocalTransform>(neighbour).Position;
+
+        Assert.Greater(math.distance(a, b), stats.radius * 2f * 0.8f,
+            "휘두르는 놈도 겹친 이웃에게서 밀려나야 한다");
+    }
+
+    [Test]
+    public void 무리에_막힌_놈은_제자리에서_달리지_않는다()
+    {
+        EnemyStats stats = DefaultStats();
+        AddAlly(new float3(0f, 0f, 0f));
+
+        var random = Unity.Mathematics.Random.CreateFromIndex(11);
+        var crowd = new Entity[30];
+        for (int i = 0; i < crowd.Length; i++)
+        {
+            float2 offset = random.NextFloat2Direction() * random.NextFloat(0.5f, 3f);
+            crowd[i] = CreateEnemyFacing(new float3(offset.x, 0f, offset.y), float3.zero, stats);
+        }
+
+        Tick(1f / 60f, 180);
+
+        // 한 프레임을 재서, 들고 있는 속도와 실제로 간 거리를 맞춰 본다.
+        //
+        // 걷는 모션과 그 재생 배속은 motion.velocity 크기로 정해지므로(EnemyCombatSystem), 파고들던
+        // 속도를 그대로 들고 있으면 몸은 그 자리인데 다리만 돈다 — 발이 미끄러진다.
+        // 속도 지우기를 빼고 재면 0.44m/s를 들고 0.02m/s를 갔다.
+        var before = new float3[crowd.Length];
+        for (int i = 0; i < crowd.Length; i++)
+        {
+            before[i] = manager.GetComponentData<LocalTransform>(crowd[i]).Position;
+        }
+
+        float dt = 1f / 60f;
+        Tick(dt);
+
+        // 서 있는 놈(속도 0)까지 포함해 전원을 본다. 조건을 걸어 거르면 무리가 다 멈춘 프레임에
+        // 아무것도 재지 않고 통과해 버린다.
+        float tolerance = stats.moveSpeed * 0.1f;
+        for (int i = 0; i < crowd.Length; i++)
+        {
+            float speed = math.length(manager.GetComponentData<EnemyMotion>(crowd[i]).velocity);
+            float3 after = manager.GetComponentData<LocalTransform>(crowd[i]).Position;
+            float travelled = math.distance(before[i], after) / dt;
+
+            Assert.GreaterOrEqual(travelled, speed - tolerance,
+                $"들고 있는 속도는 {speed:F2}m/s인데 실제로는 {travelled:F2}m/s만 갔다 — " +
+                "그 차이가 제자리에서 도는 달리기 모션이다");
+        }
+    }
+
+    // ---------------------------------------------------------------- 무리의 움직임이 화면에 보이는 모양
+    //
+    // 위의 셋이 "간격이 지켜지는가"라면, 아래 둘은 그 간격을 지키는 과정이 어떻게 보이는가다.
+    // 둘 다 같은 증상 하나에서 나왔다 — 달리던 고블린이 되감긴 것처럼 뒤로 갔다 다시 달린다.
+
+    // 실전에 가까운 수치. DefaultStats는 표적·피해 규칙을 재려고 시간 값을 비워 둔 것이라,
+    // 무리가 실제로 어떻게 움직이는지는 EnemyHordeSpawner의 기본값을 채워야 나온다.
+    private static EnemyStats HordeStats()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.detectRange = 30f;
+        stats.runClipSpeed = 2.29f;
+        stats.leapRange = 3f;
+        stats.leapDuration = 1.1f;
+        stats.leapCooldown = 6f;
+        stats.thinkIntervalMin = 0.18f;
+        stats.thinkIntervalMax = 0.36f;
+        stats.slotRequestRange = 4.5f;
+        stats.swingsPerSlotMin = 1;
+        stats.swingsPerSlotMax = 3;
+        stats.slotYieldDelay = 0.9f;
+        stats.slotHoldTimeout = 2.5f;
+        stats.waitDistanceMin = 2.0f;
+        stats.waitDistanceMax = 2.9f;
+        stats.attackCooldownJitter = 0.2f;
+        stats.comboSteps = 1;
+        return stats;
+    }
+
+    // 끝에서 처음으로 이어 붙여 도는 클립(EnemyCombatSystem.IsLooping과 같은 셋).
+    private static bool Loops(EnemyClip clip)
+    {
+        return clip == EnemyClip.Idle || clip == EnemyClip.Walk || clip == EnemyClip.Run;
+    }
+
+    private Entity[] SpawnCrowd(int count, uint seed, float near, float far, EnemyStats stats)
+    {
+        var random = Unity.Mathematics.Random.CreateFromIndex(seed);
+        var crowd = new Entity[count];
+        for (int i = 0; i < count; i++)
+        {
+            float2 offset = random.NextFloat2Direction() * random.NextFloat(near, far);
+            crowd[i] = CreateEnemyFacing(new float3(offset.x, 0f, offset.y), float3.zero, stats);
+        }
+
+        return crowd;
+    }
+
+    [Test]
+    public void 제자리걸음을_스쳐도_달리기_주기가_되감기지_않는다()
+    {
+        EnemyStats stats = HordeStats();
+        PublishClipSpeeds(walkSpeed: 1.517f, runSpeed: 1.671f);
+        AddAlly(new float3(0f, 0f, 0f));
+        Entity[] crowd = SpawnCrowd(30, 3, 3f, 10f, stats);
+
+        // 재는 것은 "바뀌는 그 프레임에 진행도가 튀는가"다. 도는 클립끼리(제자리걸음 ↔ 걷기 ↔
+        // 달리기)는 셋 다 순환하므로 진행도가 이어져야 하고, 끊기면 그 한 프레임이 곧 되감김이다.
+        //
+        // 마지막으로 본 달리기 진행도와 비교하면 안 된다 — 제자리걸음으로 한참 머무는 동안
+        // 진행도가 한 바퀴를 넘어 돌아오는 것(0.9 → 0.2)까지 되감김으로 세게 된다.
+        var previousClip = new EnemyClip[crowd.Length];
+        var previousPhase = new float[crowd.Length];
+        for (int i = 0; i < crowd.Length; i++)
+        {
+            EnemyAnimation anim = manager.GetComponentData<EnemyAnimation>(crowd[i]);
+            previousClip[i] = anim.clip;
+            previousPhase[i] = anim.normalizedTime;
+        }
+
+        int jumps = 0;
+        int loopSwitches = 0;
+        float worstJump = 0f;
+
+        for (int f = 0; f < 600; f++)
+        {
+            Tick(1f / 60f);
+
+            for (int i = 0; i < crowd.Length; i++)
+            {
+                EnemyAnimation anim = manager.GetComponentData<EnemyAnimation>(crowd[i]);
+
+                bool bothLooping = Loops(anim.clip) && Loops(previousClip[i]);
+
+                if (bothLooping && anim.clip != previousClip[i])
+                {
+                    loopSwitches++;
+
+                    float jump = math.abs(anim.normalizedTime - previousPhase[i]);
+                    if (jump > 0.05f)
+                    {
+                        jumps++;
+                        worstJump = math.max(worstJump, jump);
+                    }
+                }
+
+                previousClip[i] = anim.clip;
+                previousPhase[i] = anim.normalizedTime;
+            }
+        }
+
+        Assert.Greater(loopSwitches, 10, "클립이 이만큼도 안 바뀌면 아무것도 재지 못한 것이다");
+        Assert.AreEqual(0, jumps,
+            $"도는 클립끼리 바뀌는데 진행도가 {jumps}번 튀었다(가장 큰 것 {worstJump:F2})");
+
+        // 진행도가 이어져도 자세는 한 프레임에 갈아 끼워진다(섞어 주는 구간이 없다).
+        // 자주 갈아 끼울수록 무리가 들썩이므로 횟수 자체에도 상한을 둔다.
+        //
+        // 이 배치에서 잰 값: 이력만 있을 때 0.86회, 속도를 눌러 따라가게 한 뒤 0.44회.
+        // 셋으로 나누면 경계가 둘이라 횟수는 늘지만, 한 번의 갈아 끼움이 그만큼 작아진다
+        // (제자리걸음 ↔ 달리기보다 걷기 ↔ 달리기가 덜 튄다).
+        float switchesPerSecond = loopSwitches / (float)crowd.Length / 10f;
+        Assert.Less(switchesPerSecond, 0.5f,
+            $"제자리걸음 ↔ 달리기가 마리당 초당 {switchesPerSecond:F2}회 뒤바뀐다");
+    }
+
+    [Test]
+    public void 무리에_밀려_뒤로_가더라도_걸음보다_빠르지_않다()
+    {
+        EnemyStats stats = HordeStats();
+        AddAlly(new float3(0f, 0f, 0f));
+        Entity[] crowd = SpawnCrowd(30, 3, 3f, 10f, stats);
+
+        const float dt = 1f / 60f;
+        var previous = new float3[crowd.Length];
+        for (int i = 0; i < crowd.Length; i++)
+        {
+            previous[i] = manager.GetComponentData<LocalTransform>(crowd[i]).Position;
+        }
+
+        float worst = 0f;
+        for (int f = 0; f < 600; f++)
+        {
+            Tick(dt);
+
+            for (int i = 0; i < crowd.Length; i++)
+            {
+                LocalTransform t = manager.GetComponentData<LocalTransform>(crowd[i]);
+                float3 step = t.Position - previous[i];
+                step.y = 0f;
+                previous[i] = t.Position;
+
+                float3 facing = math.mul(t.Rotation, new float3(0f, 0f, 1f));
+                facing.y = 0f;
+                if (math.lengthsq(facing) < 1e-6f) continue;
+
+                float along = math.dot(step, math.normalizesafe(facing)) / dt;
+                if (along < 0f) worst = math.max(worst, -along);
+            }
+        }
+
+        // 겨눈 쪽을 보면서 뒤로 밀리는 것 자체는 난전의 일부다(이웃에게 밀리고, 겹침이 풀린다).
+        // 다만 달리는 모션 위에서 몸만 제 걸음 속도로 뒤로 튀면 되감긴 것처럼 보인다.
+        Assert.Less(worst, stats.moveSpeed * 0.5f,
+            $"가장 빠른 후진이 {worst:F2}m/s다 — 걸음 속도({stats.moveSpeed:F1}m/s)의 절반을 넘으면 튄다");
+    }
+
+    [Test]
+    public void 느리게_가면_걷고_빠르게_가면_달린다()
+    {
+        // 구운 고블린의 실제 값(EnemyAnimationBaker가 잰 것).
+        PublishClipSpeeds(walkSpeed: 1.517f, runSpeed: 1.671f);
+        AddAlly(new float3(0f, 0f, 0f));
+
+        // 걸음 속도만 다른 둘. 멀리 세워 두면 각자 제 속도로 붙으러 온다.
+        EnemyStats slow = HordeStats();
+        slow.moveSpeed = 1.2f;
+        EnemyStats fast = HordeStats();
+
+        Entity walker = CreateEnemyFacing(new float3(0f, 0f, 20f), float3.zero, slow);
+        Entity runner = CreateEnemyFacing(new float3(20f, 0f, 0f), float3.zero, fast);
+
+        Tick(1f / 60f, 60);
+
+        Assert.AreEqual(EnemyClip.Walk, manager.GetComponentData<EnemyAnimation>(walker).clip,
+            "1.2m/s는 걷기 클립이 1배속 가까이 도는 속도다");
+        Assert.AreEqual(EnemyClip.Run, manager.GetComponentData<EnemyAnimation>(runner).clip,
+            "4m/s는 걷기 클립이 견디는 윗선을 한참 넘는다");
+    }
+
+    [Test]
+    public void 걷기를_굽지_않은_리그는_제자리걸음과_달리기만_쓴다()
+    {
+        // 구간표를 올리지 않았다 — 걷기 클립이 없는 리그와 같은 상태다.
+        AddAlly(new float3(0f, 0f, 0f));
+
+        EnemyStats slow = HordeStats();
+        slow.moveSpeed = 1.2f;
+        Entity enemy = CreateEnemyFacing(new float3(0f, 0f, 20f), float3.zero, slow);
+
+        Tick(1f / 60f, 60);
+
+        Assert.AreNotEqual(EnemyClip.Walk, manager.GetComponentData<EnemyAnimation>(enemy).clip,
+            "굽지 않은 클립을 가리키면 그 줄이 비어 몸이 통째로 사라진다");
+    }
+
+    // ---------------------------------------------------------------- 구운 자산
+    //
+    // 아래는 시뮬레이션이 아니라 구워 놓은 결과물을 본다. 베이커는 에디터에서만 도는 도구라
+    // 여기서 다시 굽지 않고, 저장소에 들어 있는 고블린 한 벌을 그대로 검사한다.
+
+    [Test]
+    public void 구운_도는_클립은_제자리에서_돈다()
+    {
+        var library = UnityEditor.AssetDatabase.LoadAssetAtPath<EnemyAnimationLibrary>(
+            "Assets/Enemy/Baked/GoblinAnimation.asset");
+
+        if (library == null || !library.IsBaked) Assert.Ignore("구워 둔 고블린 한 벌이 없다");
+
+        Color[] pixels = library.boneTexture.GetPixels();
+        int width = library.boneTexture.width;
+
+        // 0번 뼈의 스키닝 행렬 평행이동(m03, m13, m23). 클립 안에서 몸이 흘러가면 이 값이 흘러간다.
+        float3 Translation(int row)
+        {
+            Color c0 = pixels[row * width + 0];
+            Color c1 = pixels[row * width + 1];
+            Color c2 = pixels[row * width + 2];
+            return new float3(c0.a, c1.a, c2.a);
+        }
+
+        int checkedLooping = 0;
+        foreach (EnemyAnimationLibrary.ClipRange range in library.clips)
+        {
+            float drift = math.distance(
+                Translation(range.startFrame),
+                Translation(range.startFrame + range.frameCount - 1));
+
+            bool loops = range.clip == EnemyClip.Idle || range.clip == EnemyClip.Walk ||
+                         range.clip == EnemyClip.Run;
+
+            if (loops)
+            {
+                checkedLooping++;
+
+                // 도는 클립이 한 바퀴 동안 앞으로 흘러가면, 진행도가 처음으로 감기는 그 프레임에
+                // 그만큼 뒤로 튄다. 고블린 Run이 1.447m였다 — 배속 1.75배라 초당 두 번씩 되감겼다.
+                Assert.Less(drift, 0.05f,
+                    $"{range.clip}이 한 바퀴에 {drift:F3}m 흘러간다 — 처음으로 감길 때 그만큼 튄다");
+            }
+            else if (range.clip == EnemyClip.Death)
+            {
+                // 뒤집어 잡는 쪽. 한 번만 재생하는 클립에서 앞으로 나아가는 것은 동작의 일부라
+                // 걷어내면 안 된다 — 쓰러지며 앞으로 무너지는 것이 사라진다.
+                Assert.Greater(drift, 0.1f, "쓰러지는 동작이 제자리에서 일어나면 안 된다");
+            }
+        }
+
+        Assert.AreEqual(3, checkedLooping, "제자리걸음·걷기·달리기 셋 다 구워져 있어야 한다");
     }
 
     // ---------------------------------------------------------------- 아군이 엔티티를 읽는 쪽

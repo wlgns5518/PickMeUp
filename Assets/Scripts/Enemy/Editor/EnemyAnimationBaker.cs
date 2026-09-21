@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine;
 
 // 적 애니메이션을 텍스처로 굽는 에디터 도구.
@@ -12,32 +13,37 @@ using UnityEngine;
 // 가중치가 오지 않으므로, 메시를 복제해 그 둘을 UV2/UV3에 실어 둔다.
 public static class EnemyAnimationBaker
 {
-    // 어느 클립을 어느 동작으로 쓸지. 애니메이터의 클립 이름과 맞춰 둔다.
-    private static readonly (EnemyClip clip, string clipName)[] Wanted =
+    // 어느 동작을 어느 이름으로 찾을지. 애니메이터의 상태 이름과 맞춰 둔다.
+    //
+    // loops가 붙은 것은 끝에서 처음으로 이어 붙여 도는 클립이다. 그 셋만 제자리로 만든다
+    // (StripRootMotion) — 나머지는 한 번만 재생하므로 앞으로 나아가는 것이 동작의 일부다
+    // (쓰러지며 앞으로 무너지는 Death, 내지르며 파고드는 Attack7).
+    private static readonly (EnemyClip clip, string stateName, bool loops)[] Wanted =
     {
-        (EnemyClip.Idle, "CombatIdle"),
-        (EnemyClip.Run, "Run"),
-        (EnemyClip.Attack, "Attack1"),
-        (EnemyClip.Hit, "Hit"),
-        (EnemyClip.Stagger, "Stagger"),
-        (EnemyClip.Death, "Death"),
+        (EnemyClip.Idle, "CombatIdle", true),
+        (EnemyClip.Walk, "Walk", true),
+        (EnemyClip.Run, "Run", true),
+        (EnemyClip.Attack, "Attack1", false),
+        (EnemyClip.Hit, "Hit", false),
+        (EnemyClip.Stagger, "Stagger", false),
+        (EnemyClip.Death, "Death", false),
 
         // 콤보 2~7단. 없는 클립은 ResolveClips가 조용히 건너뛰므로, 리그마다 단수가 달라도 된다.
-        (EnemyClip.Attack2, "Attack2"),
-        (EnemyClip.Attack3, "Attack3"),
-        (EnemyClip.Attack4, "Attack4"),
-        (EnemyClip.Attack5, "Attack5"),
-        (EnemyClip.Attack6, "Attack6"),
-        (EnemyClip.Attack7, "Attack7"),
+        (EnemyClip.Attack2, "Attack2", false),
+        (EnemyClip.Attack3, "Attack3", false),
+        (EnemyClip.Attack4, "Attack4", false),
+        (EnemyClip.Attack5, "Attack5", false),
+        (EnemyClip.Attack6, "Attack6", false),
+        (EnemyClip.Attack7, "Attack7", false),
 
-        (EnemyClip.Kick, "Kick"),
-        (EnemyClip.LeapAttack, "LeapAttack"),
-        (EnemyClip.Bite, "Bite"),
+        (EnemyClip.Kick, "Kick", false),
+        (EnemyClip.LeapAttack, "LeapAttack", false),
+        (EnemyClip.Bite, "Bite", false),
 
-        (EnemyClip.HitFront, "HitFront"),
-        (EnemyClip.HitBack, "HitBack"),
-        (EnemyClip.HitLeft, "HitLeft"),
-        (EnemyClip.HitRight, "HitRight"),
+        (EnemyClip.HitFront, "HitFront", false),
+        (EnemyClip.HitBack, "HitBack", false),
+        (EnemyClip.HitLeft, "HitLeft", false),
+        (EnemyClip.HitRight, "HitRight", false),
     };
 
     // 한 클립에서 뽑는 최대 프레임 수. 텍스처 세로 크기를 정하는 값이라 상한을 둔다 —
@@ -91,7 +97,8 @@ public static class EnemyAnimationBaker
                 return null;
             }
 
-            List<AnimationClip> clips = ResolveClips(animator, out List<EnemyClip> kinds, out List<int> frameCounts);
+            List<AnimationClip> clips = ResolveClips(animator,
+                out List<EnemyClip> kinds, out List<int> frameCounts, out List<bool> loops);
             if (clips.Count == 0)
             {
                 Debug.LogError($"[EnemyAnimationBaker] {prefab.name}에서 구울 클립을 하나도 찾지 못했습니다.");
@@ -120,12 +127,17 @@ public static class EnemyAnimationBaker
                 AnimationClip clip = clips[c];
                 int frames = frameCounts[c];
 
+                // 도는 클립이 한 바퀴 동안 앞으로 흘러간 거리. 이걸 걷어내야 제자리에서 돈다.
+                Vector3 drift = loops[c] ? MeasureDrift(clip, instance, root, renderer.bones) : Vector3.zero;
+
                 ranges.Add(new EnemyAnimationLibrary.ClipRange
                 {
                     clip = kinds[c],
                     startFrame = row,
                     frameCount = frames,
                     length = clip.length,
+                    // 걷어낸 거리가 곧 이 클립이 표현하는 이동 속도다. 재생 배속을 여기에 맞춘다.
+                    groundSpeed = clip.length > 0.01f ? drift.magnitude / clip.length : 0f,
                 });
 
                 for (int f = 0; f < frames; f++)
@@ -134,15 +146,19 @@ public static class EnemyAnimationBaker
                     float t = frames > 1 ? clip.length * f / (frames - 1) : 0f;
                     clip.SampleAnimation(instance, t);
 
+                    // 흘러간 만큼을 고르게 되돌린다. 첫 프레임과 끝 프레임이 같은 자리에 서므로
+                    // 진행도가 한 바퀴를 돌아도 몸이 튀지 않는다.
+                    Vector3 offset = frames > 1 ? drift * ((float)f / (frames - 1)) : Vector3.zero;
+
                     for (int b = 0; b < boneCount; b++)
                     {
                         // 스키닝 행렬 = (루트 기준 뼈 위치) x (바인드 포즈).
                         // 루트 기준으로 잡아야 엔티티의 위치·회전과 곱했을 때 제자리에 선다.
                         Matrix4x4 matrix = root.worldToLocalMatrix * renderer.bones[b].localToWorldMatrix * bindPoses[b];
 
-                        texture.SetPixel(b * 3 + 0, row, new Color(matrix.m00, matrix.m01, matrix.m02, matrix.m03));
-                        texture.SetPixel(b * 3 + 1, row, new Color(matrix.m10, matrix.m11, matrix.m12, matrix.m13));
-                        texture.SetPixel(b * 3 + 2, row, new Color(matrix.m20, matrix.m21, matrix.m22, matrix.m23));
+                        texture.SetPixel(b * 3 + 0, row, new Color(matrix.m00, matrix.m01, matrix.m02, matrix.m03 - offset.x));
+                        texture.SetPixel(b * 3 + 1, row, new Color(matrix.m10, matrix.m11, matrix.m12, matrix.m13 - offset.y));
+                        texture.SetPixel(b * 3 + 2, row, new Color(matrix.m20, matrix.m21, matrix.m22, matrix.m23 - offset.z));
                     }
 
                     row++;
@@ -162,25 +178,36 @@ public static class EnemyAnimationBaker
         }
     }
 
-    private static List<AnimationClip> ResolveClips(Animator animator, out List<EnemyClip> kinds, out List<int> frameCounts)
+    private static List<AnimationClip> ResolveClips(Animator animator,
+        out List<EnemyClip> kinds, out List<int> frameCounts, out List<bool> loops)
     {
         var clips = new List<AnimationClip>();
         kinds = new List<EnemyClip>();
         frameCounts = new List<int>();
+        loops = new List<bool>();
 
+        var controller = animator.runtimeAnimatorController as AnimatorController;
         AnimationClip[] all = animator.runtimeAnimatorController.animationClips;
 
-        foreach ((EnemyClip clip, string clipName) in Wanted)
+        foreach ((EnemyClip clip, string stateName, bool loop) in Wanted)
         {
-            AnimationClip found = null;
-            foreach (AnimationClip candidate in all)
+            // 상태 이름으로 먼저 찾는다. 상태가 어떤 클립 자산을 물고 있는지는 리그마다 다르다 —
+            // 고블린의 Walk는 PlayerWalk.anim을 리타깃해 쓴다. 클립 이름만 보던 시절에는
+            // 그런 상태를 통째로 놓쳤다(이름이 'Walk'인 클립이 없으므로).
+            AnimationClip found = FindByState(controller, stateName);
+
+            // 컨트롤러를 못 읽었거나(런타임 오버라이드) 그런 이름의 상태가 없으면 클립 이름으로 찾는다.
+            if (found == null)
             {
-                if (candidate != null && candidate.name == clipName) { found = candidate; break; }
+                foreach (AnimationClip candidate in all)
+                {
+                    if (candidate != null && candidate.name == stateName) { found = candidate; break; }
+                }
             }
 
             if (found == null)
             {
-                Debug.LogWarning($"[EnemyAnimationBaker] 클립 '{clipName}'을 찾지 못해 건너뜁니다.");
+                Debug.LogWarning($"[EnemyAnimationBaker] '{stateName}' 상태도 클립도 찾지 못해 건너뜁니다.");
                 continue;
             }
 
@@ -188,9 +215,70 @@ public static class EnemyAnimationBaker
             clips.Add(found);
             kinds.Add(clip);
             frameCounts.Add(frames);
+            loops.Add(loop);
         }
 
         return clips;
+    }
+
+    // 이름이 같은 상태가 물고 있는 클립. 블렌드 트리는 클립 하나로 줄일 수 없으니 건너뛴다.
+    private static AnimationClip FindByState(AnimatorController controller, string stateName)
+    {
+        if (controller == null) return null;
+
+        foreach (AnimatorControllerLayer layer in controller.layers)
+        {
+            AnimationClip found = FindByState(layer.stateMachine, stateName);
+            if (found != null) return found;
+        }
+
+        return null;
+    }
+
+    private static AnimationClip FindByState(AnimatorStateMachine machine, string stateName)
+    {
+        foreach (ChildAnimatorState child in machine.states)
+        {
+            if (child.state == null || child.state.name != stateName) continue;
+            return child.state.motion as AnimationClip;
+        }
+
+        foreach (ChildAnimatorStateMachine sub in machine.stateMachines)
+        {
+            AnimationClip found = FindByState(sub.stateMachine, stateName);
+            if (found != null) return found;
+        }
+
+        return null;
+    }
+
+    // 도는 클립이 한 바퀴 동안 수평으로 흘러간 거리.
+    //
+    // 클립에 루트 모션이 들어 있으면 샘플링한 포즈가 그대로 앞으로 흘러간다. 그 상태로 구우면
+    // 몸이 클립 길이만큼 앞으로 미끄러졌다가, 진행도가 한 바퀴를 돌아 처음으로 감기는 그 프레임에
+    // 그만큼 뒤로 튄다 — 고블린 Run이 0.867초에 1.447m였고, 배속 1.75배로 돌아 초당 두 번씩
+    // 1.4m를 되감았다. "달리다 되감긴다"가 이것이다.
+    //
+    // 엔티티의 자리는 시뮬레이션이 정하므로(EnemyMovementSystem) 클립은 제자리에서 돌기만 하면 된다.
+    // 도는 클립은 첫 프레임과 끝 프레임의 포즈가 같으니, 그 둘의 몸 중심 차이가 곧 흘러간 거리다.
+    // 뼈 하나가 아니라 전체 평균을 쓰는 이유는 팔다리가 흔들리는 것에 휘둘리지 않기 위해서다.
+    private static Vector3 MeasureDrift(AnimationClip clip, GameObject instance, Transform root, Transform[] bones)
+    {
+        Vector3 drift = Centroid(clip, instance, root, bones, clip.length) -
+                        Centroid(clip, instance, root, bones, 0f);
+
+        // 위아래로 뜨고 가라앉는 것은 걸음의 일부다. 수평으로 흘러가는 것만 걷어낸다.
+        drift.y = 0f;
+        return drift;
+    }
+
+    private static Vector3 Centroid(AnimationClip clip, GameObject instance, Transform root, Transform[] bones, float time)
+    {
+        clip.SampleAnimation(instance, time);
+
+        Vector3 sum = Vector3.zero;
+        for (int b = 0; b < bones.Length; b++) sum += root.InverseTransformPoint(bones[b].position);
+        return sum / Mathf.Max(1, bones.Length);
     }
 
     // 뼈 번호와 가중치를 UV2/UV3에 실어 둔 메시를 만든다.

@@ -158,7 +158,11 @@ public static class EnemyHorde
         {
             Entity entity = created[i];
 
-            float2 offset = random.NextFloat2Direction() * random.NextFloat(0f, spread);
+            // 원 안에 고르게 흩는다. 반지름을 0~spread에서 그냥 뽑으면 밀도가 1/r이 되어 한가운데로
+            // 몰린다 — 마리 수가 늘수록 심해져서, 중심에 태어난 수십 마리가 거의 한 점에서 겹친 채로
+            // 시작한다. 그 겹침은 결국 풀리지만(EnemyMovementSystem의 겹침 풀기) 푸는 동안
+            // 무리가 밀려나기만 하는 첫 몇 초가 보인다. 제곱근을 씌우면 면적에 비례해 퍼진다.
+            float2 offset = random.NextFloat2Direction() * (math.sqrt(random.NextFloat()) * spread);
             float3 position = new float3(center.x + offset.x, center.y, center.z + offset.y);
 
             manager.SetComponentData(entity, LocalTransform.FromPositionRotation(

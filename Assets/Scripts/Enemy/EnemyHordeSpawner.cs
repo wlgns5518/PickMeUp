@@ -50,11 +50,19 @@ public class EnemyHordeSpawner : MonoBehaviour
     [Tooltip("휘두르는 중(준비·회수·도약·물기·움찔)에 도는 속도(도/초). 제자리에서 베는 모션 위에서 " +
              "몸이 홱 돌면 발이 미끄러진다. 게임오브젝트 고블린의 attackTurnSpeed와 같은 값이다.")]
     [SerializeField, Min(0f)] private float swingTurnRate = 120f;
-    [Tooltip("달리기 클립이 원래 나아가는 속도(m/s). 실제 속도를 이 값으로 나눠 재생 배속을 맞춘다(0.6~2.2배). " +
-             "고블린 Run = 2.29.")]
-    [SerializeField, Min(0f)] private float runClipSpeed = 2.29f;
-    [Tooltip("서로 밀어내는 반경. 아군 NavMeshAgent의 반지름(0.5)과 같은 값으로 두면 " +
-             "두 세계의 간격이 눈에 띄게 어긋나지 않는다.")]
+    [Tooltip("달리기 클립이 나아가는 속도(m/s). 실제 속도를 이 값으로 나눠 재생 배속을 맞춘다.\n\n" +
+             "대비값이다 — 애니메이션을 구우면 베이커가 리타깃된 뒤의 보폭을 직접 재서 라이브러리에 " +
+             "적고(ClipRange.groundSpeed), 시뮬레이션은 그 값을 먼저 쓴다. 여기 적는 값은 아직 굽지 " +
+             "않았거나 제자리 클립이라 잴 것이 없을 때만 쓰인다.\n\n" +
+             "손으로 적을 때 빠지기 쉬운 함정: 클립 인스펙터의 Average Speed는 원본 리그 기준이라 " +
+             "리타깃 축소(humanScale)가 빠져 있다. 고블린은 Run이 2.29로 보이지만 humanScale이 " +
+             "0.73이라 실제로는 1.67로 걷는다.")]
+    [SerializeField, Min(0f)] private float runClipSpeed = 1.67f;
+    [Tooltip("몸의 반지름. 아군 NavMeshAgent의 반지름(0.5)과 같은 값으로 두면 " +
+             "두 세계의 간격이 눈에 띄게 어긋나지 않는다.\n\n" +
+             "두 마리 사이에 지켜지는 최소 간격이 이 값의 두 배다(0.5 → 1m). 밀어내는 힘만이 아니라 " +
+             "자리로도 풀기 때문에(EnemyMovementSystem) 마리 수가 아무리 늘어도 이 선은 지켜진다. " +
+             "더 벌려 세우고 싶으면 여기를 올린다.")]
     [SerializeField] private float radius = 0.5f;
     [Tooltip("멈춰 설 거리. 사거리보다 조금 안쪽이라 도착하자마자 휘두를 수 있다.")]
     [SerializeField] private float standoffDistance = 1.0f;

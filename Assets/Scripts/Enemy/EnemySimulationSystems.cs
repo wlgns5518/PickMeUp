@@ -512,7 +512,9 @@ public partial struct EnemyCombatSystem : ISystem
     {
         [ReadOnly] public NativeArray<EnemyWorldBridge.AllyState> allies;
         public NativeQueue<EnemyWorldBridge.HitOnAlly>.ParallelWriter hits;
-        // x = 시작 줄, y = 프레임 수, z = 초 단위 길이. 여기서는 z만 쓴다.
+        // x = 시작 줄, y = 프레임 수, z = 초 단위 길이, w = 이 클립이 표현하는 이동 속도(m/s).
+        // 여기서는 z(클립을 한 칸 미는 데)와 w(재생 배속을 맞추는 데)를 쓴다. 줄 번호 둘은
+        // 그리는 쪽이 읽는다(EnemyAnimationRenderSystem).
         [ReadOnly] public NativeArray<float4> clipRanges;
         public float deltaTime;
         public double now;
@@ -652,31 +654,100 @@ public partial struct EnemyCombatSystem : ISystem
             // 걷는 모션은 실제로 움직이는지로 고른다. 예전에는 사거리 안인지로 골랐는데,
             // 멈춰 서는 거리(1.0m)와 사거리(1.2m)가 달라서 그 사이 20cm 구간에서는 미끄러지며
             // 제자리걸음을 했고, 상대가 그 경계에서 오가면 두 클립이 매 프레임 뒤바뀌었다.
-            // 속도는 가속으로 이미 완만해져 있어(lerp) 그 자체가 경계에서의 떨림을 막아 준다.
-            float speed = math.length(motion.velocity);
-            float walkThreshold = stats.moveSpeed * 0.25f;
-            if (speed > walkThreshold)
+            // 날것의 속도가 아니라 한 박자 눌러 따라간 값을 본다(EnemyMotion.smoothedSpeed).
+            TickLocomotion(ref animation, motion.smoothedSpeed, stats, dt);
+        }
+
+        // 서 있기 · 걷기 · 달리기 중 하나를 고르고 한 칸 민다.
+        //
+        // 고르는 기준은 걸음 속도의 비율이 아니라 클립이 실제로 표현하는 속도다(구울 때 잰 값 —
+        // EnemyAnimationLibrary.ClipRange.groundSpeed). 클립을 제 속도의 0.5~1.3배로 돌리는 동안은
+        // 발이 땅에 붙어 있고, 그 바깥으로 벗어나면 미끄러진다. 그래서 걷기 클립이 견디는 구간이
+        // 곧 걷는 구간이고, 그보다 빠르면 달리기로 넘긴다.
+        //
+        // 문턱은 켤 때와 끌 때가 다르다(이력). 무리 속에서는 이웃에게 밀리고 겹침이 풀리며 속도가
+        // 문턱 언저리에서 계속 흔들리는데, 하나로 두면 그때마다 클립이 뒤바뀐다. 실측(고블린
+        // 30마리가 한 사람에게 몰린 10초): 문턱 하나였을 때 마리당 초당 0.57회 뒤바뀌었다.
+        private void TickLocomotion(ref EnemyAnimation animation, float speed, in EnemyStats stats, float dt)
+        {
+            float walkSpeed = ClipGroundSpeed(EnemyClip.Walk);
+
+            // 걷기를 굽지 않은 리그는 예전처럼 둘로만 나눈다. 구간표에 없는 클립을 가리키면
+            // 그 줄이 통째로 비어 몸이 사라진다.
+            if (walkSpeed <= 0.01f)
             {
-                Loop(ref animation, EnemyClip.Run, dt * RunPlaybackRate(speed, stats));
+                bool wasRunning = animation.clip == EnemyClip.Run;
+                float onlyRun = stats.moveSpeed * (wasRunning ? RunStopRatio : RunStartRatio);
+
+                if (speed > onlyRun) Loop(ref animation, EnemyClip.Run, dt * PlaybackRate(speed, RunGroundSpeed(stats)));
+                else Loop(ref animation, EnemyClip.Idle, dt);
+                return;
+            }
+
+            bool moving = animation.clip == EnemyClip.Walk || animation.clip == EnemyClip.Run;
+            bool running = animation.clip == EnemyClip.Run;
+
+            // 걷기 클립을 이보다 느리게 돌리면 발이 미끄러지기 시작한다 — 거기서부터 선다.
+            float walkFloor = walkSpeed * (moving ? MinPlaybackRate * StopHysteresis : MinPlaybackRate);
+
+            // 걷기 클립이 견디는 윗선. 넘으면 달리기로 넘긴다.
+            float walkCeiling = walkSpeed * (running ? MaxWalkPlaybackRate * StopHysteresis : MaxWalkPlaybackRate);
+
+            if (speed > walkCeiling)
+            {
+                Loop(ref animation, EnemyClip.Run, dt * PlaybackRate(speed, RunGroundSpeed(stats)));
+                return;
+            }
+
+            if (speed > walkFloor)
+            {
+                Loop(ref animation, EnemyClip.Walk, dt * PlaybackRate(speed, walkSpeed));
                 return;
             }
 
             Loop(ref animation, EnemyClip.Idle, dt);
         }
 
-        // 달리기 클립의 재생 배속. 다리가 실제로 땅을 밀어내는 속도와 몸이 나아가는 속도를 맞춘다.
+        // 걷기 클립이 없을 때만 쓰는 문턱(제 걸음 속도에 대한 비율).
+        private const float RunStartRatio = 0.25f;
+        private const float RunStopRatio = 0.18f;
+
+        // 켠 것을 끌 때는 문턱을 이만큼 낮춰 잡는다.
+        private const float StopHysteresis = 0.75f;
+
+        // 걷기 클립을 이 배속까지만 밀어붙인다. 더 밀면 걷는 모션이 종종걸음이 된다.
+        private const float MaxWalkPlaybackRate = 1.3f;
+
+        // 재생 배속. 다리가 땅을 미는 속도와 몸이 나아가는 속도를 맞춘다.
         //
-        // 예전에는 늘 1배속이었다. 고블린 Run 클립은 2.29m/s짜리인데 4m/s로 달리니, 다리는 천천히
-        // 도는데 몸은 1.75배로 미끄러져 나가 "쏜살같이 날아오는" 그림이 됐다. 게임오브젝트 고블린은
-        // UnitController.ApplyMoveAnimationSpeed가 같은 계산(0.6~2.2배로 자름)으로 맞추고 있었다.
-        private static float RunPlaybackRate(float speed, in EnemyStats stats)
+        // 예전에는 늘 1배속이었다. 게임오브젝트 고블린은 UnitController.ApplyMoveAnimationSpeed가
+        // 같은 계산으로 맞추고 있었다.
+        private static float PlaybackRate(float speed, float clipSpeed)
         {
-            if (stats.runClipSpeed <= 0.01f) return 1f;
-            return math.clamp(speed / stats.runClipSpeed, MinRunPlaybackRate, MaxRunPlaybackRate);
+            if (clipSpeed <= 0.01f) return 1f;
+            return math.clamp(speed / clipSpeed, MinPlaybackRate, MaxPlaybackRate);
         }
 
-        private const float MinRunPlaybackRate = 0.6f;
-        private const float MaxRunPlaybackRate = 2.2f;
+        // 달리기 클립이 표현하는 속도. 구울 때 잰 값을 먼저 쓰고, 없으면 손으로 적은 값을 쓴다.
+        //
+        // 손으로 적은 값(stats.runClipSpeed)은 원본 클립의 averageSpeed라 리타깃 축소가 빠져 있다 —
+        // 고블린은 2.29로 적혀 있지만 humanScale이 0.73이라 실제로는 1.67로 걷는다. 그 차이만큼
+        // 다리가 덜 돌아 발이 미끄러졌다. 구운 값은 리타깃된 뒤의 보폭을 직접 잰 것이라 그 함정이 없다.
+        private float RunGroundSpeed(in EnemyStats stats)
+        {
+            float baked = ClipGroundSpeed(EnemyClip.Run);
+            return baked > 0.01f ? baked : stats.runClipSpeed;
+        }
+
+        private float ClipGroundSpeed(EnemyClip clip)
+        {
+            int index = (int)clip;
+            if (!clipRanges.IsCreated || index < 0 || index >= clipRanges.Length) return 0f;
+            return clipRanges[index].w;
+        }
+
+        private const float MinPlaybackRate = 0.5f;
+        private const float MaxPlaybackRate = 2.2f;
 
         // 쥔 자리로 한 수를 냈다. 휘두르는 동안은 자리를 빼앗기지 않게 만료를 뒤로 민다.
         private void CommitSlot(ref EnemyTactics tactics, in EnemyStats stats)
@@ -688,18 +759,30 @@ public partial struct EnemyCombatSystem : ISystem
         // 구워 둔 클립 길이로 돌린다 — 달리기는 0.867초라, 예전의 고정 1.4회/초는 21% 빨랐다.
         private void Loop(ref EnemyAnimation animation, EnemyClip clip, float dt)
         {
-            // 클립이 바뀌는 순간에만 처음으로 돌린다. 한 번만 재생하는 클립을 마치고 오면
-            // 진행도가 1에 가깝게 남아 있어서, 그대로 이어 붙이면 걷는 모션이 끝자락부터 시작한다.
-            // 매 프레임 0으로 되돌리면 안 된다 — 스폰 때 흩어 놓은 시작 지점(EnemyHorde)이
+            // 클립이 바뀌는 순간에만 처음으로 돌린다. 한 번만 재생하는 클립(스윙·도약·물기·움찔)을
+            // 마치고 오면 진행도가 1에 가깝게 남아 있어서, 그대로 이어 붙이면 걷는 모션이 끝자락부터
+            // 시작한다. 매 프레임 0으로 되돌리면 안 된다 — 스폰 때 흩어 놓은 시작 지점(EnemyHorde)이
             // 지워져 1000마리가 같은 박자로 숨 쉬게 된다.
+            //
+            // 도는 클립끼리(제자리걸음 ↔ 걷기 ↔ 달리기) 오갈 때는 진행도를 그대로 들고 간다. 셋 다
+            // 순환하는 클립이라 어디서 이어도 끊기지 않는데, 0으로 되돌리면 걷기를 잠깐 스쳤다 오는
+            // 것만으로 달리기 주기가 처음으로 감긴다. 그게 화면에서 "달리다 되감긴다"로 보인다.
             if (animation.clip != clip)
             {
+                bool fromLooping = IsLooping(animation.clip);
                 animation.clip = clip;
-                animation.normalizedTime = 0f;
+                if (!fromLooping) animation.normalizedTime = 0f;
                 return;
             }
 
             animation.normalizedTime = math.frac(animation.normalizedTime + dt / ClipLength(clip));
+        }
+
+        // 끝에서 처음으로 이어 붙여 도는 클립인가. 베이커가 제자리로 만들어 두는 것과 같은 셋이다
+        // (EnemyAnimationBaker.Wanted의 loops).
+        private static bool IsLooping(EnemyClip clip)
+        {
+            return clip == EnemyClip.Idle || clip == EnemyClip.Walk || clip == EnemyClip.Run;
         }
 
         // 구워 둔 클립 길이(초). 구간표가 아직 없으면 1초로 본다.
@@ -954,11 +1037,46 @@ public partial struct EnemyCombatSystem : ISystem
 // 대신 "표적 쪽으로 밀고, 이웃에게서 밀려나는" 두 힘만 쓴다. 아군 쪽 ChaseBehavior가
 // 회피에 밀려 제자리에서 떠는 문제를 따로 잡아야 했던 것과 달리, 여기서는 밀어내는 힘이
 // 처음부터 이동에 섞여 있어 그런 진동이 생기지 않는다.
+//
+// 간격은 두 겹으로 지킨다. 힘 하나로는 안 된다.
+//
+//  1) 미는 힘(SeparationStrength) — 부드럽고 미리 갈라 준다. 다만 힘은 힘과 싸운다.
+//     표적 쪽으로 미는 힘이 1까지 나오고 밀려나는 힘이 겹친 비율 × 2.2라, 둘이 맞서는 자리가
+//     겹친 비율 1/2.2 ≈ 0.45다. 즉 앞을 막은 놈 하나와 반지름의 45%까지 파고든 채로 평형에 든다.
+//     마리 수가 늘면 그 평형이 무리 전체로 번진다 — 마흔 마리를 한 사람에게 몰아 4초를 돌리면
+//     가장 가까운 두 마리가 0.73m였다(반지름 합 1m).
+//  2) 자리로 푸는 한 걸음(UnstackRelaxation) — 속도를 적분한 뒤 남은 겹침을 좌표로 직접 밀어낸다.
+//     힘의 평형과 무관하게 반지름 합이 바닥선이 된다. 제자리를 지키는 중(휘두르기·경직·물기)에도
+//     적용된다 — 0.75초짜리 스윙 내내 못 밀려나는 놈은 무리 한가운데에서 기둥이 되고,
+//     둘레의 전원이 그 몸을 통과해 선다. 적끼리만이 아니라 아군의 몸도 같은 바닥선을 갖는다.
+//
+// 서로 맞물린 셋째 조각이 속도 지우기다. 자리로 밀어낸 방향의 반대로 파고들던 속도를 지우지 않으면
+// 매 프레임 "밀고 들어갔다 도로 밀려나기"를 반복한다. 몸은 제자리인데 속도만 남는데, 걷는 모션과
+// 그 재생 배속이 motion.velocity 크기로 정해지므로(EnemyCombatSystem) 그대로 발이 미끄러진다.
+// 실측(고블린 30마리가 한 사람에게 몰린 상태): 지우기 전에는 0.44m/s를 들고 0.02m/s를 갔다.
 [UpdateInGroup(typeof(EnemySimulationGroup))]
 public partial struct EnemyMovementSystem : ISystem
 {
     // 이웃에게서 밀려나는 세기. 너무 크면 전선이 벌어지고, 너무 작으면 겹쳐 선다.
     private const float SeparationStrength = 2.2f;
+
+    // 남은 겹침을 한 프레임에 몇 %나 자리로 풀 것인가.
+    //
+    // 겹친 쌍이 서로 절반씩 물러나면 한 번에 딱 떨어진다(1.0). 다만 이웃이 여럿일 때는 각자가
+    // 같은 스냅샷을 보고 동시에 물러나므로(야코비), 한 번에 다 풀면 서로의 몫까지 겹쳐 밀려
+    // 무리가 펄떡인다. 이웃 수로 나눠 평균을 내고 그 절반씩만 간다 — 두세 프레임이면 닿는다.
+    private const float UnstackRelaxation = 0.5f;
+
+    // 자리로 밀려나는 속도의 상한(제 걸음 속도에 대한 비율).
+    //
+    // 평소에 필요한 몫은 한 프레임에 밀고 들어간 만큼(수 cm)이라 여기에 걸리지 않는다. 걸리는 것은
+    // 깊이 겹쳤을 때 — 도약해 남의 몸 위에 내려앉았거나, 스윙을 마쳤더니 무리가 그 사이 파고들었거나,
+    // 겹쳐 태어났을 때다.
+    //
+    // 한때 1.0(제 걸음 속도)이었다. 깊은 겹침이 한두 프레임에 풀리는 대신, 달리는 모션 위에서 몸만
+    // 3.36m/s로 뒤로 튀었다 — 되감긴 것처럼 보이던 것이 이것이다(30마리 10초 실측).
+    // 0.35면 같은 겹침이 0.3초에 걸쳐 풀려, 뒤로 밀리는 것이 걸음의 일부로 읽힌다.
+    private const float MaxUnstackSpeedRatio = 0.35f;
 
     // 넉백이 풀리는 빠르기(1/초). 남은 거리에 비례해 밀므로 처음이 세고 끝이 잦아든다 —
     // 12면 0.12초에 76%, 0.25초에 95%를 간다. 일정한 속도로 밀면 맞은 몸이 미끄러지는 썰매가 된다.
@@ -967,6 +1085,13 @@ public partial struct EnemyMovementSystem : ISystem
 
     // 감속의 바닥. 0까지 내리면 문턱 바로 앞에서 영영 기어간다.
     private const float MinArrivalFactor = 0.2f;
+
+    // 걷는 모션이 보는 속도가 실제 속도를 따라잡는 데 걸리는 시간(초).
+    //
+    // 짧으면 프레임마다 튀는 것이 그대로 클립 선택에 들어오고, 길면 뛰기 시작한 뒤에도 한참
+    // 서 있는 모션이 남는다. 0.12초면 가속(8)으로 문턱을 넘는 데 걸리는 시간과 같은 자릿수라,
+    // 늦는 것이 눈에 띄지 않으면서 프레임 단위의 떨림은 전부 걸러진다.
+    private const float SpeedSmoothTime = 0.12f;
 
     // 멈춰 설 거리 몇 m 앞에서부터 감속할 것인가.
     //
@@ -1066,7 +1191,13 @@ public partial struct EnemyMovementSystem : ISystem
 
             // 이웃에게서 밀려난다. 제 칸과 둘레 여덟 칸만 본다 — 격자 한 칸이 분리 반경의
             // 두 배라 그 바깥의 이웃은 어차피 닿지 않는다.
+            //
+            // 한 번 훑으면서 두 몫을 같이 담는다. push는 이동에 섞일 힘이고, escape는 이번 프레임에
+            // 자리로 풀어야 할 겹침(미터)이다. 둘 다 같은 자리에서 나오므로 질의는 한 번뿐이다.
             float3 push = float3.zero;
+            float3 escape = float3.zero;
+            int contacts = 0;
+
             for (int dx = -1; dx <= 1; dx++)
             {
                 for (int dz = -1; dz <= 1; dz++)
@@ -1086,15 +1217,48 @@ public partial struct EnemyMovementSystem : ISystem
                         float minimum = stats.radius + neighbor.radius;
                         if (distance >= minimum || distance <= 0.0001f) continue;
 
+                        float3 direction = away / distance;
+
                         // 가까울수록 세게 민다. 겹친 정도에 비례시켜야 살짝 스친 이웃이
                         // 전선을 흔들지 않는다.
-                        push += (away / distance) * ((minimum - distance) / minimum);
+                        push += direction * ((minimum - distance) / minimum);
+
+                        // 파고든 깊이의 절반. 상대도 같은 스냅샷을 보고 반대로 같은 몫을 물러나므로
+                        // 둘을 합치면 정확히 반지름 합까지 벌어진다. 한쪽만 온전히 물러나게 하면
+                        // 밀려난 쪽이 무리를 가로질러 흐른다.
+                        escape += direction * ((minimum - distance) * 0.5f);
+                        contacts++;
                     }
                     while (hash.TryGetNextValue(out neighbor, ref it));
                 }
             }
 
             desired += push * SeparationStrength;
+
+            // 아군의 몸도 자리를 차지한다. 격자에는 적만 담기므로 따로 훑는데, 편성이 다섯 자리라
+            // (PartyDeck.DefaultCapacity) 마리마다 전부 봐도 이웃 질의 한 번보다 싸다.
+            //
+            // 여기가 없으면 뒤에서 미는 무리가 앞줄을 아군 몸속으로 밀어 넣는다. 멈춰 설 거리(1.0m)가
+            // 반지름 합과 똑같아서, 스스로 서는 그 선을 한 뼘만 넘어도 곧바로 몸이 겹친다.
+            //
+            // 자리만 밀고 힘(push)에는 더하지 않는다. 멈춰 설 거리에 딱 선 놈은 아직 파고들지 않았으니
+            // 힘이 0이고, 거기에 힘을 얹으면 붙는 힘과 맞서 문턱에서 떨게 된다.
+            // 파고든 깊이도 반으로 나누지 않는다 — 아군은 제 행동 트리로 걷는 게임오브젝트라
+            // 이 잡이 밀어 줄 수 없다. 물러나는 것은 적뿐이다.
+            for (int i = 0; i < allies.Length; i++)
+            {
+                EnemyWorldBridge.AllyState ally = allies[i];
+                if (ally.alive == 0) continue;
+
+                float3 away = transform.Position - ally.position;
+                away.y = 0f;
+                float distance = math.length(away);
+                float minimum = stats.radius + ally.radius;
+                if (distance >= minimum || distance <= 0.0001f) continue;
+
+                escape += (away / distance) * (minimum - distance);
+                contacts++;
+            }
 
             // 발이 묶여 있으면 그만큼 느리게 간다(창수의 부위 억제, 빙결 마법).
             // 가속에는 걸지 않는다 — 묶인 것은 다리이지 반응이 아니다.
@@ -1112,7 +1276,31 @@ public partial struct EnemyMovementSystem : ISystem
             motion.desiredDirection = math.normalizesafe(desired);
             motion.velocity = math.lerp(motion.velocity, wanted, math.saturate(stats.acceleration * dt));
 
+            // 힘으로 다 풀지 못한 겹침을 자리로 민다.
+            //
+            // 시체는 건드리지 않는다. 격자에 실리지 않아(EnemySpatialHashSystem) 남을 밀지 못하는데
+            // 혼자 밀려나기만 하면, 쓰러진 몸이 산 놈들을 따라 바닥을 미끄러진다.
+            float3 correction = float3.zero;
+            if (contacts > 0 && action.kind != EnemyActionKind.Dead)
+            {
+                correction = escape / contacts * UnstackRelaxation;
+
+                float step = math.length(correction);
+                float limit = MaxUnstackSpeedRatio * stats.moveSpeed * dt;
+                if (step > limit && step > 0.0001f) correction *= limit / step;
+
+                // 밀려나는 쪽으로 파고들던 속도는 지운다. 남기면 매 프레임 밀고 들어갔다 도로 밀려나며
+                // 제자리에서 달리기 모션을 재생한다. 옆으로 비낀 성분만 남아 무리를 타고 흐른다.
+                float3 normal = math.normalizesafe(correction);
+                float into = -math.dot(motion.velocity, normal);
+                if (into > 0f) motion.velocity += normal * into;
+            }
+
             transform.Position += motion.velocity * dt;
+
+            // 걷는 모션이 볼 속도. 클립을 고르는 것은 전투 시스템이지만 속도를 아는 것은 여기다.
+            motion.smoothedSpeed = math.lerp(motion.smoothedSpeed, math.length(motion.velocity),
+                math.saturate(dt / SpeedSmoothTime));
 
             // 넉백. 제자리를 지키는 중(경직·피격·시체)에도 밀린다 — 밀리는 것은 발이 아니라 몸이다.
             // 히트스톱이 걸린 동안은 dt가 눌려 거의 밀리지 않다가, 멈칫이 풀리는 순간 튕겨 나간다.
@@ -1128,6 +1316,15 @@ public partial struct EnemyMovementSystem : ISystem
                 transform.Position += impact.knockbackDirection * step;
                 impact.knockbackRemaining -= step;
             }
+
+            // 겹침 풀기는 맨 끝이다. 이건 힘이 아니라 자리라서, 속도와 넉백이 다 더해진 뒤에
+            // 그 위에 얹어야 한다(여기에 다시 dt를 곱하지 않는 이유이기도 하다).
+            //
+            // 재는 자리는 이번 프레임이 시작될 때의 격자다. 서로 상대를 한 프레임 전 자리로 보는
+            // 셈인데, 60프레임에서 그 사이에 움직이는 거리가 7cm라 반지름 합 1m 앞에서는 묻힌다.
+            // 대신 쌍의 양쪽이 같은 값을 반대로 보게 되어, 둘이 서로 다른 만큼 물러나며
+            // 무리가 한쪽으로 흐르는 일이 없다.
+            transform.Position += correction;
 
             TickFacing(ref transform, motion, stats, action, hasTarget, toTarget, dt);
         }
