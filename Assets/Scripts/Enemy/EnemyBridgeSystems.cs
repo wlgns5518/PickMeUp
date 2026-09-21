@@ -40,6 +40,15 @@ public partial class EnemyBridgeInputSystem : SystemBase
 [UpdateInGroup(typeof(LateSimulationSystemGroup))]
 public partial class EnemyBridgeOutputSystem : SystemBase
 {
+    private EntityQuery enemyQuery;
+
+    protected override void OnCreate()
+    {
+        enemyQuery = SystemAPI.QueryBuilder()
+            .WithAll<EnemyTag, LocalTransform, EnemyHealth, EnemyAction, EnemyTarget, EnemyStats>()
+            .Build();
+    }
+
     protected override void OnUpdate()
     {
         // 적 시뮬레이션 잡이 끝나야 위치와 상태가 확정된다.
@@ -47,27 +56,12 @@ public partial class EnemyBridgeOutputSystem : SystemBase
 
         if (!EnemyWorldBridge.IsReady) return;
 
+        // 한 마리씩 옮겨 적는 일은 Burst로 한다. 예전에는 이 시스템(관리 코드) 안의 foreach였는데,
+        // 1000마리에서 그 복사만으로 메인 스레드 0.27ms가 나가 적 시뮬레이션 전체(0.19ms)보다 비쌌다.
+        // 자리는 질의 순서(EntityIndexInQuery)로 정하므로 예전 foreach와 같은 순서로 채워진다.
         var enemies = EnemyWorldBridge.EnemyStates;
-        enemies.Clear();
-
-        foreach (var (transform, health, action, target, stats, entity) in
-                 SystemAPI.Query<RefRO<LocalTransform>, RefRO<EnemyHealth>, RefRO<EnemyAction>,
-                     RefRO<EnemyTarget>, RefRO<EnemyStats>>().WithAll<EnemyTag>().WithEntityAccess())
-        {
-            enemies.Add(new EnemyWorldBridge.EnemyState
-            {
-                entity = entity,
-                position = transform.ValueRO.Position,
-                forward = transform.ValueRO.Forward(),
-                radius = stats.ValueRO.radius,
-                hp = health.ValueRO.current,
-                maxHp = stats.ValueRO.maxHp,
-                poise = health.ValueRO.poise,
-                threatWeight = stats.ValueRO.threatWeight,
-                targetAllyIndex = target.ValueRO.allyIndex,
-                action = action.ValueRO.kind,
-            });
-        }
+        enemies.ResizeUninitialized(enemyQuery.CalculateEntityCount());
+        new SnapshotJob { enemies = enemies.AsArray() }.Run(enemyQuery);
 
         // 손잡이로 찾을 수 있게 표를 다시 세운다. 아군이 표적으로 들고 있는 Entity를
         // 이번 프레임의 값으로 푸는 자리다(TargetRef).
@@ -85,6 +79,30 @@ public partial class EnemyBridgeOutputSystem : SystemBase
         // 살에 닿은 자리에 피를 뿌린다. 파티클은 관리 객체라 잡 안에서 만들 수 없어
         // 자리만 큐로 넘어온다(EnemyHorde.DrainBlood).
         EnemyHorde.DrainBlood();
+    }
+
+    [BurstCompile]
+    private partial struct SnapshotJob : IJobEntity
+    {
+        public NativeArray<EnemyWorldBridge.EnemyState> enemies;
+
+        private void Execute([EntityIndexInQuery] int index, Entity entity, in LocalTransform transform,
+            in EnemyHealth health, in EnemyAction action, in EnemyTarget target, in EnemyStats stats)
+        {
+            enemies[index] = new EnemyWorldBridge.EnemyState
+            {
+                entity = entity,
+                position = transform.Position,
+                forward = transform.Forward(),
+                radius = stats.radius,
+                hp = health.current,
+                maxHp = stats.maxHp,
+                poise = health.poise,
+                threatWeight = stats.threatWeight,
+                targetAllyIndex = target.allyIndex,
+                action = action.kind,
+            };
+        }
     }
 }
 

@@ -17,7 +17,14 @@ namespace BFX
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void RunOnStart()
         {
-            Destroy(Instance);
+            // (PickMeUp 수정) 원래는 Destroy(Instance)로 컴포넌트만 지웠다. 게임오브젝트가 HideAndDontSave라
+            // 에디터에서는 플레이를 멈춰도 지워지지 않고, 도메인 리로드로 Instance는 이미 비어 있어 아무것도
+            // 지우지 못했다 — 플레이할 때마다 BFX_GlobalUpdate가 하나씩 쌓였다(편집 모드에서 ExecuteAlways로
+            // 만든 것도 같다). 플레이를 시작할 때 남아 있는 것을 전부 치운다. 빌드에서는 이 시점에 아무것도 없다.
+            foreach (var stale in Resources.FindObjectsOfTypeAll<GlobalUpdate>())
+            {
+                if (stale != null) Destroy(stale.gameObject);
+            }
             Instance = null;
 
             ScriptInstances.Clear();

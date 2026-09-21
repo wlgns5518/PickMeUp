@@ -242,6 +242,11 @@ public static class EnemyHorde
     {
         if (!EnemyWorldBridge.IsReady || !EnemyWorldBridge.BloodOnEnemies.IsCreated) return;
 
+        // 뿌릴 것이 없으면 풀을 건드리지 않는다. 이 함수는 마을에서도 매 프레임 불리는데
+        // (EnemyBridgeOutputSystem), 아래 BloodEffectPool.Instance는 없으면 새로 만든다 —
+        // 전투를 한 번 치르고 나면 피 프리팹이 정적으로 남아 있어, 마을로 돌아올 때마다 빈 풀이 하나씩 섰다.
+        if (EnemyWorldBridge.BloodOnEnemies.IsEmpty()) return;
+
         bool canSpawn = bloodPrefabs != null && bloodPrefabs.Length > 0 && BloodEffectPool.Instance != null;
 
         while (EnemyWorldBridge.BloodOnEnemies.TryDequeue(out EnemyWorldBridge.BloodOnEnemy blood))

@@ -58,6 +58,13 @@ public class MeshyBodyService : MonoBehaviour
     private readonly Queue<CharacterSO> queue = new Queue<CharacterSO>();
     private bool working;
 
+    // 줄에 서 있거나 굽는 도중에 명단에서 빠진 캐릭터(합성 재료). 차례가 오면 몸을 세우지 않고 놓는다.
+    //
+    // 줄(Queue)에서 바로 뺄 길이 없어 표시만 해 둔다. 이게 없던 때는 소환 직후 몸이 아직 줄에 있는 카드를
+    // 합성 재료로 쓰면, 사라진 캐릭터를 위해 Meshy 굽기(44크레딧)가 그대로 돌고 다 선 몸(2K 텍스처 + 메시)이
+    // 세션 내내 메모리에 남았다 — Release가 그 상태를 건드리지 않고 돌아갔기 때문이다.
+    private readonly HashSet<string> released = new HashSet<string>();
+
     // ── 바깥에서 부르는 것 ───────────────────────────────────────────────
 
     /// 아무 코루틴이나 여기서 돌린다. 씬이 갈려도 죽지 않는 호스트가 필요할 때.
@@ -85,6 +92,7 @@ public class MeshyBodyService : MonoBehaviour
     public static void Request(CharacterSO character)
     {
         if (character == null) return;
+        KeepBody(character);
 
         BodyState state = StateOf(character);
         if (state == BodyState.Ready || state == BodyState.Queued || state == BodyState.Working) return;
@@ -111,6 +119,7 @@ public class MeshyBodyService : MonoBehaviour
     {
         if (character == null) return;
         if (!CharacterModelStore.Exists(character.Id)) return;
+        KeepBody(character);
 
         BodyState state = StateOf(character);
         if (state == BodyState.Ready || state == BodyState.Queued || state == BodyState.Working) return;
@@ -132,14 +141,31 @@ public class MeshyBodyService : MonoBehaviour
         BodyState state = BodyState.None;
         if (instance != null) instance.states.TryGetValue(id, out state);
 
-        // 줄에 섰거나 굽는 중이면 건드리지 않는다. 줄에서 빼는 길이 없어서 지워 봐야 끝나고 다시 선다.
-        if (state == BodyState.Queued || state == BodyState.Working) return;
+        // 줄에 섰거나 굽는 중이면 지금 지워 봐야 끝나고 다시 선다. 표시만 해 두고 차례가 왔을 때 놓는다
+        // (released 주석 참조). 아직 줄에 있으면 굽기 자체를 건너뛰어 크레딧도 쓰지 않는다.
+        if (state == BodyState.Queued || state == BodyState.Working)
+        {
+            instance.released.Add(id);
+            return;
+        }
 
         CharacterBodyFactory.Forget(id);
         if (instance == null) return;
 
-        instance.states.Remove(id);
-        instance.progress.Remove(id);
+        instance.Drop(id);
+    }
+
+    // 다시 부탁받았다. 줄에 선 채로 놓으라고 해 둔 표시가 있으면 거둔다 — 명단에서 빠졌던 캐릭터가
+    // 다시 오른 경우다. 거두지 않으면 차례가 와도 몸을 세우지 않는다.
+    private static void KeepBody(CharacterSO character)
+    {
+        if (instance != null) instance.released.Remove(character.Id);
+    }
+
+    private void Drop(string id)
+    {
+        states.Remove(id);
+        progress.Remove(id);
     }
 
     /// 이 명단의 몸이 다 설 때까지 기다린다. 정해진 시간을 넘기면 그대로 돌아온다 —
@@ -187,6 +213,14 @@ public class MeshyBodyService : MonoBehaviour
         {
             CharacterSO character = queue.Dequeue();
             if (character == null) continue;
+
+            // 줄에서 기다리는 사이에 명단에서 빠졌다. 굽지도 세우지도 않는다.
+            if (released.Remove(character.Id))
+            {
+                Drop(character.Id);
+                continue;
+            }
+
             yield return MakeBody(character);
         }
         working = false;
@@ -207,14 +241,30 @@ public class MeshyBodyService : MonoBehaviour
             yield return Bake(character, ok => downloaded = ok);
             if (!downloaded)
             {
-                states[id] = BodyState.Failed;
+                if (released.Remove(id)) Drop(id);
+                else states[id] = BodyState.Failed;
                 yield break;
             }
+        }
+
+        // 굽는 동안 명단에서 빠졌다. 받아 둔 GLB는 디스크에 남기고(Release와 같은 규칙) 메모리에는 세우지 않는다.
+        if (released.Remove(id))
+        {
+            Drop(id);
+            yield break;
         }
 
         progress[id] = 0.95f;
         GameObject body = null;
         yield return CharacterBodyFactory.Build(character, b => body = b);
+
+        // 세우는 몇 프레임 사이에 빠졌다. 방금 선 몸을 그대로 내린다.
+        if (released.Remove(id))
+        {
+            CharacterBodyFactory.Forget(id);
+            Drop(id);
+            yield break;
+        }
 
         states[id] = body != null ? BodyState.Ready : BodyState.Failed;
         progress[id] = 1f;

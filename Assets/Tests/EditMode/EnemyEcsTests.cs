@@ -1117,6 +1117,50 @@ public class EnemyEcsTests
         Assert.AreEqual(0, alive);
     }
 
+    // 아군이 읽는 적 목록은 출력 시스템이 매 프레임 엔티티에서 옮겨 적는다(Burst 잡).
+    // 칸 하나만 빠져도 그 값을 읽는 아군 판단(방어·집결·체력바)이 조용히 틀어진다. 지난 프레임의 목록이
+    // 남지 않는지, 시체도 그대로 실리는지까지 본다 — 시체를 거르는 것은 읽는 쪽(IsAlive)의 몫이다.
+    [Test]
+    public void 출력_시스템은_엔티티를_빠짐없이_옮겨_적는다()
+    {
+        // 지난 프레임의 찌꺼기. 새로 쓸 때 남아 있으면 없는 적이 목록에 끼어든다.
+        AddEnemyState(new float3(9f, 0f, 9f));
+
+        EnemyStats stats = DefaultStats();
+        stats.threatWeight = 2.5f;
+        Entity fighter = CreateEnemy(new float3(1f, 0f, 2f), stats);
+        manager.SetComponentData(fighter, new EnemyTarget { allyIndex = 3 });
+        manager.SetComponentData(fighter, new EnemyHealth { current = 70, poise = 40f });
+        manager.SetComponentData(fighter, new EnemyAction { kind = EnemyActionKind.Windup });
+
+        Entity corpse = CreateEnemy(new float3(-4f, 0f, 0f), DefaultStats());
+        manager.SetComponentData(corpse, new EnemyHealth { current = 0 });
+        manager.SetComponentData(corpse, new EnemyAction { kind = EnemyActionKind.Dead });
+
+        world.CreateSystemManaged<EnemyBridgeOutputSystem>().Update();
+
+        Assert.AreEqual(2, EnemyWorldBridge.EnemyCount);
+
+        Assert.IsTrue(EnemyWorldBridge.TryGetEnemy(fighter, out EnemyWorldBridge.EnemyState state));
+        Assert.AreEqual(new float3(1f, 0f, 2f), state.position);
+        Assert.AreEqual(new float3(0f, 0f, 1f), state.forward);
+        Assert.AreEqual(0.5f, state.radius, 0.0001f);
+        Assert.AreEqual(70, state.hp);
+        Assert.AreEqual(100, state.maxHp);
+        Assert.AreEqual(40f, state.poise, 0.0001f);
+        Assert.AreEqual(2.5f, state.threatWeight, 0.0001f);
+        Assert.AreEqual(3, state.targetAllyIndex);
+        Assert.IsTrue(state.IsTelegraphing);
+
+        Assert.IsTrue(EnemyWorldBridge.TryGetEnemy(corpse, out state));
+        Assert.IsFalse(state.IsAlive);
+
+        EnemyWorldBridge.SumEnemyHealth(out float current, out float max, out int alive);
+        Assert.AreEqual(1, alive);
+        Assert.AreEqual(70f, current, 0.001f);
+        Assert.AreEqual(200f, max, 0.001f);
+    }
+
     private void AddDeadEnemyState(float3 position)
     {
         Entity entity = manager.CreateEntity();
