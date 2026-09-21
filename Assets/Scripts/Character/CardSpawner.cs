@@ -28,6 +28,18 @@ public class CardSpawner : MonoBehaviour
     // 화면에 그대로 쌓여 마을이 보이지 않게 된다. 소환소가 결과를 확인하면 ClearCards로 치운다.
     private readonly List<CharacterCard> spawned = new List<CharacterCard>();
 
+    // 치운 카드는 지우지 않고 꺼 두었다가 다음 소환에 다시 쓴다. 10연차면 초상화·이름·별을 단 카드 열 장이
+    // 소환할 때마다 생겼다 사라졌다.
+    private readonly List<CharacterCard> pool = new List<CharacterCard>();
+
+    // 카드마다 지금 맡은 소환 번호.
+    //
+    // 초상화는 소환이 끝난 뒤에도 한참 늦게 온다(Meshy 이미지 생성). 카드를 지우던 때는 그사이 치워진
+    // 카드가 사라져 있어 늦은 초상화가 갈 곳이 없었는데, 이제는 같은 카드가 다음 소환에 다른 캐릭터로
+    // 다시 쓰일 수 있다. 번호가 맞을 때만 칠해야 남의 카드에 엉뚱한 초상화가 올라가지 않는다(SpawnRoutine).
+    private readonly Dictionary<CharacterCard, int> ticketOf = new Dictionary<CharacterCard, int>();
+    private int lastTicket;
+
     private void Start()
     {
         if (spawnCountOnStart > 0) StartCoroutine(SpawnBatch(spawnCountOnStart));
@@ -80,11 +92,14 @@ public class CardSpawner : MonoBehaviour
     {
         if (!IsReady()) return null;
 
-        CharacterCard card = Instantiate(cardPrefab, cardParent != null ? cardParent : transform);
+        CharacterCard card = TakeCard();
         card.ResetCard();
         spawned.Add(card);
 
-        StartCoroutine(SpawnRoutine(card, presetName, forcedStars));
+        int ticket = ++lastTicket;
+        ticketOf[card] = ticket;
+
+        StartCoroutine(SpawnRoutine(card, ticket, presetName, forcedStars));
         return card;
     }
 
@@ -95,11 +110,43 @@ public class CardSpawner : MonoBehaviour
         if (IsBusy) return;
 
         for (int i = 0; i < spawned.Count; i++)
-            if (spawned[i] != null) Destroy(spawned[i].gameObject);
+        {
+            CharacterCard card = spawned[i];
+            if (card == null) continue;
+
+            // 번호를 떼어야 아직 오고 있는 초상화가 이 카드를 더는 자기 것으로 보지 않는다.
+            ticketOf.Remove(card);
+            card.ResetCard();
+            card.gameObject.SetActive(false);
+            pool.Add(card);
+        }
         spawned.Clear();
     }
 
-    private IEnumerator SpawnRoutine(CharacterCard card, string presetName, int forcedStars)
+    // 꺼 둔 카드가 있으면 그것을 켜서, 없으면 새로 만든다. 뒤에 붙여야 늘어놓는 순서가 뽑은 순서가 된다.
+    private CharacterCard TakeCard()
+    {
+        while (pool.Count > 0)
+        {
+            int last = pool.Count - 1;
+            CharacterCard reused = pool[last];
+            pool.RemoveAt(last);
+            if (reused == null) continue;
+
+            reused.transform.SetAsLastSibling();
+            reused.gameObject.SetActive(true);
+            return reused;
+        }
+
+        return Instantiate(cardPrefab, cardParent != null ? cardParent : transform);
+    }
+
+    private bool HoldsTicket(CharacterCard card, int ticket)
+    {
+        return card != null && ticketOf.TryGetValue(card, out int current) && current == ticket;
+    }
+
+    private IEnumerator SpawnRoutine(CharacterCard card, int ticket, string presetName, int forcedStars)
     {
         CharacterSO summoned = null;
 
@@ -110,8 +157,8 @@ public class CardSpawner : MonoBehaviour
             OwnedRoster.Add(so);
             summoned = so;
 
-            // 이미지가 오기 전에 카드가 치워질 수 있다. 지워진 카드에 값을 쓰면 예외가 난다.
-            if (card != null) card.Apply(so);
+            // 이미지가 오기 전에 카드가 치워질 수 있다. 치워진 카드는 다른 소환에 다시 쓰이고 있을 수 있다.
+            if (HoldsTicket(card, ticket)) card.Apply(so);
         }, presetName, forcedStars);
 
         // 카드가 나왔으면 그 캐릭터의 몸을 뒤에서 굽기 시작한다.

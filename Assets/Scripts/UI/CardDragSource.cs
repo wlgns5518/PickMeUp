@@ -10,7 +10,11 @@ using UnityEngine.EventSystems;
 public interface ICardDragHost
 {
     // 손끝을 따라다니는 반투명 카드. 카드를 만드는 방법이 화면마다 달라 여기서 받아 온다.
+    // 드래그마다 새로 만들 필요는 없다 — 화면이 하나를 들고 있다가 다시 칠해 내주면 된다.
     RectTransform CreateDragGhost(CharacterSO character);
+
+    // 손을 놓아 유령 카드가 할 일을 마쳤다. 지우지 말고 다음 드래그까지 꺼 둔다.
+    void ReleaseDragGhost(RectTransform ghost);
 
     // 받아 주는 자리 위에 놓았다.
     void HandleDrop(CardDragSource source, int slotIndex);
@@ -72,7 +76,7 @@ public class CardDragSource : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
 
     public void OnEndDrag(PointerEventData eventData)
     {
-        if (ghost != null) Destroy(ghost.gameObject);
+        if (ghost != null && owner != null) owner.ReleaseDragGhost(ghost);
         ghost = null;
 
         // 자리 밖 허공에 놓았다. 그때 무엇을 할지는 화면마다 다르므로 그쪽에 넘긴다.

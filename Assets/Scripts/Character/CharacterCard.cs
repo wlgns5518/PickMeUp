@@ -17,6 +17,9 @@ public class CharacterCard : MonoBehaviour
 
     public CharacterSO Character { get; private set; }
 
+    // 한 번 만든 별은 지우지 않고 꺼 두었다가 다시 쓴다. 카드는 편성·합성 창에서 다른 캐릭터로 수없이
+    // 다시 칠해지고(합성 자리는 카드를 올리고 내릴 때마다 ResetCard → Apply), 그때마다 별을 부수고 새로
+    // 만들면 카드 한 장에 최대 일곱 개가 생겼다 사라졌다. 필요한 수만큼만 켜고 나머지는 꺼 둔다.
     private readonly List<GameObject> spawnedStars = new List<GameObject>();
     private int appliedStarCount = -1;
 
@@ -62,15 +65,12 @@ public class CharacterCard : MonoBehaviour
 
     private void DisplayStars(int count)
     {
-        ClearStars();
-        count = Mathf.Clamp(count, 0, maxStars);
-        if (count == 0 || starPrefab == null) return;
+        count = starPrefab != null ? Mathf.Clamp(count, 0, maxStars) : 0;
 
         float startX = -(count - 1) * 0.5f * starSpacing;
         for (int i = 0; i < count; i++)
         {
-            GameObject star = Instantiate(starPrefab, transform);
-            star.name = $"Star_{i + 1}";
+            GameObject star = TakeStar(i);
 
             Vector2 pos = new Vector2(startX + i * starSpacing, starYOffset);
             if (star.transform is RectTransform rt)
@@ -85,14 +85,31 @@ public class CharacterCard : MonoBehaviour
                 star.transform.localRotation = Quaternion.identity;
                 star.transform.localScale = Vector3.one;
             }
-            spawnedStars.Add(star);
+            star.SetActive(true);
         }
+
+        // 이번 등급보다 많이 만들어 둔 별은 꺼 둔다.
+        for (int i = count; i < spawnedStars.Count; i++)
+            if (spawnedStars[i] != null) spawnedStars[i].SetActive(false);
+    }
+
+    // i번째 별. 만들어 둔 것이 있으면 그것을, 없으면(또는 밖에서 지워졌으면) 새로 만든다.
+    private GameObject TakeStar(int index)
+    {
+        GameObject star = index < spawnedStars.Count ? spawnedStars[index] : null;
+        if (star != null) return star;
+
+        star = Instantiate(starPrefab, transform);
+        star.name = $"Star_{index + 1}";
+
+        if (index < spawnedStars.Count) spawnedStars[index] = star;
+        else spawnedStars.Add(star);
+        return star;
     }
 
     private void ClearStars()
     {
         for (int i = 0; i < spawnedStars.Count; i++)
-            if (spawnedStars[i] != null) Destroy(spawnedStars[i]);
-        spawnedStars.Clear();
+            if (spawnedStars[i] != null) spawnedStars[i].SetActive(false);
     }
 }

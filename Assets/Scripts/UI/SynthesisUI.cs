@@ -97,6 +97,8 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
     }
 
     private RectTransform dragLayer;
+    // 끌고 다니는 카드 한 장. 드래그마다 다시 칠해 쓴다(CreateDragGhost).
+    private CharacterCard dragGhost;
 
     private AnnouncementBanner warningBanner;
 
@@ -187,24 +189,40 @@ public class SynthesisUI : FacilityWindow, ICardDragHost
     // ---- 드래그 앤 드롭 --------------------------------------------------
 
     // 끌고 다니는 동안 손끝을 따라다니는 카드. 드롭 판정을 가리지 않도록 레이캐스트를 끈다.
+    //
+    // 한 장을 만들어 두고 드래그마다 주인만 바꿔 칠한다(편성 창과 같은 이유 — DeckBuildUI.CreateDragGhost).
     public RectTransform CreateDragGhost(CharacterSO character)
     {
         if (dragLayer == null || character == null || cardPrefab == null) return null;
 
-        CharacterCard card = Instantiate(cardPrefab, dragLayer);
-        card.name = "DragGhost";
-        card.Apply(character);
-
-        var rect = card.transform as RectTransform;
-        if (rect == null)
+        // 창을 다시 지으면(도메인 리로드) 옛 층과 함께 사라진다. 그때만 새로 만든다.
+        if (dragGhost == null)
         {
-            Destroy(card.gameObject);
-            return null;
+            CharacterCard card = Instantiate(cardPrefab, dragLayer);
+            card.name = "DragGhost";
+
+            if (!(card.transform is RectTransform cardRect))
+            {
+                Destroy(card.gameObject);
+                return null;
+            }
+
+            BlockRaycasts(cardRect).alpha = 0.85f;
+            dragGhost = card;
         }
 
+        var rect = (RectTransform)dragGhost.transform;
+        // 카드 크기는 목록을 다시 깔 때마다 바뀔 수 있다(인원이 늘면 작아진다). 집을 때마다 맞춘다.
         CardLayout.CenterInSlot(rect, rosterCardScale);
-        BlockRaycasts(rect).alpha = 0.85f;
+        dragGhost.Apply(character);
+        dragGhost.gameObject.SetActive(true);
+        rect.SetAsLastSibling();
         return rect;
+    }
+
+    public void ReleaseDragGhost(RectTransform ghost)
+    {
+        if (ghost != null) ghost.gameObject.SetActive(false);
     }
 
     public void HandleDrop(CardDragSource source, int slotIndex)

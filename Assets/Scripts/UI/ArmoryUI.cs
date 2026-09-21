@@ -71,10 +71,29 @@ public class ArmoryUI : FacilityWindow
 
     private static readonly string[] FilterLabels = { "전체", "주무기", "방패" };
 
+    // 목록의 줄은 지우지 않고 다시 쓴다(RebuildHeroRows / RebuildItemRows).
+    //
+    // 이 창은 영웅을 고르거나 장비를 한 번 누를 때마다 목록을 통째로 다시 그린다. 예전에는 그때마다
+    // 줄을 전부 지우고 새로 만들어서, 영웅 여덟에 장비 열여섯이면 클릭 한 번에 버튼·배지·글자 칸 백여 개가
+    // 생겼다 사라졌다. 이제 줄의 뼈대(버튼과 글자 칸)는 한 번만 만들고, 다시 그릴 때는 내용·색·자리만
+    // 새로 칠한다. 남는 줄은 꺼 둔다. 누르면 무엇을 할지도 줄이 지금 들고 있는 값을 보고 정한다.
     private class HeroRow
     {
         public CharacterSO Character;
         public NeonButton Button;
+        public TMP_Text Name;
+        public TMP_Text Weapon;
+        public TMP_Text Info;
+    }
+
+    private class ItemRow
+    {
+        public OwnedEquipment Item;
+        public NeonButton Button;
+        public TMP_Text Grade;
+        public TMP_Text Name;
+        public TMP_Text Type;
+        public TMP_Text Status;
     }
 
     // 가운데 칸의 손 하나.
@@ -93,7 +112,16 @@ public class ArmoryUI : FacilityWindow
     private RectTransform itemContent;
     private float itemListWidth;
 
+    // 만들어 둔 줄 전부. 앞에서부터 heroRowCount / itemRowCount개가 지금 쓰이는 줄이다.
     private readonly List<HeroRow> heroRows = new List<HeroRow>();
+    private readonly List<ItemRow> itemRows = new List<ItemRow>();
+    private int heroRowCount;
+    private int itemRowCount;
+
+    // 목록이 비었을 때 띄우는 문구. 줄과 마찬가지로 하나를 만들어 두고 껐다 켠다.
+    private TMP_Text heroEmptyText;
+    private TMP_Text itemEmptyText;
+
     private readonly List<NeonButton> filterTabs = new List<NeonButton>();
     private readonly List<OwnedEquipment> visibleItems = new List<OwnedEquipment>();
 
@@ -234,7 +262,13 @@ public class ArmoryUI : FacilityWindow
 
     protected override void BuildWindow()
     {
+        // 창을 다시 지을 때(도메인 리로드) 옛 줄은 옛 캔버스와 함께 사라졌다. 목록도 비운다.
         heroRows.Clear();
+        itemRows.Clear();
+        heroRowCount = 0;
+        itemRowCount = 0;
+        heroEmptyText = null;
+        itemEmptyText = null;
         filterTabs.Clear();
         visibleItems.Clear();
 
@@ -439,15 +473,8 @@ public class ArmoryUI : FacilityWindow
     {
         if (heroContent == null) return;
 
-        ClearRows(heroContent);
-        heroRows.Clear();
-
         IReadOnlyList<CharacterSO> members = OwnedRoster.Members;
-        if (members.Count == 0)
-        {
-            SetContentHeight(heroContent, EmptyRow(heroContent, "보유한 영웅이 없습니다.\n소환소에서 먼저 영웅을 뽑아주세요."));
-            return;
-        }
+        heroRowCount = 0;
 
         float y = 0f;
         for (int i = 0; i < members.Count; i++)
@@ -455,43 +482,69 @@ public class ArmoryUI : FacilityWindow
             CharacterSO hero = members[i];
             if (hero == null) continue;
 
-            // 글자가 여러 줄 따로 깔리므로 버튼 자체의 글자는 두지 않는다.
-            NeonButton row = HudFactory.CreateButton(heroContent, "Hero_" + i, NeonButtonStyle.Ghost,
-                resolvedFont, null, 0f, () => SelectHero(hero));
-            HudFactory.SetTopLeft(row.Rect, new Vector2(HeroColumnWidth, HeroRowHeight), new Vector2(0f, -y));
-
-            RectTransform rect = row.Rect;
-            bool fallen = PartyRoster.IsFallen(hero);
-
-            TMP_Text nameText = RowText(rect, "Name", 26f, fallen ? BattleHudPalette.TextMuted : BattleHudPalette.TextPrimary,
-                TextAlignmentOptions.Left, 8f, 34f, RowInset, 170f);
-            nameText.text = HeroLabel.Name(hero);
-
-            // 제작 장비를 든 영웅만 무기 이름이 뜬다. 기본 장비 이름은 직업을 드러낸다.
-            OwnedEquipment crafted = EquipmentInventory.EquippedIn(hero, EquipSlot.MainHand);
-            if (crafted != null)
-            {
-                TMP_Text weaponText = RowText(rect, "Weapon", 20f, EquipmentGradeNames.ColorOf(crafted.Grade),
-                    TextAlignmentOptions.Right, 12f, 28f, 200f, RowInset);
-                weaponText.text = crafted.DisplayName;
-            }
-
-            TMP_Text infoText = RowText(rect, "Info", 20f, fallen ? BattleHudPalette.Warn : BattleHudPalette.TextMuted,
-                TextAlignmentOptions.Left, 42f, 26f, RowInset, RowInset);
-            infoText.text = $"Lv.{hero.Level} · {hero.starCount}성" + (fallen ? " · 쓰러짐" : string.Empty);
-
-            heroRows.Add(new HeroRow { Character = hero, Button = row });
+            BindHeroRow(TakeHeroRow(heroRowCount), hero, y);
+            heroRowCount++;
             y += HeroRowHeight + RowGap;
         }
 
-        SetContentHeight(heroContent, y - RowGap);
+        HideUnusedRows(heroRows, heroRowCount);
+
+        bool empty = heroRowCount == 0;
+        float emptyHeight = ShowEmptyText(ref heroEmptyText, heroContent, empty,
+            "보유한 영웅이 없습니다.\n소환소에서 먼저 영웅을 뽑아주세요.");
+        SetContentHeight(heroContent, empty ? emptyHeight : y - RowGap);
         RefreshHeroHighlight();
+    }
+
+    // index번째 줄. 만들어 둔 것이 있으면 그것을 쓰고, 모자라면 뼈대를 새로 만든다.
+    private HeroRow TakeHeroRow(int index)
+    {
+        if (index < heroRows.Count) return heroRows[index];
+
+        var row = new HeroRow();
+
+        // 글자가 여러 줄 따로 깔리므로 버튼 자체의 글자는 두지 않는다.
+        // 누르면 이 줄이 지금 보여 주는 영웅을 고른다 — 줄은 다른 영웅으로 다시 칠해져 쓰인다.
+        row.Button = HudFactory.CreateButton(heroContent, "Hero_" + index, NeonButtonStyle.Ghost,
+            resolvedFont, null, 0f, () => SelectHero(row.Character));
+
+        RectTransform rect = row.Button.Rect;
+        row.Name = RowText(rect, "Name", 26f, BattleHudPalette.TextPrimary, TextAlignmentOptions.Left, 8f, 34f, RowInset, 170f);
+        row.Weapon = RowText(rect, "Weapon", 20f, BattleHudPalette.TextPrimary, TextAlignmentOptions.Right, 12f, 28f, 200f, RowInset);
+        row.Info = RowText(rect, "Info", 20f, BattleHudPalette.TextMuted, TextAlignmentOptions.Left, 42f, 26f, RowInset, RowInset);
+
+        heroRows.Add(row);
+        return row;
+    }
+
+    private void BindHeroRow(HeroRow row, CharacterSO hero, float y)
+    {
+        row.Character = hero;
+        row.Button.gameObject.SetActive(true);
+        HudFactory.SetTopLeft(row.Button.Rect, new Vector2(HeroColumnWidth, HeroRowHeight), new Vector2(0f, -y));
+
+        bool fallen = PartyRoster.IsFallen(hero);
+
+        row.Name.text = HeroLabel.Name(hero);
+        row.Name.color = fallen ? BattleHudPalette.TextMuted : BattleHudPalette.TextPrimary;
+
+        // 제작 장비를 든 영웅만 무기 이름이 뜬다. 기본 장비 이름은 직업을 드러낸다.
+        OwnedEquipment crafted = EquipmentInventory.EquippedIn(hero, EquipSlot.MainHand);
+        row.Weapon.gameObject.SetActive(crafted != null);
+        if (crafted != null)
+        {
+            row.Weapon.text = crafted.DisplayName;
+            row.Weapon.color = EquipmentGradeNames.ColorOf(crafted.Grade);
+        }
+
+        row.Info.text = $"Lv.{hero.Level} · {hero.starCount}성" + (fallen ? " · 쓰러짐" : string.Empty);
+        row.Info.color = fallen ? BattleHudPalette.Warn : BattleHudPalette.TextMuted;
     }
 
     private void RefreshHeroHighlight()
     {
         // 고른 줄은 네온 테두리로. 밝은 판(Primary)을 깔면 줄 안의 밝은 글자와 등급색이 묻힌다.
-        for (int i = 0; i < heroRows.Count; i++)
+        for (int i = 0; i < heroRowCount; i++)
             heroRows[i].Button.SetStyle(heroRows[i].Character == selectedHero ? NeonButtonStyle.Secondary : NeonButtonStyle.Ghost);
     }
 
@@ -505,8 +558,6 @@ public class ArmoryUI : FacilityWindow
     {
         if (itemContent == null) return;
 
-        ClearRows(itemContent);
-
         IReadOnlyList<OwnedEquipment> items = EquipmentInventory.Items;
         int stored = 0;
         visibleItems.Clear();
@@ -519,60 +570,82 @@ public class ArmoryUI : FacilityWindow
 
         inventoryLabel.text = $"제작한 장비 {items.Count}점 · 보관 중 {stored}점";
 
-        if (visibleItems.Count == 0)
-        {
-            string message = items.Count == 0
-                ? "제작한 장비가 없습니다.\n장비제작소에서 먼저 만들어 주세요."
-                : "이 분류에 해당하는 장비가 없습니다.";
-            SetContentHeight(itemContent, EmptyRow(itemContent, message));
-            return;
-        }
-
+        itemRowCount = 0;
         float y = 0f;
         for (int i = 0; i < visibleItems.Count; i++)
         {
-            BuildItemRow(visibleItems[i], itemListWidth, y, i);
+            BindItemRow(TakeItemRow(itemRowCount), visibleItems[i], y);
+            itemRowCount++;
             y += ItemRowHeight + RowGap;
         }
 
-        SetContentHeight(itemContent, y - RowGap);
+        HideUnusedRows(itemRows, itemRowCount);
+
+        bool empty = itemRowCount == 0;
+        string message = items.Count == 0
+            ? "제작한 장비가 없습니다.\n장비제작소에서 먼저 만들어 주세요."
+            : "이 분류에 해당하는 장비가 없습니다.";
+        float emptyHeight = ShowEmptyText(ref itemEmptyText, itemContent, empty, message);
+        SetContentHeight(itemContent, empty ? emptyHeight : y - RowGap);
     }
 
-    private void BuildItemRow(OwnedEquipment item, float width, float y, int index)
+    // index번째 장비 줄. 모자라면 뼈대(판·등급 배지·글자 칸)를 새로 만든다. 내용은 BindItemRow가 칠한다.
+    private ItemRow TakeItemRow(int index)
     {
-        bool mine = item.IsHeldBy(selectedHero);
-        bool other = item.IsEquipped && !mine;
+        if (index < itemRows.Count) return itemRows[index];
 
-        // 고른 영웅이 든 것은 네온 테두리, 다른 영웅이 든 것은 흐린 판(누르면 가져온다), 창고에 있는 것은 옅은 판.
-        NeonButton row = HudFactory.CreateButton(itemContent, "Item_" + index,
-            mine ? NeonButtonStyle.Secondary : other ? NeonButtonStyle.Muted : NeonButtonStyle.Ghost,
-            resolvedFont, null, 0f, () => ClickItem(item));
-        HudFactory.SetTopLeft(row.Rect, new Vector2(width, ItemRowHeight), new Vector2(0f, -y));
+        var row = new ItemRow();
+        float width = itemListWidth;
 
-        RectTransform rect = row.Rect;
+        // 누르면 이 줄이 지금 보여 주는 장비를 누른 것으로 친다.
+        row.Button = HudFactory.CreateButton(itemContent, "Item_" + index, NeonButtonStyle.Ghost,
+            resolvedFont, null, 0f, () => ClickItem(row.Item));
+
+        RectTransform rect = row.Button.Rect;
 
         NeonUISkin skin = NeonUISkin.Current;
         Image badge = HudFactory.CreateSkinnedImage(rect, "Grade", skin != null ? skin.iconButton : null, BattleHudPalette.GaugeBackground);
         HudFactory.SetTopLeft(badge.rectTransform, new Vector2(GradeBadgeSize, GradeBadgeSize),
             new Vector2(RowInset, -(ItemRowHeight - GradeBadgeSize) * 0.5f));
 
-        TMP_Text gradeText = HudFactory.CreateText(badge.rectTransform, "Label", resolvedFont, 30f, EquipmentGradeNames.ColorOf(item.Grade));
-        HudFactory.Stretch(gradeText.rectTransform);
-        gradeText.text = EquipmentGradeNames.NameOf(item.Grade);
+        row.Grade = HudFactory.CreateText(badge.rectTransform, "Label", resolvedFont, 30f, BattleHudPalette.TextPrimary);
+        HudFactory.Stretch(row.Grade.rectTransform);
 
         float textLeft = RowInset + GradeBadgeSize + 14f;
 
-        TMP_Text nameText = RowText(rect, "Name", 26f, other ? BattleHudPalette.TextMuted : BattleHudPalette.TextPrimary,
+        row.Name = RowText(rect, "Name", 26f, BattleHudPalette.TextPrimary,
             TextAlignmentOptions.Left, 6f, 34f, textLeft, ItemStatusWidth + RowInset);
-        nameText.text = item.DisplayName;
-
-        TMP_Text typeText = RowText(rect, "Type", 20f, BattleHudPalette.TextMuted,
+        row.Type = RowText(rect, "Type", 20f, BattleHudPalette.TextMuted,
             TextAlignmentOptions.Left, 38f, 26f, textLeft, ItemStatusWidth + RowInset);
-        typeText.text = $"{CharacterRules.Korean(item.Weapon.type)} · {EffectText(item)}";
-
-        TMP_Text statusLabel = RowText(rect, "Status", 21f, mine ? BattleHudPalette.Accent : BattleHudPalette.TextMuted,
+        row.Status = RowText(rect, "Status", 21f, BattleHudPalette.TextMuted,
             TextAlignmentOptions.Right, 0f, ItemRowHeight, width - ItemStatusWidth - RowInset, RowInset);
-        statusLabel.text = mine ? "장착 중" : other ? OwnerLabel(item) : "보관 중";
+
+        itemRows.Add(row);
+        return row;
+    }
+
+    private void BindItemRow(ItemRow row, OwnedEquipment item, float y)
+    {
+        bool mine = item.IsHeldBy(selectedHero);
+        bool other = item.IsEquipped && !mine;
+
+        row.Item = item;
+        row.Button.gameObject.SetActive(true);
+        HudFactory.SetTopLeft(row.Button.Rect, new Vector2(itemListWidth, ItemRowHeight), new Vector2(0f, -y));
+
+        // 고른 영웅이 든 것은 네온 테두리, 다른 영웅이 든 것은 흐린 판(누르면 가져온다), 창고에 있는 것은 옅은 판.
+        row.Button.SetStyle(mine ? NeonButtonStyle.Secondary : other ? NeonButtonStyle.Muted : NeonButtonStyle.Ghost);
+
+        row.Grade.text = EquipmentGradeNames.NameOf(item.Grade);
+        row.Grade.color = EquipmentGradeNames.ColorOf(item.Grade);
+
+        row.Name.text = item.DisplayName;
+        row.Name.color = other ? BattleHudPalette.TextMuted : BattleHudPalette.TextPrimary;
+
+        row.Type.text = $"{CharacterRules.Korean(item.Weapon.type)} · {EffectText(item)}";
+
+        row.Status.text = mine ? "장착 중" : other ? OwnerLabel(item) : "보관 중";
+        row.Status.color = mine ? BattleHudPalette.Accent : BattleHudPalette.TextMuted;
     }
 
     private void RefreshDetail()
@@ -748,31 +821,52 @@ public class ArmoryUI : FacilityWindow
         return text;
     }
 
-    private float EmptyRow(RectTransform content, string message)
+    // 목록이 비었을 때의 문구. 처음 필요할 때 한 번 만들고, 그 뒤로는 켜고 끄며 글만 바꾼다.
+    // 문구가 차지하는 높이를 돌려준다(보이지 않으면 0).
+    private float ShowEmptyText(ref TMP_Text text, RectTransform content, bool show, string message)
     {
         const float height = 120f;
 
-        TMP_Text text = HudFactory.CreateText(content, "Empty", resolvedFont, 22f, BattleHudPalette.TextMuted);
-        text.textWrappingMode = TextWrappingModes.Normal;
-        RectTransform rect = text.rectTransform;
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(1f, 1f);
-        rect.pivot = new Vector2(0.5f, 1f);
-        rect.offsetMin = new Vector2(RowInset, -height);
-        rect.offsetMax = new Vector2(-RowInset, 0f);
+        if (!show)
+        {
+            if (text != null) text.gameObject.SetActive(false);
+            return 0f;
+        }
+
+        if (text == null)
+        {
+            text = HudFactory.CreateText(content, "Empty", resolvedFont, 22f, BattleHudPalette.TextMuted);
+            text.textWrappingMode = TextWrappingModes.Normal;
+            RectTransform rect = text.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.offsetMin = new Vector2(RowInset, -height);
+            rect.offsetMax = new Vector2(-RowInset, 0f);
+        }
+
+        text.gameObject.SetActive(true);
         text.text = message;
         return height;
     }
 
-    // 목록을 다시 깔 때 옛 줄을 치운다. Destroy는 프레임 끝에 일어나므로, 그 사이 새 줄과 겹쳐
-    // 클릭을 가로채지 않도록 먼저 꺼 둔다.
-    private static void ClearRows(RectTransform content)
+    // 이번에 쓰지 않은 줄은 꺼 둔다. 들고 있던 값도 놓는다 — 꺼진 줄이 명단에서 빠진 영웅이나
+    // 사라진 장비를 붙들고 있을 이유가 없다.
+    private static void HideUnusedRows(List<HeroRow> rows, int used)
     {
-        for (int i = content.childCount - 1; i >= 0; i--)
+        for (int i = used; i < rows.Count; i++)
         {
-            GameObject row = content.GetChild(i).gameObject;
-            row.SetActive(false);
-            Destroy(row);
+            rows[i].Character = null;
+            rows[i].Button.gameObject.SetActive(false);
+        }
+    }
+
+    private static void HideUnusedRows(List<ItemRow> rows, int used)
+    {
+        for (int i = used; i < rows.Count; i++)
+        {
+            rows[i].Item = null;
+            rows[i].Button.gameObject.SetActive(false);
         }
     }
 

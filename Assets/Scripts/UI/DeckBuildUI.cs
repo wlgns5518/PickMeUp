@@ -116,6 +116,8 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
     }
 
     private RectTransform dragLayer;
+    // 끌고 다니는 카드 한 장. 드래그마다 다시 칠해 쓴다(CreateDragGhost).
+    private CardVisual dragGhost;
 
     private AnnouncementBanner announcement;
 
@@ -231,24 +233,42 @@ public class DeckBuildUI : FacilityWindow, ICardDragHost
     // ---- 드래그 앤 드롭 --------------------------------------------------
 
     // 끌고 다니는 동안 손끝을 따라다니는 카드. 드롭 판정을 가리지 않도록 레이캐스트를 끈다.
+    //
+    // 한 장을 만들어 두고 드래그마다 주인만 바꿔 칠한다. 편성은 카드를 수십 번 끌어 옮기는 화면인데,
+    // 매번 카드 프리팹(초상화·이름·별)을 새로 만들고 놓을 때 지우던 것을 걷어냈다.
     public RectTransform CreateDragGhost(CharacterSO character)
     {
         if (dragLayer == null || character == null) return null;
 
-        CardVisual visual = BuildCard(dragLayer, character);
-        RectTransform rect = visual.Rect;
-        rect.name = "DragGhost";
-        rect.anchorMin = new Vector2(0.5f, 0.5f);
-        rect.anchorMax = new Vector2(0.5f, 0.5f);
-        rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.localScale = Vector3.one * partyCardScale;
+        // 창을 다시 지으면(도메인 리로드) 옛 층과 함께 사라진다. 그때만 새로 만든다.
+        if (dragGhost == null || dragGhost.Rect == null)
+        {
+            dragGhost = BuildCard(dragLayer, character);
+            RectTransform rect = dragGhost.Rect;
+            rect.name = "DragGhost";
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.localScale = Vector3.one * partyCardScale;
 
-        CanvasGroup group = rect.GetComponent<CanvasGroup>();
-        if (group == null) group = rect.gameObject.AddComponent<CanvasGroup>();
-        group.alpha = 0.85f;
-        group.blocksRaycasts = false;
+            CanvasGroup group = rect.GetComponent<CanvasGroup>();
+            if (group == null) group = rect.gameObject.AddComponent<CanvasGroup>();
+            group.alpha = 0.85f;
+            group.blocksRaycasts = false;
+        }
+        else
+        {
+            dragGhost.Apply(character);
+        }
 
-        return rect;
+        dragGhost.Rect.gameObject.SetActive(true);
+        dragGhost.Rect.SetAsLastSibling();
+        return dragGhost.Rect;
+    }
+
+    public void ReleaseDragGhost(RectTransform ghost)
+    {
+        if (ghost != null) ghost.gameObject.SetActive(false);
     }
 
     public void HandleDrop(CardDragSource source, int slotIndex)

@@ -25,17 +25,34 @@ public class PuzzlePiece : MonoBehaviour,
     private PuzzleGame manager;
     private Canvas canvas;
 
-    public void Init(int col, int row, PuzzleGame mgr, Image coreImage, Image shadowImage)
+    // 조각을 만들 때 한 번. 조각은 퍼즐이 끝나도 지우지 않고 다음 퍼즐에 다시 쓰이므로(PuzzleGame 조각 풀),
+    // 판마다 바뀌는 것(자리·그림·놓였는지)은 여기가 아니라 Bind가 채운다.
+    public void Setup(PuzzleGame mgr, Image coreImage, Image shadowImage)
     {
-        gridCol = col;
-        gridRow = row;
         manager = mgr;
         RT = (RectTransform)transform;
         CG = GetComponent<CanvasGroup>();
         Image = coreImage;
         shadow = shadowImage;
-        canvas = GetComponentInParent<Canvas>();
+    }
+
+    // 이번 판의 조각으로 칠한다. 지난 판에 제자리에 놓였던 조각이라도 여기서 처음 상태로 돌아간다 —
+    // 놓이면 꺼 둔 그림자와 레이캐스트를 되살리지 않으면 다음 판에서 집히지 않는다.
+    public void Bind(int col, int row, Sprite sprite)
+    {
+        gridCol = col;
+        gridRow = row;
+
+        Image.sprite = sprite;
+        if (shadow != null)
+        {
+            shadow.sprite = sprite;
+            shadow.enabled = true;
+        }
+
+        CG.blocksRaycasts = true;
         Placed = false;
+        canvas = GetComponentInParent<Canvas>();
     }
 
     public void MarkPlaced()

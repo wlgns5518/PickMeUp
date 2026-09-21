@@ -105,6 +105,16 @@ public class PuzzleGame : MonoBehaviour
     // 사라지지 않는다 — 직접 지우지 않으면 퍼즐을 다시 시작할 때마다 최대 225장씩(Hell) 쌓인다.
     private readonly List<Sprite> pieceSprites = new List<Sprite>();
 
+    // 조각과 빈칸은 퍼즐이 끝나도 지우지 않고 꺼 두었다가 다음 퍼즐에 다시 쓴다.
+    //
+    // 한 판에 조각이 최대 225개(Hell)이고 조각마다 오브젝트가 셋(본체·그림자·그림)이며, 빈칸도 조각 수만큼이다.
+    // 예전에는 판을 열 때마다 그만큼을 새로 만들고 닫을 때 전부 지워서, 수동 제작 한 번에 수백 개의
+    // 오브젝트가 생겼다 사라졌다. 크기·그림·놓였는지는 판마다 다시 입히므로(PuzzlePiece.Bind) 지난 판이 남지 않는다.
+    private readonly List<PuzzlePiece> piecePool = new List<PuzzlePiece>();
+    private readonly List<Image> slotPool = new List<Image>();
+    // 지금 판에 깔린 빈칸. 판(board)의 자식에는 제자리에 놓인 조각도 섞여 있어 자식을 훑어서는 가려낼 수 없다.
+    private readonly List<Image> activeSlots = new List<Image>();
+
     // 제자리에 놓인 조각 수. 전부 놓이면 성공이다.
     private int placedCount;
 
@@ -230,12 +240,10 @@ public class PuzzleGame : MonoBehaviour
 
     private void ClearPieces()
     {
-        for (int i = 0; i < pieces.Count; i++)
-            if (pieces[i] != null) Destroy(pieces[i].gameObject);
+        for (int i = 0; i < pieces.Count; i++) ReleasePiece(pieces[i]);
         pieces.Clear();
 
-        for (int i = 0; i < backgroundPieces.Count; i++)
-            if (backgroundPieces[i] != null) Destroy(backgroundPieces[i].gameObject);
+        for (int i = 0; i < backgroundPieces.Count; i++) ReleasePiece(backgroundPieces[i]);
         backgroundPieces.Clear();
 
         punchTimers.Clear();
@@ -306,7 +314,7 @@ public class PuzzleGame : MonoBehaviour
                 Sprite pieceSprite = Sprite.Create(tex, pieceRect, new Vector2(0.5f, 0.5f), 100f,
                     0, SpriteMeshType.FullRect);
                 pieceSprites.Add(pieceSprite);
-                PuzzlePiece piece = CreatePiece(pieceSprite, currentPieceSize, currentPieceSize, col, row);
+                PuzzlePiece piece = TakePiece(pieceSprite, currentPieceSize, col, row);
 
                 // 그림이 옅게만 든 칸은 버리지 않고 처음부터 맞춰진 것으로 둔다. 버리면 그림에
                 // 구멍이 남고, 그렇다고 플레이어에게 맡기면 보이지도 않는 조각을 찾아 헤매게 된다.
@@ -338,7 +346,42 @@ public class PuzzleGame : MonoBehaviour
     }
 #endif
 
-    private PuzzlePiece CreatePiece(Sprite sprite, float w, float h, int col, int row)
+    // 이번 판의 조각 하나. 꺼 둔 조각이 있으면 그것을 켜서 다시 칠하고, 없으면 새로 만든다.
+    private PuzzlePiece TakePiece(Sprite sprite, float size, int col, int row)
+    {
+        PuzzlePiece piece = null;
+        while (piece == null && piecePool.Count > 0)
+        {
+            int last = piecePool.Count - 1;
+            piece = piecePool[last];
+            piecePool.RemoveAt(last);
+        }
+
+        if (piece == null) piece = BuildPiece();
+
+        RectTransform rt = piece.RT;
+        rt.sizeDelta = new Vector2(size, size);
+        rt.localScale = Vector3.one;
+        rt.anchoredPosition = Vector2.zero;
+
+        piece.Bind(col, row, sprite);
+        piece.gameObject.SetActive(true);
+        return piece;
+    }
+
+    // 판이 끝난 조각을 꺼서 되돌린다. 제자리에 놓였던 조각은 판(board)에 붙어 있으므로 놀이 영역으로
+    // 도로 옮긴다 — 다음 판에서 흩뿌리는 곳이 놀이 영역이고, 판에 남아 있으면 판 캔버스가 계속 품고 있다.
+    private void ReleasePiece(PuzzlePiece piece)
+    {
+        if (piece == null) return;
+
+        piece.gameObject.SetActive(false);
+        if (piece.transform.parent != playArea) piece.transform.SetParent(playArea, false);
+        piecePool.Add(piece);
+    }
+
+    // 조각의 뼈대. 그림과 자리는 TakePiece → PuzzlePiece.Bind가 판마다 입힌다.
+    private PuzzlePiece BuildPiece()
     {
         var go = new GameObject("Piece", typeof(RectTransform), typeof(CanvasGroup), typeof(PuzzlePiece));
         go.transform.SetParent(playArea, false);
@@ -346,13 +389,11 @@ public class PuzzleGame : MonoBehaviour
         var rt = (RectTransform)go.transform;
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(w, h);
 
         // 그림자 (같은 스프라이트를 검게 물들여 살짝 오프셋 — 조각 실루엣과 정확히 일치)
         var shadowGo = new GameObject("Shadow", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         shadowGo.transform.SetParent(go.transform, false);
         var shadowImg = shadowGo.GetComponent<Image>();
-        shadowImg.sprite = sprite;
         shadowImg.raycastTarget = false;
         shadowImg.preserveAspect = true;
         shadowImg.color = pieceShadowColor;
@@ -366,7 +407,6 @@ public class PuzzleGame : MonoBehaviour
         var coreGo = new GameObject("Core", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         coreGo.transform.SetParent(go.transform, false);
         var coreImg = coreGo.GetComponent<Image>();
-        coreImg.sprite = sprite;
         coreImg.raycastTarget = true;
         coreImg.preserveAspect = true;
         var coreRt = (RectTransform)coreGo.transform;
@@ -375,7 +415,7 @@ public class PuzzleGame : MonoBehaviour
         coreRt.offsetMin = coreRt.offsetMax = Vector2.zero;
 
         var piece = go.GetComponent<PuzzlePiece>();
-        piece.Init(col, row, this, coreImg, shadowImg);
+        piece.Setup(this, coreImg, shadowImg);
         return piece;
     }
 
@@ -517,7 +557,7 @@ public class PuzzleGame : MonoBehaviour
         for (int i = 0; i < pieces.Count; i++)
         {
             PuzzlePiece piece = pieces[i];
-            Image marker = CreateSlotMarker(piece);
+            Image marker = TakeSlotMarker();
 
             RectTransform rt = marker.rectTransform;
             rt.sizeDelta = new Vector2(markerSize, markerSize);
@@ -532,28 +572,50 @@ public class PuzzleGame : MonoBehaviour
             PlacePiece(backgroundPieces[i], SlotPosition(backgroundPieces[i]), false);
     }
 
-    private Image CreateSlotMarker(PuzzlePiece piece)
+    // 빈칸 하나. 꺼 둔 것이 있으면 다시 켜서 쓴다. 자리와 크기는 BuildBoard가 잡는다.
+    // 지난 판에 채워진 칸은 어둡게 눌러 두었으므로(PlacePiece) 색을 다시 칠해야 한다.
+    private Image TakeSlotMarker()
     {
-        var go = new GameObject($"Slot_{piece.gridCol}_{piece.gridRow}",
-            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        go.transform.SetParent(board, false);
+        Image image = null;
+        while (image == null && slotPool.Count > 0)
+        {
+            int last = slotPool.Count - 1;
+            image = slotPool[last];
+            slotPool.RemoveAt(last);
+        }
 
-        var image = go.GetComponent<Image>();
-        // 빈칸은 보여주기만 한다. 레이캐스트를 받으면 그 위에 놓인 조각을 집을 수 없다.
-        image.raycastTarget = false;
+        if (image == null)
+        {
+            var go = new GameObject("Slot", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            go.transform.SetParent(board, false);
+
+            image = go.GetComponent<Image>();
+            // 빈칸은 보여주기만 한다. 레이캐스트를 받으면 그 위에 놓인 조각을 집을 수 없다.
+            image.raycastTarget = false;
+
+            var rt = image.rectTransform;
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+        }
+
         image.color = slotColor;
-
-        var rt = image.rectTransform;
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
+        image.gameObject.SetActive(true);
+        activeSlots.Add(image);
         return image;
     }
 
     private void ClearSlots()
     {
-        if (board != null)
-            for (int i = board.childCount - 1; i >= 0; i--) Destroy(board.GetChild(i).gameObject);
+        for (int i = 0; i < activeSlots.Count; i++)
+        {
+            Image slot = activeSlots[i];
+            if (slot == null) continue;
 
+            slot.gameObject.SetActive(false);
+            slotPool.Add(slot);
+        }
+
+        activeSlots.Clear();
         slotOf.Clear();
     }
 
