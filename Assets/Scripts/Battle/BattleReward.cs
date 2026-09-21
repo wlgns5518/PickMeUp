@@ -58,10 +58,5 @@ public class BattleRewardSettings
     [Min(0)] public int materialsMin = 2;
     [Tooltip("승리 한 판에 받는 재료 개수의 최대.")]
     [Min(0)] public int materialsMax = 3;
-    [Tooltip("재료의 중심 등급이 한 단계 오르는 데 필요한 층 수. 2면 1~2층 E, 3~4층 D … 11층부터 S.")]
-    [Min(1)] public int floorsPerGrade = 2;
-    [Tooltip("중심 등급보다 한 단계 낮게 나올 확률.")]
-    [Range(0f, 1f)] public float gradeDownChance = 0.25f;
-    [Tooltip("중심 등급보다 한 단계 높게 나올 확률. 나머지는 중심 등급 그대로 나온다.")]
-    [Range(0f, 1f)] public float gradeUpChance = 0.15f;
+    // 재료 등급(층 구간표와 한 단계 위로 나올 확률)은 여기 없다 — MaterialDrops 머리 주석 참조.
 }

@@ -155,32 +155,49 @@ public class CraftingTests
 
     // ---- 전투 보상 ---------------------------------------------------------
 
-    [Test]
-    public void 높은_층일수록_중심_등급이_오르고_S에서_그친다()
+    [TestCase(1, EquipmentGrade.E)]
+    [TestCase(10, EquipmentGrade.E)]
+    [TestCase(11, EquipmentGrade.D)]
+    [TestCase(30, EquipmentGrade.D)]
+    [TestCase(31, EquipmentGrade.C)]
+    [TestCase(50, EquipmentGrade.C)]
+    [TestCase(51, EquipmentGrade.B)]
+    [TestCase(70, EquipmentGrade.B)]
+    [TestCase(71, EquipmentGrade.A)]
+    [TestCase(90, EquipmentGrade.A)]
+    [TestCase(91, EquipmentGrade.S)]
+    [TestCase(100, EquipmentGrade.S)]
+    public void 재료_등급은_층_구간으로_정해진다(int floor, EquipmentGrade expected)
     {
-        Assert.AreEqual(EquipmentGrade.E, MaterialDrops.CenterGrade(1, 2));
-        Assert.AreEqual(EquipmentGrade.E, MaterialDrops.CenterGrade(2, 2));
-        Assert.AreEqual(EquipmentGrade.D, MaterialDrops.CenterGrade(3, 2));
-        Assert.AreEqual(EquipmentGrade.C, MaterialDrops.CenterGrade(5, 2));
-        Assert.AreEqual(EquipmentGrade.S, MaterialDrops.CenterGrade(11, 2));
-        Assert.AreEqual(EquipmentGrade.S, MaterialDrops.CenterGrade(99, 2));
+        Assert.AreEqual(expected, MaterialDrops.BaseGrade(floor));
     }
 
     [Test]
-    public void 보상_재료는_정한_개수_안에서_중심_등급_한_단계_안쪽으로_나온다()
+    public void 확률_안쪽이면_한_단계_높고_밖이면_구간_등급_그대로다()
+    {
+        Assert.AreEqual(EquipmentGrade.D, MaterialDrops.RollGrade(EquipmentGrade.E, 0f));
+        Assert.AreEqual(EquipmentGrade.D, MaterialDrops.RollGrade(EquipmentGrade.E, MaterialDrops.UpgradeChance * 0.99f));
+        Assert.AreEqual(EquipmentGrade.E, MaterialDrops.RollGrade(EquipmentGrade.E, MaterialDrops.UpgradeChance));
+        Assert.AreEqual(EquipmentGrade.E, MaterialDrops.RollGrade(EquipmentGrade.E, 0.99f));
+        // S 위로는 오르지 않는다.
+        Assert.AreEqual(EquipmentGrade.S, MaterialDrops.RollGrade(EquipmentGrade.S, 0f));
+    }
+
+    [Test]
+    public void 보상_재료는_정한_개수_안에서_구간_등급_또는_한_단계_위로만_나온다()
     {
         var settings = new BattleRewardSettings();
         var drops = new List<CraftMaterial>();
 
         for (int i = 0; i < 200; i++)
         {
-            MaterialDrops.Roll(5, settings, drops); // 5층 중심 C
+            MaterialDrops.Roll(40, settings, drops); // 31~50층 C
 
             Assert.GreaterOrEqual(drops.Count, settings.materialsMin);
             Assert.LessOrEqual(drops.Count, settings.materialsMax);
             foreach (CraftMaterial drop in drops)
             {
-                Assert.GreaterOrEqual((int)drop.Grade, (int)EquipmentGrade.D);
+                Assert.GreaterOrEqual((int)drop.Grade, (int)EquipmentGrade.C);
                 Assert.LessOrEqual((int)drop.Grade, (int)EquipmentGrade.B);
             }
         }
