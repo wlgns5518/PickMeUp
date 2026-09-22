@@ -45,7 +45,7 @@ public class CardSpawner : MonoBehaviour
         if (spawnCountOnStart > 0) StartCoroutine(SpawnBatch(spawnCountOnStart));
     }
 
-    // 확률표 없이 그냥 뽑는다. 등급은 유료 소환과 같은 확률이 된다.
+    // 확률표 없이 그냥 뽑는다. 등급은 고급 소환과 같은 확률이 된다.
     public IEnumerator SpawnBatch(int count)
     {
         yield return SummonBatch(SummonKind.Paid, count);

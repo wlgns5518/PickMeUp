@@ -217,6 +217,8 @@ public class BattleManager : MonoBehaviour
             // 재료는 해금을 기록하기 전에 굴린다. 방금 깬 층의 등급으로 받아야 한다.
             MaterialDrops.Roll(FloorProgress.SelectedFloor, rewardSettings, result.Materials);
             MaterialInventory.AddRange(result.Materials);
+            result.Gold = GameEconomy.FloorClearGold(FloorProgress.SelectedFloor);
+            PlayerAccount.Add(Currency.Gold, result.Gold);
             FloorProgress.MarkCleared(FloorProgress.SelectedFloor);
         }
 

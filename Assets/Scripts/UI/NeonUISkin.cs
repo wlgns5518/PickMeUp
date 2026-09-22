@@ -1,39 +1,24 @@
 using UnityEngine;
 
-// 네온 HUD 킷(Assets/UI/README.md)의 스프라이트를 한데 묶은 에셋.
+// 네온 HUD 킷(Assets/UI/README.md)의 스프라이트를 한데 묶은 에셋. 이제 전투 화면(파티 상태 패널·게이지·
+// 알림 배너·결과창)만 쓴다 — 마을의 시설 화면은 디자인 시스템(Assets/Scripts/UI/Kit)으로 옮겼다.
 //
-// UI는 전부 코드에서 짓기 때문에 인스펙터로 스프라이트를 꽂아 줄 자리가 없다. 창마다 필드를 두면
-// 시설 창 여섯 개와 전투 HUD에 같은 스프라이트를 스무 번 넘게 배선해야 하고, 한 곳만 빠져도
-// 그 창만 옛 모습으로 남는다. 그래서 스프라이트는 이 에셋 한 곳에만 걸고 Resources에서 이름으로 부른다
-// (WeaponCatalog와 같은 방식).
+// UI는 전부 코드에서 짓기 때문에 인스펙터로 스프라이트를 꽂아 줄 자리가 없다. 그래서 스프라이트는 이 에셋
+// 한 곳에만 걸고 Resources에서 이름으로 부른다(WeaponCatalog와 같은 방식).
 //
 // 에셋이 없거나 칸이 비어 있으면 HudFactory가 팔레트 색의 단색 판으로 대신 그린다 — 모양만 밋밋해질 뿐
-// 버튼과 게이지는 그대로 동작한다.
+// 게이지는 그대로 동작한다.
 [CreateAssetMenu(fileName = ResourceName, menuName = "PickMeUp/UI/Neon UI Skin")]
 public class NeonUISkin : ScriptableObject
 {
     // Assets/UI/Resources/NeonUISkin.asset
     public const string ResourceName = "NeonUISkin";
 
-    [Header("Buttons")]
-    [Tooltip("btn_primary — 주요 버튼, 선택된 탭")]
-    public Sprite buttonPrimary;
-    [Tooltip("btn_secondary — 보조 버튼, 고른 줄")]
+    [Header("Party Panel")]
+    [Tooltip("btn_secondary — 파티 상태 패널에서 고른 영웅의 줄")]
     public Sprite buttonSecondary;
-    [Tooltip("btn_ghost — 3차 버튼, 평소의 칸")]
-    public Sprite buttonGhost;
-    [Tooltip("btn_danger — 경고·이탈")]
-    public Sprite buttonDanger;
-    [Tooltip("btn_disabled — 누를 수 없는 버튼")]
-    public Sprite buttonDisabled;
-    [Tooltip("icon_btn — 정사각 버튼(닫기 X), 초상화 테두리")]
+    [Tooltip("icon_btn — 파티 상태 패널의 초상화 테두리")]
     public Sprite iconButton;
-
-    [Header("Panels")]
-    [Tooltip("panel — 창 배경")]
-    public Sprite panel;
-    [Tooltip("divider — 제목 아래 구분선")]
-    public Sprite divider;
 
     [Header("Gauges")]
     public Sprite gaugeTrack;
@@ -95,14 +80,8 @@ public class NeonUISkin : ScriptableObject
         const string folder = "Assets/UI/Sprites/";
         Sprite Load(string file) => UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(folder + file + ".png");
 
-        buttonPrimary = Load("btn_primary");
         buttonSecondary = Load("btn_secondary");
-        buttonGhost = Load("btn_ghost");
-        buttonDanger = Load("btn_danger");
-        buttonDisabled = Load("btn_disabled");
         iconButton = Load("icon_btn");
-        panel = Load("panel");
-        divider = Load("divider");
         gaugeTrack = Load("gauge_track");
         gaugeFillHp = Load("gauge_fill_hp");
         gaugeFillMp = Load("gauge_fill_mp");

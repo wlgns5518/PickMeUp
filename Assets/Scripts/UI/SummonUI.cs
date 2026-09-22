@@ -3,90 +3,77 @@ using System.Collections.Generic;
 using System.Text;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
-// 마을 소환소에서 여는 창.
+// 캐릭터 소환소 — 영웅을 소환하고, 소환 확률을 확인한다.
 //
-// 소환소(FacilityGate)를 누르면 열린다. 무료 소환과 유료 소환 중 하나를 고르고 1회나 10회를 뽑는다.
-// 확률은 SummonTable이 들고 있고 실제 소환은 CardSpawner가 한다 — 이 파일은 고르고 보여주기만 한다.
-// 그래서 확률을 고치려면 SummonTable만 고치면 되고, 화면에 적히는 퍼센트도 따라 바뀐다.
+//   ┌ ‹ 캐릭터 소환소 ─────────────────────────── [골드] [젬] ┐
+//   │ [일반 소환 ] ┌──────────── 배너 그림 ────────────┐    │
+//   │ [고급 소환 ] │ 이름 · 테마 · 최고 등급            │    │
+//   │              └───────────────────────────────────┘    │
+//   │              [소환 확률]        [1회 소환] [10회 소환] │
 //
-// 뽑기를 누르면 창은 스스로 접힌다. 창이 떠 있으면 배경막이 카드를 가려서 무엇이 나왔는지 볼 수 없다.
-// 대신 화면 위에 결과 띠가 남아 진행 상황과 결과를 알려주고, 여기서 카드를 치우고 나간다 —
-// 카드는 씬에 상설로 있는 캔버스에 붙기 때문에 치우는 버튼이 없으면 마을로 돌아갈 방법이 없다.
+// 확률은 메인 화면에 다 적지 않는다. "소환 확률" 버튼이 늘 같은 자리(실행 버튼 줄 왼쪽)에 있고,
+// 누르면 등급별 확률표 팝업이 뜬다 — 숨겨 둔 정보처럼 보이지 않게, 그러나 화면을 차지하지 않게.
 //
-// FloorSelectUI와 같은 방식으로 캔버스부터 코드에서 만든다. 클릭을 받아야 하므로 GraphicRaycaster를 붙인다.
+// 확률은 SummonTable, 실제 소환은 CardSpawner, 값(일반은 골드, 고급은 젬)은 GameEconomy가 들고 있다 — 이 파일은 고르고 보여 주기만 한다.
+// 소환을 누르면 화면을 접고 카드가 마을 화면에 펼쳐진다. 화면 위에 결과 띠가 남아 결과를 알리고,
+// 거기서 카드를 치우거나(확인) 곧바로 다시 소환한다.
 [DisallowMultipleComponent]
-public class SummonUI : FacilityWindow
+public class SummonUI : UiScreen
 {
     [Header("Spawner")]
     [Tooltip("뽑기를 실제로 돌리는 곳. 비워두면 씬에서 찾는다.")]
     [SerializeField] private CardSpawner cardSpawner;
 
-    [Header("Layout")]
-    [SerializeField] private Vector2 panelPadding = new Vector2(36f, 30f);
-
     [Header("Open State")]
     [Tooltip("제단을 누르지 않아도 처음부터 열려 있게 하려면 켠다.")]
     [SerializeField] private bool openOnStart;
 
-    [Header("Warning Banner")]
-    [Tooltip("경고 배너가 넘지 않을 가로 길이. 모양은 킷의 장식 메시지 박스다.")]
-    [SerializeField] private float bannerWidth = 900f;
+    private const float BannerListWidth = 360f;
+    private const float BannerCardHeight = 176f;
+    private const float ActionRowHeight = UiTheme.ButtonLarge;
+    private const float SingleWidth = 340f;
+    private const float TenWidth = 420f;
 
-    private const float PanelWidth = 820f;
-    private const float TitleHeight = 60f;
-    private const float TabHeight = 72f;
-    private const float RateHeaderHeight = 38f;
-    private const float RateRowHeight = 50f;
-    private const float DrawHeight = 96f;
-    private const float HintHeight = 36f;
-    private const float Gap = 14f;
-    private const float TitleGap = 22f;
+    private static readonly SummonKind[] Banners = { SummonKind.Normal, SummonKind.Paid };
 
-    // 확률표 아래에 통째로 붙어 다니는 부분(뽑기 버튼 + 안내)의 높이.
-    private const float LowerHeight = DrawHeight + Gap + HintHeight;
+    private class BannerCard
+    {
+        public SummonKind Kind;
+        public Image Ring;
+        public TMP_Text Cost;
+    }
 
-    // 결과 띠. 화면 아래는 파티 편성 버튼이 쓰고 있어 위쪽에 붙인다.
-    private const float BarWidth = 1040f;
-    private const float BarHeight = 108f;
-    private const float BarPadding = 22f;
-    private const float BarTopMargin = 32f;
-    private const float BarButtonWidth = 190f;
-    private const float BarButtonHeight = 66f;
+    private readonly List<BannerCard> bannerCards = new List<BannerCard>();
+    private Image bannerArt;
+    private TMP_Text bannerName;
+    private TMP_Text bannerTheme;
+    private TMP_Text bannerInfo;
+    private UiButton singleButton;
+    private UiButton tenButton;
 
-    // 두 확률표 중 긴 쪽(유료 6단계)에 맞춰 줄을 만들어 두고, 무료일 때는 남는 줄을 끈다.
-    // 탭을 바꿀 때마다 줄을 새로 만들면 방금 누른 버튼 아래에서 오브젝트가 사라진다.
-    private static readonly int RateRowCount =
-        Mathf.Max(SummonTable.MaxStars(SummonKind.Free), SummonTable.MaxStars(SummonKind.Paid));
+    private UiPopup ratePopup;
+    private UiTabs rateTabs;
+    private readonly List<RectTransform> rateRows = new List<RectTransform>();
+    private TMP_Text rateSummary;
 
-    private static readonly Color RareText = new Color(0.55f, 0.75f, 1.00f);   // 3성
-    private static readonly Color EpicText = new Color(0.80f, 0.55f, 1.00f);   // 4성
+    private RectTransform resultBar;
+    private TMP_Text resultText;
+    private UiButton againButton;
+    private UiButton confirmButton;
+
+    private SummonKind selected = SummonKind.Paid;
+    private bool summoning;
 
     private static readonly StringBuilder Builder = new StringBuilder(96);
-
-    private AnnouncementBanner warningBanner;
-
-    private RectTransform panelRect;
-    private RectTransform lowerSection;
-    private float contentWidth;
-    private float tableTop;
-
-    private readonly List<NeonButton> tabs = new List<NeonButton>();
-    private readonly List<NeonButton> drawButtons = new List<NeonButton>();
-    private readonly List<RectTransform> rateRows = new List<RectTransform>();
-    private readonly List<TMP_Text> rateGradeLabels = new List<TMP_Text>();
-    private readonly List<TMP_Text> ratePercentLabels = new List<TMP_Text>();
-
-    private GameObject resultBar;
-    private TMP_Text resultText;
-    private readonly List<NeonButton> barButtons = new List<NeonButton>();
-
-    private SummonKind selected = SummonKind.Free;
-    private bool summoning;
 
     protected override string CanvasName => "SummonCanvas";
     // 층 선택 창(95)보다 위.
     protected override int SortingOrder => 96;
+    protected override string Title => "캐릭터 소환소";
+    protected override string Subtitle => "새로운 영웅을 소환합니다. 모든 영웅은 소환될 때 새로 태어나는 고유한 존재입니다.";
+    protected override Currency[] HeaderCurrencies => new[] { Currency.Gold, Currency.Gem };
 
     private void Awake()
     {
@@ -96,82 +83,276 @@ public class SummonUI : FacilityWindow
         SetOpen(openOnStart);
     }
 
+    private void OnEnable() => PlayerAccount.Changed += RefreshCosts;
+    private void OnDisable() => PlayerAccount.Changed -= RefreshCosts;
+
     public override void Show()
     {
         EnsureBuilt();
+        RefreshBanner();
         SetOpen(true);
     }
 
     public override void Hide()
     {
+        if (ratePopup != null) ratePopup.Hide();
         SetOpen(false);
     }
 
-    // ---- 소환 -----------------------------------------------------------
+    // ---- 짓기 ---------------------------------------------------------------
+
+    protected override void BuildContent(RectTransform root, Vector2 size)
+    {
+        bannerCards.Clear();
+
+        BuildBannerList(root, size);
+
+        // 배너는 남는 폭과 높이를 모두 쓴다(화면 비율이 달라도 실행 버튼 줄은 늘 아래에 붙는다).
+        float mainX = BannerListWidth + UiTheme.ColumnGap;
+        BuildBannerView(root, mainX, size.x - mainX);
+        BuildActionRow(root, mainX);
+    }
+
+    private void BuildBannerList(RectTransform root, Vector2 size)
+    {
+        TMP_Text title = UiKit.SectionTitle(root, "BannerTitle", "소환 배너");
+        UiKit.TopLeft(title.rectTransform, 4f, 0f, BannerListWidth, 44f);
+
+        for (int i = 0; i < Banners.Length; i++)
+        {
+            SummonKind kind = Banners[i];
+            float y = 56f + i * (BannerCardHeight + UiTheme.Space4);
+
+            UiKit.Surface card = UiKit.Panel(root, "Banner_" + kind, UiTheme.SurfaceRaised, UiTheme.RadiusL, UiTheme.Border);
+            UiKit.TopLeft(card.Rect, 0f, y, BannerListWidth, BannerCardHeight);
+            card.Fill.raycastTarget = true;
+
+            // 배너 그림을 작게. 둥근 판 안에서 잘리도록 가림막을 둔다.
+            RectTransform mask = UiKit.Node(card.Rect, "Art");
+            UiKit.Fill(mask, 3f);
+            mask.gameObject.AddComponent<RectMask2D>();
+            Image art = UiKit.Image(mask, "Image", UiIconLibrary.Banner(kind), Color.white, false);
+            Image shade = UiKit.Image(mask, "Shade", null, Color.white, false);
+            shade.gameObject.AddComponent<UiGradient>().Set(new Color(0f, 0f, 0f, 0f), new Color(0.02f, 0.03f, 0.05f, 0.92f));
+            art.enabled = art.sprite != null;
+
+            TMP_Text name = UiKit.Text(card.Rect, "Name", BannerName(kind), UiTheme.FontHeading, UiTheme.TextPrimary);
+            UiKit.BottomLeft(name.rectTransform, UiTheme.Space4, 44f, BannerListWidth - 32f, 40f);
+            TMP_Text cost = UiKit.Text(card.Rect, "Cost", string.Empty, UiTheme.FontLabel, UiTheme.TextSecondary);
+            UiKit.BottomLeft(cost.rectTransform, UiTheme.Space4, 12f, BannerListWidth - 32f, 32f);
+
+            Image ring = UiKit.Line(card.Rect, "Selection", UiTheme.Selection, UiTheme.RadiusL + 4, (int)UiTheme.SelectionWidth);
+            UiKit.Fill(ring.rectTransform, -4f);
+
+            var button = card.Rect.gameObject.AddComponent<Button>();
+            button.targetGraphic = card.Fill;
+            button.transition = Selectable.Transition.None;
+            button.onClick.AddListener(() => SelectBanner(kind));
+
+            bannerCards.Add(new BannerCard { Kind = kind, Ring = ring, Cost = cost });
+        }
+    }
+
+    private void BuildBannerView(RectTransform root, float x, float width)
+    {
+        UiKit.Surface view = UiKit.Panel(root, "BannerView", UiTheme.SurfaceSunken, UiTheme.RadiusL, UiTheme.BorderStrong, 24);
+        UiKit.Fill(view.Rect, x, 0f, 0f, ActionRowHeight + UiTheme.Space5);
+
+        RectTransform mask = UiKit.Node(view.Rect, "Art");
+        UiKit.Fill(mask, 3f);
+        mask.gameObject.AddComponent<RectMask2D>();
+        bannerArt = UiKit.Image(mask, "Image", null, Color.white, false);
+        // 판 비율이 2:1이 아니어도 그림을 찌그러뜨리지 않고 넘치는 쪽을 잘라 꽉 채운다.
+        var fitter = bannerArt.gameObject.AddComponent<AspectRatioFitter>();
+        fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+        fitter.aspectRatio = 2f;
+
+        // 왼쪽을 어둡게 눌러 글자가 그림 위에서도 읽히게 한다(배너 그림은 왼쪽을 비워 두고 그렸다).
+        Image shade = UiKit.Image(mask, "Shade", null, Color.white, false);
+        shade.rectTransform.anchorMax = new Vector2(0.66f, 1f);
+        shade.gameObject.AddComponent<UiGradient>().SetHorizontal(
+            new Color(0.03f, 0.04f, 0.07f, 0.94f), new Color(0.03f, 0.04f, 0.07f, 0f));
+
+        float textX = UiTheme.Space6 + 8f;
+        float textWidth = width * 0.5f;
+
+        bannerTheme = UiKit.Text(view.Rect, "Theme", string.Empty, UiTheme.FontLabel, UiTheme.Primary);
+        UiKit.TopLeft(bannerTheme.rectTransform, textX, UiTheme.Space6 + 4f, textWidth, 32f);
+
+        bannerName = UiKit.Text(view.Rect, "Name", string.Empty, UiTheme.FontDisplay + 14f, UiTheme.TextPrimary);
+        UiKit.TopLeft(bannerName.rectTransform, textX, UiTheme.Space6 + 40f, textWidth, 84f);
+
+        bannerInfo = UiKit.Wrap(UiKit.Text(view.Rect, "Info", string.Empty, UiTheme.FontBody, UiTheme.TextSecondary));
+        bannerInfo.alignment = TextAlignmentOptions.TopLeft;
+        bannerInfo.lineSpacing = 10f;
+        UiKit.TopLeft(bannerInfo.rectTransform, textX, UiTheme.Space6 + 140f, textWidth, 360f);
+    }
+
+    private void BuildActionRow(RectTransform root, float x)
+    {
+        // 확률은 늘 여기 있다. 실행 버튼과 같은 줄, 누구나 보는 자리.
+        UiButton rates = UiButton.Create(root, "Rates", "소환 확률", UiButtonStyle.Secondary, UiButtonSize.Medium, OpenRates);
+        UiKit.BottomLeft(rates.Rect, x, (ActionRowHeight - UiTheme.ButtonMedium) * 0.5f, 240f, UiTheme.ButtonMedium);
+        Image info = UiKit.Glyph(rates.Rect, "Info", UiSprites.Glyph.Info, UiTheme.TextSecondary);
+        UiKit.LeftMiddle(info.rectTransform, 22f, 30f, 30f);
+        rates.Label.margin = new Vector4(34f, 0f, 0f, 0f);
+
+        tenButton = UiButton.Create(root, "Draw10", "10회 소환", UiButtonStyle.Primary, UiButtonSize.Large, () => Draw(10));
+        UiKit.BottomRight(tenButton.Rect, 0f, 0f, TenWidth, ActionRowHeight);
+
+        singleButton = UiButton.Create(root, "Draw1", "1회 소환", UiButtonStyle.Secondary, UiButtonSize.Large, () => Draw(1));
+        UiKit.BottomRight(singleButton.Rect, TenWidth + UiTheme.Space4, 0f, SingleWidth, ActionRowHeight);
+    }
+
+    protected override void BuildOverlays()
+    {
+        BuildRatePopup();
+        BuildResultBar();
+        RefreshBanner();
+    }
+
+    // ---- 확률 팝업 ------------------------------------------------------------
+
+    private const float RateRowHeight = 60f;
+    private static readonly float[] RateColumns = { 0f, 200f, 420f };
+
+    private void BuildRatePopup()
+    {
+        rateRows.Clear();
+        ratePopup = UiPopup.Create(overlay, "RatePopup", "소환 확률", new Vector2(1080f, 820f), false);
+
+        string[] labels = new string[Banners.Length];
+        for (int i = 0; i < Banners.Length; i++) labels[i] = BannerName(Banners[i]);
+        rateTabs = UiTabs.Create(ratePopup.Body, "Tabs", labels);
+        UiKit.TopStretch(rateTabs.Rect, 0f, UiTheme.TabHeight);
+        rateTabs.Changed += _ => RefreshRates();
+
+        float y = UiTheme.TabHeight + UiTheme.Space5;
+
+        // 머리줄
+        RectTransform header = UiKit.Node(ratePopup.Body, "Header");
+        UiKit.TopStretch(header, y, 44f);
+        UiKit.Rounded(header, "Fill", UiTheme.SurfaceSunken, UiTheme.RadiusS);
+        string[] titles = { "등급", "등장 확률", "등장하는 영웅" };
+        for (int c = 0; c < titles.Length; c++)
+        {
+            TMP_Text t = UiKit.Text(header, "Col_" + c, titles[c], UiTheme.FontLabel, UiTheme.TextSecondary);
+            UiKit.Fill(t.rectTransform, RateColumns[c] + UiTheme.Space5, 0f, 0f, 0f);
+        }
+        y += 44f + UiTheme.Space2;
+
+        int maxRows = Mathf.Max(SummonTable.MaxStars(SummonKind.Normal), SummonTable.MaxStars(SummonKind.Paid));
+        for (int i = 0; i < maxRows; i++)
+        {
+            RectTransform row = UiKit.Node(ratePopup.Body, "Row_" + i);
+            UiKit.TopStretch(row, y + i * RateRowHeight, RateRowHeight);
+            UiKit.Rounded(row, "Fill", i % 2 == 0 ? UiTheme.SurfaceRaised : UiTheme.Surface, UiTheme.RadiusS);
+            for (int c = 0; c < RateColumns.Length; c++)
+            {
+                TMP_Text t = UiKit.Text(row, "Col_" + c, string.Empty, c == 1 ? UiTheme.FontHeading : UiTheme.FontBody, UiTheme.TextPrimary);
+                UiKit.Fill(t.rectTransform, RateColumns[c] + UiTheme.Space5, 0f, 0f, 0f);
+            }
+            rateRows.Add(row);
+        }
+
+        rateSummary = UiKit.Wrap(UiKit.Text(ratePopup.Body, "Note", string.Empty, UiTheme.FontLabel, UiTheme.TextSecondary));
+        rateSummary.alignment = TextAlignmentOptions.BottomLeft;
+        rateSummary.lineSpacing = 6f;
+        UiKit.BottomStretch(rateSummary.rectTransform, 0f, 110f);
+    }
+
+    private void OpenRates()
+    {
+        rateTabs.Select(System.Array.IndexOf(Banners, selected), false);
+        RefreshRates();
+        ratePopup.Show();
+    }
+
+    private void RefreshRates()
+    {
+        SummonKind kind = Banners[Mathf.Clamp(rateTabs.Selected, 0, Banners.Length - 1)];
+        int shown = SummonTable.MaxStars(kind);
+
+        for (int i = 0; i < rateRows.Count; i++)
+        {
+            int stars = i + 1;
+            bool used = stars <= shown;
+            rateRows[i].gameObject.SetActive(used);
+            if (!used) continue;
+
+            Color color = UiTheme.StarColor(stars);
+            SetCell(rateRows[i], 0, UiTheme.Paint(UiKit.Stars(stars), color) + "  " + stars + "성");
+            SetCell(rateRows[i], 1, UiTheme.Paint(SummonTable.PercentText(kind, stars), color));
+            SetCell(rateRows[i], 2, $"무작위로 태어나는 {stars}성 영웅");
+        }
+
+        rateSummary.text =
+            $"· {BannerName(kind)}은 1회마다 위 확률로 등급을 정하고, 그 등급의 영웅이 새로 태어납니다.\n" +
+            "· 영웅은 소환될 때마다 새로 만들어지는 고유한 존재라 같은 영웅이 다시 나오지 않습니다. 그래서 영웅별 개별 확률은 없습니다.\n" +
+            $"· {UiKit.Stars(UiTheme.MaxTier)} 영웅은 소환으로 등장하지 않습니다.";
+    }
+
+    private static void SetCell(RectTransform row, int column, string text) =>
+        row.Find("Col_" + column).GetComponent<TMP_Text>().text = text;
+
+    // ---- 소환 ---------------------------------------------------------------
+
+    private void SelectBanner(SummonKind kind)
+    {
+        if (summoning) return;
+        selected = kind;
+        RefreshBanner();
+    }
 
     private void Draw(int count)
     {
         if (summoning) return;
 
-        if (cardSpawner == null)
+        if (cardSpawner == null || !cardSpawner.isActiveAndEnabled)
         {
-            warningBanner?.Show("카드 소환기(CardSpawner)를 찾지 못했습니다.");
+            toast.Show("소환기(CardSpawner)를 찾지 못했거나 꺼져 있습니다.", UiToastKind.Danger);
             return;
         }
 
-        // 소환기는 자기 오브젝트에서 카드마다 코루틴을 돌린다. 꺼져 있으면 조용히 아무 일도 안 일어난다.
-        if (!cardSpawner.isActiveAndEnabled)
+        Currency currency = GameEconomy.SummonCurrency(selected);
+        long cost = GameEconomy.SummonCost(selected, count);
+        if (!PlayerAccount.TrySpend(currency, cost))
         {
-            warningBanner?.Show("카드 소환기가 꺼져 있습니다.\n씬에서 CardSpawner를 켜주세요.");
+            toast.Show($"{CurrencyName(currency)}{HeroLabel.SubjectParticle(CurrencyName(currency))} 부족합니다. ({UiKit.Amount(cost)} 필요)", UiToastKind.Warning);
             return;
         }
 
         // 지난 결과가 남아 있으면 이번에 무엇이 나왔는지 알 수 없다.
         cardSpawner.ClearCards();
 
-        // 창이 떠 있으면 배경막이 카드를 가린다. 뽑는 동안은 접어 둔다.
+        // 화면이 떠 있으면 카드가 가려진다. 뽑는 동안은 접어 둔다.
         Hide();
-        StartCoroutine(SummonRoutine(count));
+        StartCoroutine(SummonRoutine(selected, count, currency, cost));
     }
 
-    private IEnumerator SummonRoutine(int count)
+    private IEnumerator SummonRoutine(SummonKind kind, int count, Currency currency, long cost)
     {
         summoning = true;
         RefreshInteractable();
-        ShowBar(SummonTable.Korean(selected) + " " + count + "회 소환 중...", BattleHudPalette.TextPrimary);
+        ShowBar($"{BannerName(kind)} {count}회 소환 중...", UiTheme.TextPrimary);
 
         // 등급별로 몇 장 나왔는지. 0번 칸은 쓰지 않고 별 수를 그대로 색인으로 쓴다.
-        var counts = new int[RateRowCount + 1];
-        yield return cardSpawner.SummonBatch(selected, count, (card, stars) =>
+        var counts = new int[UiTheme.MaxTier + 1];
+        int summoned = 0;
+        yield return cardSpawner.SummonBatch(kind, count, (card, stars) =>
         {
+            summoned++;
             if (stars >= 1 && stars < counts.Length) counts[stars]++;
         });
 
+        // 한 장도 나오지 않았다면(소환기가 준비되지 않았거나 도중에 끊김) 낸 재화를 돌려준다.
+        if (summoned == 0 && cost > 0) PlayerAccount.Add(currency, cost);
+
         int best = BestStars(counts);
-        ShowBar(Summary(counts), best > 0 ? GradeColor(best) : BattleHudPalette.Dying);
+        ShowBar(Summary(counts), best > 0 ? UiTheme.StarColor(best) : UiTheme.TextMuted);
 
         summoning = false;
         RefreshInteractable();
-    }
-
-    // 결과를 확인하고 마을로 돌아간다. 카드를 치우는 유일한 통로다.
-    private void Confirm()
-    {
-        if (summoning) return;
-
-        cardSpawner?.ClearCards();
-        HideBar();
-        Hide();
-    }
-
-    // 카드만 치우고 창을 다시 연다.
-    private void SummonAgain()
-    {
-        if (summoning) return;
-
-        cardSpawner?.ClearCards();
-        HideBar();
-        Show();
     }
 
     private static int BestStars(int[] counts)
@@ -187,264 +368,129 @@ public class SummonUI : FacilityWindow
         for (int stars = counts.Length - 1; stars >= 1; stars--)
         {
             if (counts[stars] <= 0) continue;
-            if (Builder.Length > 0) Builder.Append("  /  ");
-            Builder.Append(stars).Append("성 ").Append(counts[stars]).Append("장");
+            if (Builder.Length > 0) Builder.Append("   ");
+            Builder.Append(UiTheme.Paint(UiKit.Stars(stars), UiTheme.StarColor(stars))).Append(" x").Append(counts[stars]);
         }
-        // 소환기가 준비되지 않았거나 이름을 받아오다 끊기면 한 장도 나오지 않는다.
-        return Builder.Length > 0 ? Builder.ToString() : "소환된 영웅이 없습니다.";
+        return Builder.Length > 0 ? "소환 결과   " + Builder : "소환된 영웅이 없습니다. 낸 재화는 돌려받았습니다.";
     }
 
-    // ---- 만들기 ---------------------------------------------------------
-
-    protected override void BuildWindow()
-    {
-        tabs.Clear();
-        drawButtons.Clear();
-        rateRows.Clear();
-        rateGradeLabels.Clear();
-        ratePercentLabels.Clear();
-        barButtons.Clear();
-
-        BuildCanvas();
-        BuildPopup();
-
-        // 결과 띠는 창보다 뒤에 만든다. 뽑는 도중에 제단을 다시 눌러 창이 열려도 띠가 위에 남는다.
-        BuildResultBar();
-
-        // 경고 배너는 팝업 밖(캔버스 직속)에 둔다. 창이 닫혀도 같은 자리에 뜬다.
-        warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, null, bannerWidth);
-
-        RefreshRates();
-        RefreshInteractable();
-    }
-
-    private void BuildPopup()
-    {
-        BuildPanel(BuildPopupRoot());
-    }
-
-    private void BuildPanel(RectTransform popup)
-    {
-        contentWidth = PanelWidth - panelPadding.x * 2f;
-
-        panelRect = HudFactory.CreatePanel(popup, "Panel").rectTransform;
-        panelRect.anchorMin = new Vector2(0.5f, 0.5f);
-        panelRect.anchorMax = new Vector2(0.5f, 0.5f);
-        panelRect.pivot = new Vector2(0.5f, 0.5f);
-        panelRect.anchoredPosition = Vector2.zero;
-        // 창 높이는 확률표의 줄 수에 따라 달라진다. RefreshRates가 정한다.
-
-        float y = panelPadding.y;
-
-        BuildTitleBar(panelRect, "소환소", panelPadding.x, y, contentWidth, TitleHeight);
-        y += TitleHeight + TitleGap;
-
-        BuildTabs(y);
-        y += TabHeight + Gap;
-
-        tableTop = y;
-        BuildRateTable(tableTop);
-
-        // 확률표의 줄 수가 소환 종류마다 다르다. 아래쪽은 통째로 오르내리므로 한 덩어리로 묶어 둔다.
-        lowerSection = HudFactory.CreateGroup(panelRect, "Lower");
-        BuildLowerSection(lowerSection);
-    }
-
-    private void BuildTabs(float y)
-    {
-        float tabWidth = (contentWidth - Gap) * 0.5f;
-
-        for (int i = 0; i < 2; i++)
-        {
-            // 클로저가 반복 변수를 붙잡지 않도록 지역 변수에 복사해 넘긴다.
-            var kind = (SummonKind)i;
-
-            NeonButton tab = HudFactory.CreateButton(panelRect, "Tab_" + kind, NeonButtonStyle.Ghost,
-                resolvedFont, SummonTable.Korean(kind), 32f, () => SelectKind(kind));
-            HudFactory.SetTopLeft(tab.Rect, new Vector2(tabWidth, TabHeight),
-                new Vector2(panelPadding.x + i * (tabWidth + Gap), -y));
-
-            tabs.Add(tab);
-        }
-    }
-
-    private void BuildRateTable(float y)
-    {
-        TMP_Text header = HudFactory.CreateText(panelRect, "RateHeader", resolvedFont, 26f, BattleHudPalette.TextMuted);
-        header.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(header.rectTransform, new Vector2(contentWidth, RateHeaderHeight), new Vector2(panelPadding.x, -y));
-        header.text = "등급별 확률";
-
-        for (int i = 0; i < RateRowCount; i++)
-        {
-            float rowY = y + RateHeaderHeight + i * RateRowHeight;
-
-            RectTransform row = HudFactory.CreateGroup(panelRect, "Rate_" + (i + 1));
-            HudFactory.SetTopLeft(row, new Vector2(contentWidth, RateRowHeight), new Vector2(panelPadding.x, -rowY));
-
-            TMP_Text grade = HudFactory.CreateText(row, "Grade", resolvedFont, 29f, BattleHudPalette.TextPrimary);
-            grade.alignment = TextAlignmentOptions.Left;
-            HudFactory.Stretch(grade.rectTransform);
-
-            TMP_Text percent = HudFactory.CreateText(row, "Percent", resolvedFont, 29f, BattleHudPalette.TextPrimary);
-            percent.alignment = TextAlignmentOptions.Right;
-            HudFactory.Stretch(percent.rectTransform);
-
-            rateRows.Add(row);
-            rateGradeLabels.Add(grade);
-            ratePercentLabels.Add(percent);
-        }
-    }
-
-    // 뽑기 버튼과 그 아래 안내. 자리는 묶음 안에서의 상대 위치라 묶음만 옮기면 통째로 따라온다.
-    private void BuildLowerSection(RectTransform lower)
-    {
-        BuildDrawButtons(lower);
-
-        TMP_Text hint = HudFactory.CreateText(lower, "Hint", resolvedFont, 24f, BattleHudPalette.TextMuted);
-        HudFactory.SetTopLeft(hint.rectTransform, new Vector2(contentWidth, HintHeight), new Vector2(0f, -(DrawHeight + Gap)));
-        hint.text = "누르면 창이 닫히고 뽑은 영웅 카드가 화면에 나타납니다.";
-    }
-
-    private void BuildDrawButtons(RectTransform lower)
-    {
-        float buttonWidth = (contentWidth - Gap) * 0.5f;
-        int[] counts = { 1, 10 };
-
-        for (int i = 0; i < counts.Length; i++)
-        {
-            // 클로저가 반복 변수를 붙잡지 않도록 지역 변수에 복사해 넘긴다.
-            int count = counts[i];
-
-            // 10회가 이 창의 주된 행동이라 밝은 판으로, 1회는 보조 버튼으로 둔다.
-            NeonButton button = HudFactory.CreateButton(lower, "Draw_" + count,
-                count > 1 ? NeonButtonStyle.Primary : NeonButtonStyle.Secondary,
-                resolvedFont, count + "회 소환", 36f, () => Draw(count));
-            HudFactory.SetTopLeft(button.Rect, new Vector2(buttonWidth, DrawHeight), new Vector2(i * (buttonWidth + Gap), 0f));
-
-            drawButtons.Add(button);
-        }
-    }
-
-    // ---- 결과 띠 --------------------------------------------------------
+    // ---- 결과 띠 ------------------------------------------------------------
 
     private void BuildResultBar()
     {
-        // 띠 위를 누른 클릭이 뒤쪽 세계로 새지 않게 판이 클릭을 받아 둔다.
-        RectTransform barRect = HudFactory.CreateHudStrip(canvasRect, "ResultBar").rectTransform;
-        barRect.anchorMin = new Vector2(0.5f, 1f);
-        barRect.anchorMax = new Vector2(0.5f, 1f);
-        barRect.pivot = new Vector2(0.5f, 1f);
-        barRect.sizeDelta = new Vector2(BarWidth, BarHeight);
-        barRect.anchoredPosition = new Vector2(0f, -BarTopMargin);
-        resultBar = barRect.gameObject;
+        // 화면(Screen) 밖, 캔버스 바로 아래에 둔다. 화면을 접어도 띠는 남아야 한다.
+        UiKit.Surface bar = UiKit.Panel(canvasRect, "ResultBar", UiTheme.Surface, UiTheme.RadiusL, UiTheme.BorderStrong, 24);
+        UiKit.TopCenter(bar.Rect, 0f, TopBarHud.ReservedHeight + UiTheme.Space4, 1100f, 112f);
+        bar.Fill.raycastTarget = true;
+        resultBar = bar.Rect;
 
-        float buttonsWidth = BarButtonWidth * 2f + Gap;
-        float textWidth = BarWidth - BarPadding * 2f - buttonsWidth - Gap;
+        resultText = UiKit.Text(bar.Rect, "Result", string.Empty, UiTheme.FontHeading, UiTheme.TextPrimary);
+        UiKit.Fill(resultText.rectTransform, UiTheme.Space6, 0f, 520f, 0f);
 
-        resultText = HudFactory.CreateText(barRect, "Result", resolvedFont, 30f, BattleHudPalette.TextPrimary);
-        resultText.alignment = TextAlignmentOptions.Left;
-        SetLeftMiddle(resultText.rectTransform, new Vector2(textWidth, BarHeight), BarPadding);
+        confirmButton = UiButton.Create(bar.Rect, "Confirm", "확인", UiButtonStyle.Primary, UiButtonSize.Medium, Confirm);
+        UiKit.RightMiddle(confirmButton.Rect, UiTheme.Space5, 200f, UiTheme.ButtonMedium);
+        againButton = UiButton.Create(bar.Rect, "Again", "다시 소환", UiButtonStyle.Secondary, UiButtonSize.Medium, SummonAgain);
+        UiKit.RightMiddle(againButton.Rect, UiTheme.Space5 + 200f + UiTheme.Space3, 220f, UiTheme.ButtonMedium);
 
-        float againX = BarWidth - BarPadding - buttonsWidth;
-        barButtons.Add(BuildBarButton(barRect, "다시 소환", againX, NeonButtonStyle.Secondary, SummonAgain));
-        barButtons.Add(BuildBarButton(barRect, "확인", againX + BarButtonWidth + Gap, NeonButtonStyle.Primary, Confirm));
-
-        resultBar.SetActive(false);
-    }
-
-    private NeonButton BuildBarButton(RectTransform barRect, string text, float x, NeonButtonStyle style, UnityEngine.Events.UnityAction onClick)
-    {
-        NeonButton button = HudFactory.CreateButton(barRect, "Bar_" + text, style, resolvedFont, text, 28f, onClick);
-        SetLeftMiddle(button.Rect, new Vector2(BarButtonWidth, BarButtonHeight), x);
-        return button;
+        resultBar.gameObject.SetActive(false);
     }
 
     private void ShowBar(string message, Color color)
     {
-        if (resultBar == null) return;
-
-        resultBar.SetActive(true);
+        resultBar.gameObject.SetActive(true);
+        resultBar.SetAsLastSibling();
         resultText.text = message;
         resultText.color = color;
     }
 
-    private void HideBar()
+    // 결과를 확인하고 마을로 돌아간다. 카드를 치우는 유일한 통로다.
+    private void Confirm()
     {
-        if (resultBar != null) resultBar.SetActive(false);
-    }
-
-    // ---- 갱신 -----------------------------------------------------------
-
-    private void SelectKind(SummonKind kind)
-    {
-        // 뽑는 중에 종류를 바꾸면 진행 중인 소환이 어느 확률로 나온 것인지 알 수 없어진다.
         if (summoning) return;
-
-        selected = kind;
-        RefreshRates();
+        cardSpawner?.ClearCards();
+        resultBar.gameObject.SetActive(false);
     }
 
-    private void RefreshRates()
+    // 카드만 치우고 화면을 다시 연다.
+    private void SummonAgain()
     {
-        int shown = SummonTable.MaxStars(selected);
+        if (summoning) return;
+        cardSpawner?.ClearCards();
+        resultBar.gameObject.SetActive(false);
+        Show();
+    }
 
-        for (int i = 0; i < rateRows.Count; i++)
+    // ---- 갱신 ---------------------------------------------------------------
+
+    private void RefreshBanner()
+    {
+        if (bannerName == null) return;
+
+        Sprite art = UiIconLibrary.Banner(selected);
+        bannerArt.sprite = art;
+        bannerArt.enabled = art != null;
+        bannerTheme.text = BannerTheme(selected);
+        bannerName.text = BannerName(selected);
+        bannerInfo.text = BannerInfo(selected);
+
+        for (int i = 0; i < bannerCards.Count; i++)
+            bannerCards[i].Ring.enabled = bannerCards[i].Kind == selected;
+
+        RefreshCosts();
+    }
+
+    private void RefreshCosts()
+    {
+        if (singleButton == null) return;
+
+        for (int i = 0; i < bannerCards.Count; i++)
         {
-            int stars = i + 1;
-            bool used = stars <= shown;
-            rateRows[i].gameObject.SetActive(used);
-            if (!used) continue;
-
-            rateGradeLabels[i].text = stars + "성";
-            rateGradeLabels[i].color = GradeColor(stars);
-            ratePercentLabels[i].text = SummonTable.PercentText(selected, stars);
-            ratePercentLabels[i].color = GradeColor(stars);
+            long single = GameEconomy.SummonCost(bannerCards[i].Kind, 1);
+            Currency currency = GameEconomy.SummonCurrency(bannerCards[i].Kind);
+            bannerCards[i].Cost.text = $"1회 {CurrencyName(currency)} {UiKit.Amount(single)}";
         }
 
-        for (int i = 0; i < tabs.Count; i++)
-            tabs[i].SetStyle((SummonKind)i == selected ? NeonButtonStyle.Primary : NeonButtonStyle.Ghost);
-
-        LayoutPanel(shown);
+        ApplyCost(singleButton, 1);
+        ApplyCost(tenButton, 10);
+        RefreshInteractable();
     }
 
-    // 무료 소환은 두 줄, 유료 소환은 여섯 줄이다. 창을 늘 여섯 줄 높이로 두면 무료일 때
-    // 확률표와 버튼 사이가 통째로 비어 보인다. 줄 수에 맞춰 아래쪽과 창 높이를 함께 옮긴다.
-    private void LayoutPanel(int shownRows)
+    private void ApplyCost(UiButton button, int count)
     {
-        if (panelRect == null || lowerSection == null) return;
-
-        float lowerY = tableTop + RateHeaderHeight + shownRows * RateRowHeight + Gap;
-
-        HudFactory.SetTopLeft(lowerSection, new Vector2(contentWidth, LowerHeight), new Vector2(panelPadding.x, -lowerY));
-        panelRect.sizeDelta = new Vector2(PanelWidth, lowerY + LowerHeight + panelPadding.y);
+        button.SetCost(GameEconomy.SummonCurrency(selected), GameEconomy.SummonCost(selected, count));
     }
 
     private void RefreshInteractable()
     {
-        for (int i = 0; i < drawButtons.Count; i++) drawButtons[i].interactable = !summoning;
-        // 뽑는 중에 카드를 치우면 남은 생성이 빈 자리에 값을 쓰게 된다. 끝날 때까지 잠가 둔다.
-        for (int i = 0; i < barButtons.Count; i++) barButtons[i].interactable = !summoning;
+        if (singleButton != null)
+        {
+            // 재화가 모자라도 버튼은 누를 수 있다 — 누르면 얼마가 모자란지 알려 준다. 모자란 액수는 이미 빨갛다.
+            singleButton.interactable = !summoning;
+            tenButton.interactable = !summoning;
+        }
+        if (againButton != null)
+        {
+            // 뽑는 중에 카드를 치우면 남은 생성이 빈 자리에 값을 쓰게 된다. 끝날 때까지 잠가 둔다.
+            againButton.interactable = !summoning;
+            confirmButton.interactable = !summoning;
+        }
     }
 
-    private static Color GradeColor(int stars)
+    // ---- 배너 문구 ------------------------------------------------------------
+
+    private static string BannerName(SummonKind kind) => kind == SummonKind.Paid ? "고급 소환" : "일반 소환";
+
+    private static string BannerTheme(SummonKind kind) => kind == SummonKind.Paid ? "황금 관문" : "달빛 사원의 소환진";
+
+    private static string BannerInfo(SummonKind kind)
     {
-        if (stars >= 5) return BattleHudPalette.Mvp;
-        if (stars == 4) return EpicText;
-        if (stars == 3) return RareText;
-        return BattleHudPalette.TextPrimary;
+        int max = SummonTable.MaxStars(kind);
+        string top = UiTheme.Paint(UiKit.Stars(max), UiTheme.StarColor(max));
+        string topRate = SummonTable.PercentText(kind, max);
+        return kind == SummonKind.Paid
+            ? $"젬으로 소환합니다. 최고 {top} 영웅까지 등장합니다.\n{top} 등장 확률 {topRate}"
+            : $"골드로 소환합니다. 최고 {top} 영웅까지 등장합니다.\n{top} 등장 확률 {topRate}";
     }
 
-    // ---- 자리 잡기 ------------------------------------------------------
-
-    // 왼쪽 끝에서 x만큼 떨어진 자리에 세로로는 가운데. 한 줄로 늘어놓는 결과 띠에 쓴다.
-    private static void SetLeftMiddle(RectTransform rect, Vector2 size, float x)
-    {
-        rect.anchorMin = new Vector2(0f, 0.5f);
-        rect.anchorMax = new Vector2(0f, 0.5f);
-        rect.pivot = new Vector2(0f, 0.5f);
-        rect.sizeDelta = size;
-        rect.anchoredPosition = new Vector2(x, 0f);
-    }
-
+    private static string CurrencyName(Currency currency) => currency == Currency.Gem ? "젬" : "골드";
 }

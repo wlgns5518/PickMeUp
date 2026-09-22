@@ -41,11 +41,25 @@ public static class CraftRecipe
             }
         }
 
-        // 과반을 넘은 종류만 계열을 세운다. 셋이 하나씩이면 어느 쪽도 이기지 못한다.
-        int majority = materials.Count / 2 + 1;
+        return Majority(metal, wood, leather, materials.Count);
+    }
+
+    // 과반을 넘은 계열만 선다. 셋이 하나씩이면 어느 쪽도 이기지 못한다. 장비 합성도 같은 규칙을 쓴다.
+    public static WeaponFamily Majority(int metal, int wood, int shield, int total)
+    {
+        int majority = total / 2 + 1;
         if (metal >= majority) return WeaponFamily.Metal;
         if (wood >= majority) return WeaponFamily.Wood;
-        if (leather >= majority) return WeaponFamily.Shield;
+        if (shield >= majority) return WeaponFamily.Shield;
+        return WeaponFamily.Any;
+    }
+
+    // 무기 한 자루가 속한 계열. 장비 합성에서 재료 장비의 계열을 셀 때 쓴다.
+    public static WeaponFamily FamilyOfWeapon(WeaponType type)
+    {
+        if (Allows(WeaponFamily.Shield, type)) return WeaponFamily.Shield;
+        if (Allows(WeaponFamily.Wood, type)) return WeaponFamily.Wood;
+        if (Allows(WeaponFamily.Metal, type)) return WeaponFamily.Metal;
         return WeaponFamily.Any;
     }
 

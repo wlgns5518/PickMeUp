@@ -36,19 +36,9 @@ public static class EquipmentGradeNames
     public static string ItemName(WeaponDefinition weapon, EquipmentGrade grade) =>
         weapon == null ? string.Empty : PrefixOf(grade) + " " + weapon.DisplayName;
 
-    // 제작소와 무기창고가 같은 등급을 같은 색으로 보여야 한다.
-    public static Color ColorOf(EquipmentGrade grade)
-    {
-        switch (grade)
-        {
-            case EquipmentGrade.S: return BattleHudPalette.Mvp;
-            case EquipmentGrade.A: return new Color(0.80f, 0.55f, 1.00f);
-            case EquipmentGrade.B: return new Color(0.55f, 0.75f, 1.00f);
-            case EquipmentGrade.C: return new Color(0.55f, 0.85f, 0.60f);
-            case EquipmentGrade.D: return new Color(0.75f, 0.75f, 0.75f);
-            default:               return BattleHudPalette.TextPrimary;
-        }
-    }
+    // 제작소·무기창고·전투 결과가 같은 등급을 같은 색으로 보여야 한다. 색은 영웅 별과 한 줄로 맞춘 단계
+    // 색이다(UiTheme.Tier — E=1성 회색 … S=6성 금색).
+    public static Color ColorOf(EquipmentGrade grade) => UiTheme.GradeColor(grade);
 }
 
 // 등급이 장비의 힘에 곱하는 배율.

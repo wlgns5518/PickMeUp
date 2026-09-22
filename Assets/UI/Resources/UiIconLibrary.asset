@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 07e5ca6d57a126d47b2e5477f234d816, type: 3}
+  m_Name: UiIconLibrary
+  m_EditorClassIdentifier: PickMeUp::UiIconLibrary
+  gold: {fileID: 21300000, guid: 07d0f24ecdd63594a870388d8d72e8f4, type: 3}
+  gem: {fileID: 21300000, guid: 4c4c5978f98c6cf4f8b4d2868752cafe, type: 3}
+  mail: {fileID: 21300000, guid: 25bb9c947af53ec41bd2232f14f145f6, type: 3}
+  settings: {fileID: 21300000, guid: 9fabc69c2d973bc4281cd46c92c9fa93, type: 3}
+  swordOneHand: {fileID: 21300000, guid: bb99226867f0c72448294d6f1696d1ea, type: 3}
+  swordTwoHand: {fileID: 21300000, guid: c0bff7303ea9bf54e8e5ed68155cf7dc, type: 3}
+  bow: {fileID: 21300000, guid: a4b023daa9eb2af48887351d87c8e45e, type: 3}
+  spear: {fileID: 21300000, guid: 3d2e571563b251f47b56dea713aa2c90, type: 3}
+  dagger: {fileID: 21300000, guid: 378f5143a05f1f0479a9abb928735dbf, type: 3}
+  axe: {fileID: 21300000, guid: c6d3b80cffdd0f74082fc615693d379c, type: 3}
+  blunt: {fileID: 21300000, guid: 973b50258d0c1944a986e18448adda8b, type: 3}
+  polearm: {fileID: 21300000, guid: 3d67fd238d945d5419e4c3f627c1cc95, type: 3}
+  shield: {fileID: 21300000, guid: d94cdcd725b32744c8afdd62015da728, type: 3}
+  accessory: {fileID: 21300000, guid: ab7ae4aea777ab64b8a9d7c499fc27ff, type: 3}
+  metal: {fileID: 21300000, guid: 71e028b398a1eb847848bb3694f9d8f9, type: 3}
+  wood: {fileID: 21300000, guid: f23613ed98e62384dbc49fc497d84e3b, type: 3}
+  leather: {fileID: 21300000, guid: 4db35d13d0e3e5d45b5bafa81709ca59, type: 3}
+  bannerNormal: {fileID: 21300000, guid: cf1a3b5c56112ad4f859a72e31659804, type: 3}
+  bannerPremium: {fileID: 21300000, guid: 89790f2afbba92a49a598d55d91713fc, type: 3}

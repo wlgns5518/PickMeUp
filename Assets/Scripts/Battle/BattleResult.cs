@@ -30,6 +30,9 @@ public class BattleResult
     // 이번 판에 받은 제작 재료. 이긴 판에만 채워진다(MaterialDrops). 창고에는 이미 들어가 있다.
     public readonly List<CraftMaterial> Materials = new List<CraftMaterial>();
 
+    // 이번 판에 받은 골드. 이긴 판에만 채워진다(GameEconomy.FloorClearGold). 지갑에는 이미 들어가 있다.
+    public long Gold { get; internal set; }
+
     public string KoreanOutcome
     {
         get
@@ -55,5 +58,6 @@ public class BattleResult
         Rewards.Clear();
         Mvp = null;
         Materials.Clear();
+        Gold = 0;
     }
 }

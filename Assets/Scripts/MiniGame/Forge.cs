@@ -11,7 +11,7 @@ using UnityEngine.Events;
 // 수동 제작은 난이도를 고르면 PuzzleGame을 그 난이도로 띄우고, 성공하면 밑변에서 그 난이도표만큼
 // 위로 오른 등급이 나온다 — 어려운 난이도일수록 상위 등급이 나올 가능성이 크다(EquipmentCraftTable).
 //
-// 재료는 제작을 시작하는 순간 창고(MaterialInventory)에서 빠진다. 수동 제작도 퍼즐을 띄울 때 뺀다 —
+// 재료와 제작 골드(GameEconomy.CraftGold)는 제작을 시작하는 순간 빠진다. 수동 제작도 퍼즐을 띄울 때 뺀다 —
 // 결과가 나올 때 빼면 퍼즐 도중 게임을 끄는 것으로 실패를 없던 일로 만들 수 있다.
 //
 // 만들 수 있는 무기는 WeaponCatalog에 든 무기 중 모델이 있는 것 전부다(CollectCraftable).
@@ -69,16 +69,16 @@ public class Forge : MonoBehaviour
         }
     }
 
-    // 자동 제작: 재료를 빼고 퍼즐 없이 바로 밑변 등급 그대로 만든다.
-    // 만들지 못하면 false와 그 이유를 돌려준다 — 그때는 재료도 빠지지 않는다.
+    // 제작 한 번의 골드. 재료 평균 등급이 기준이다(GameEconomy).
+    public static long CostOf(IReadOnlyList<CraftMaterial> materials) =>
+        GameEconomy.CraftGold(CraftRecipe.BaseGradeOf(materials));
+
+    // 자동 제작: 재료와 골드를 빼고 퍼즐 없이 바로 밑변 등급 그대로 만든다.
+    // 만들지 못하면 false와 그 이유를 돌려준다 — 그때는 재료도 골드도 빠지지 않는다.
     public bool CraftAuto(IReadOnlyList<CraftMaterial> materials, out string reason)
     {
         if (!CanStart(materials, out reason)) return false;
-        if (!MaterialInventory.TryConsume(materials))
-        {
-            reason = "넣은 재료가 창고에 모자랍니다.";
-            return false;
-        }
+        if (!Pay(materials, out reason)) return false;
 
         WeaponFamily family = CraftRecipe.FamilyOf(materials);
         EquipmentGrade grade = EquipmentCraftTable.RollAuto(CraftRecipe.BaseGradeOf(materials));
@@ -102,11 +102,7 @@ public class Forge : MonoBehaviour
             return false;
         }
         if (!CanStart(materials, out reason)) return false;
-        if (!MaterialInventory.TryConsume(materials))
-        {
-            reason = "넣은 재료가 창고에 모자랍니다.";
-            return false;
-        }
+        if (!Pay(materials, out reason)) return false;
 
         pendingFamily = CraftRecipe.FamilyOf(materials);
         pendingBaseGrade = CraftRecipe.BaseGradeOf(materials);
@@ -131,6 +127,26 @@ public class Forge : MonoBehaviour
             reason = "만들 수 있는 무기가 없습니다. WeaponCatalog를 확인하세요.";
             return false;
         }
+        return true;
+    }
+
+    // 재료와 골드를 함께 뺀다. 골드부터 확인해야 재료만 태우고 골드가 모자라 멈추는 일이 없다.
+    private static bool Pay(IReadOnlyList<CraftMaterial> materials, out string reason)
+    {
+        reason = null;
+        long cost = CostOf(materials);
+        if (PlayerAccount.Balance(Currency.Gold) < cost)
+        {
+            reason = "골드가 부족합니다.";
+            return false;
+        }
+        if (!MaterialInventory.TryConsume(materials))
+        {
+            reason = "넣은 재료가 창고에 모자랍니다.";
+            return false;
+        }
+
+        PlayerAccount.TrySpend(Currency.Gold, cost);
         return true;
     }
 

@@ -34,6 +34,10 @@ public static class MeshyApi
     public static Task<string> CreateRig(string meshTaskId) =>
         CreateTask(MeshyBodyRecipe.RigEndpoint, MeshyBodyRecipe.RigBody(meshTaskId));
 
+    /// 몸과 상관없는 그림 한 장(UI 아이콘 등). 엔드포인트는 시트와 같고, 주문서(본문)는 부르는 쪽이 들고 온다.
+    public static Task<string> CreateImage(string body) =>
+        CreateTask(MeshyBodyRecipe.SheetEndpoint, body);
+
     // ── 기다리기 ─────────────────────────────────────────────────────────
 
     /// 태스크가 끝날 때까지 폴링한다. onProgress로 진행률(0~1)과 상태를 흘려보낸다.

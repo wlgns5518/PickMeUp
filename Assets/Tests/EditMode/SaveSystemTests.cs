@@ -240,4 +240,69 @@ public class SaveSystemTests
         FloorProgress.MarkCleared(FloorProgress.LastFloor + 5);
         Assert.AreEqual(FloorProgress.LastFloor, FloorProgress.HighestCleared);
     }
+
+    [Test]
+    public void 재화가_파일로_왕복한다()
+    {
+        PlayerAccount.Add(Currency.Gold, 3361233);
+        PlayerAccount.Add(Currency.Gem, 47);
+
+        // 들고 있던 값을 버리면 다음에 읽을 때 파일에서 다시 올라온다.
+        PlayerAccount.Forget();
+
+        Assert.AreEqual(3361233, PlayerAccount.Balance(Currency.Gold));
+        Assert.AreEqual(GameEconomy.StarterGems + 47, PlayerAccount.Balance(Currency.Gem), "시작 젬 위에 쌓인다");
+        Assert.AreEqual(PlayerAccount.DefaultName, PlayerAccount.Name, "이름을 정한 적이 없으면 기본 이름");
+    }
+
+    [Test]
+    public void 로스터를_저장해도_재화가_남는다()
+    {
+        CharacterSO so = NewCharacter("Hero_Wallet");
+        try
+        {
+            PlayerAccount.Add(Currency.Gold, 500);
+            SaveSystem.Save(new List<CharacterSO> { so });
+            PlayerAccount.Forget();
+
+            Assert.AreEqual(500, PlayerAccount.Balance(Currency.Gold));
+        }
+        finally
+        {
+            Object.DestroyImmediate(so);
+        }
+    }
+
+    [Test]
+    public void 재화_칸이_없던_세이브는_기본_이름에_시작_젬만_받는다()
+    {
+        File.WriteAllText(SaveSystem.SavePath, "{\"highestClearedFloor\":3,\"characters\":[]}");
+        PlayerAccount.Forget();
+
+        Assert.AreEqual(PlayerAccount.DefaultName, PlayerAccount.Name);
+        Assert.AreEqual(0, PlayerAccount.Balance(Currency.Gold));
+        Assert.AreEqual(GameEconomy.StarterGems, PlayerAccount.Balance(Currency.Gem), "옛 세이브도 시작 젬을 한 번 받는다");
+    }
+
+    [Test]
+    public void 시작_젬은_한_번만_받는다()
+    {
+        Assert.AreEqual(GameEconomy.StarterGems, PlayerAccount.Balance(Currency.Gem));
+
+        // 다시 읽어도(게임을 다시 켜도) 또 받지 않는다.
+        PlayerAccount.Forget();
+        Assert.AreEqual(GameEconomy.StarterGems, PlayerAccount.Balance(Currency.Gem));
+    }
+
+    [Test]
+    public void 모자라면_재화를_빼지_않는다()
+    {
+        PlayerAccount.Add(Currency.Gold, 10);
+
+        Assert.IsFalse(PlayerAccount.TrySpend(Currency.Gold, 11));
+        Assert.AreEqual(10, PlayerAccount.Balance(Currency.Gold));
+
+        Assert.IsTrue(PlayerAccount.TrySpend(Currency.Gold, 10));
+        Assert.AreEqual(0, PlayerAccount.Balance(Currency.Gold));
+    }
 }

@@ -12,14 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e667e12c89eb5c74597d3c3ca0caccde, type: 3}
   m_Name: NeonUISkin
   m_EditorClassIdentifier: PickMeUp::NeonUISkin
-  buttonPrimary: {fileID: 21300000, guid: e8c1c63710cb8f740b6af7f483b8a3eb, type: 3}
   buttonSecondary: {fileID: 21300000, guid: ec819148f433799488b85be4801ebe64, type: 3}
-  buttonGhost: {fileID: 21300000, guid: d110e0006747ab541afa2a65e40172ea, type: 3}
-  buttonDanger: {fileID: 21300000, guid: 3fdd948eddd1cc94884b26931e69102b, type: 3}
-  buttonDisabled: {fileID: 21300000, guid: 3f98958c93e8f9342a79c1eaa155e736, type: 3}
   iconButton: {fileID: 21300000, guid: d8072551b73ac5942bd75c99198de81d, type: 3}
-  panel: {fileID: 21300000, guid: 2b3cb418a310e5b46b21ead6b0f03af6, type: 3}
-  divider: {fileID: 21300000, guid: 83081e24b9d568046a81aeb96b9f76c1, type: 3}
   gaugeTrack: {fileID: 21300000, guid: 25bad7e7a620b394b813a344faa878a5, type: 3}
   gaugeFillHp: {fileID: 21300000, guid: ff73abe5222e95b44accb552fcbae81f, type: 3}
   gaugeFillMp: {fileID: 21300000, guid: 46e8fe93574872546be08a6c97fcb52f, type: 3}

@@ -1,12 +1,11 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
-// 카드를 끌어다 놓을 수 있는 화면. 편성 창(DeckBuildUI)과 합성 창(SynthesisUI)이
-// 같은 드래그 부품을 쓰도록 공통으로 두었다.
+// 카드를 끌어다 놓을 수 있는 화면. 지금은 파티 편성(DeckBuildUI)이 쓴다.
 //
-// 자리 번호(slotIndex)의 뜻은 화면마다 다르다 — 편성 창은 출전 슬롯 번호, 합성 창은
-// 주 카드/재료 자리다. 음수(CardDragSource.RosterSlot)만 두 화면에서 같은 뜻으로,
-// "아래쪽 보유 목록"을 가리킨다.
+// 자리 번호(slotIndex)의 뜻은 화면이 정한다 — 편성 화면은 출전 슬롯 번호다.
+// 음수(CardDragSource.RosterSlot)는 "보유 목록"을 가리킨다.
 public interface ICardDragHost
 {
     // 손끝을 따라다니는 반투명 카드. 카드를 만드는 방법이 화면마다 달라 여기서 받아 온다.
@@ -44,6 +43,11 @@ public class CardDragSource : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
     private ICardDragHost owner;
     private RectTransform ghost;
 
+    // 굴러가는 목록 안의 카드. 세로로 끌면 카드를 집지 않고 목록을 굴린다 — 카드가 드래그를 먼저 받으면
+    // 그 위에서는 목록이 끌기로 움직이지 않는다. 가로로 끌면(목록 밖의 자리로 옮기려는 몸짓) 카드를 집는다.
+    private ScrollRect scroll;
+    private bool scrolling;
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetOnPlay()
     {
@@ -59,8 +63,20 @@ public class CardDragSource : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
         SlotIndex = slotIndex;
     }
 
+    public void SetScrollPassThrough(ScrollRect list) => scroll = list;
+
     public void OnBeginDrag(PointerEventData eventData)
     {
+        // 같은 오브젝트에 버튼도 있으면(누르면 넣고 빼는 칸) 끌었다 놓은 자리에서 클릭까지 불린다. 끌기가 시작되면 클릭은 없던 일로.
+        eventData.eligibleForClick = false;
+
+        if (scroll != null && Mathf.Abs(eventData.delta.y) > Mathf.Abs(eventData.delta.x))
+        {
+            scrolling = true;
+            scroll.OnBeginDrag(eventData);
+            return;
+        }
+
         if (owner == null || Character == null) return;
 
         Current = this;
@@ -71,11 +87,23 @@ public class CardDragSource : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
 
     public void OnDrag(PointerEventData eventData)
     {
+        if (scrolling)
+        {
+            scroll.OnDrag(eventData);
+            return;
+        }
         MoveGhost(eventData);
     }
 
     public void OnEndDrag(PointerEventData eventData)
     {
+        if (scrolling)
+        {
+            scrolling = false;
+            scroll.OnEndDrag(eventData);
+            return;
+        }
+
         if (ghost != null && owner != null) owner.ReleaseDragGhost(ghost);
         ghost = null;
 

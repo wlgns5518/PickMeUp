@@ -95,6 +95,7 @@ public class BattleResultPanel
 
         AppendLevelUps(result);
         AppendSkillUnlocks(result);
+        AppendGold(result);
         AppendMaterials(result);
 
         if (result.Mvp != null && result.Mvp.Character != null)
@@ -204,6 +205,14 @@ public class BattleResultPanel
             if (counts[i] > 1) Builder.Append(" x").Append(counts[i]);
         }
         Builder.Append('\n');
+    }
+
+    private void AppendGold(BattleResult result)
+    {
+        if (result.Gold <= 0) return;
+
+        Builder.Append("<color=#").Append(AccentColor).Append(">골드 획득</color>  ")
+            .Append(result.Gold.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)).Append('\n');
     }
 
     // 영구 사망은 승패와 무관하게 항상 알린다. 이 게임에서 되돌릴 수 없는 유일한 손실이다.

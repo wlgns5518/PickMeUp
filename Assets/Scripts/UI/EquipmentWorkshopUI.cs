@@ -1,29 +1,21 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 
-// 마을 장비제작소에서 여는 창.
+// 장비 제작소 — 한 건물에서 [장비 제작]과 [장비 합성]을 탭으로 오간다.
 //
-// 무엇을 만들지는 고르지 않는다. 재료 세 개를 넣으면 무기가 랜덤으로 나온다(CraftRecipe).
+// 두 기능은 넣는 것(재료 / 장비)과 규칙이 다를 뿐 같은 흐름이다: 왼쪽 위에서 넣고, 가운데서 결과를 확인하고,
+// 아래 오른쪽에서 실행한다(UiFlowPanel). 오른쪽은 넣을 것을 고르는 목록(UiPickerPanel)이다. 캐릭터 합성소와도
+// 같은 자리 배치라, 한 곳에서 익힌 손놀림이 다른 곳에서 그대로 통한다.
 //
-// 왼쪽 칸은 모아 둔 재료(MaterialInventory)다. 등급 x 종류(강철·참나무·가죽) 칸마다 남은 개수가 뜨고,
-// 누르면 오른쪽 빈 칸에 들어간다. 이미 칸에 넣은 만큼은 남은 개수에서 빠져 보인다.
-//
-// 오른쪽 맨 위 세 칸이 넣은 재료다. 누르면 뺀다. 세 칸이 차면 그 아래에 무엇이 나올지 —
-// 계열(가장 많이 넣은 종류)과 결과 등급의 밑변(평균 등급) — 이 뜬다.
-// 그 아래 두 탭. 자동 제작은 퍼즐 없이 눌러서 바로 만든다 — 등급은 밑변 그대로 나온다.
-// 수동 제작은 난이도(쉬움~헬)를 고르면 밑변에서 그 난이도만큼 위로 오를 수 있는 등급 확률표가 뜨고,
-// "제작 시작"을 누르면 PuzzleGame이 그 난이도로 열린다. 퍼즐에 성공하면 그 표대로 등급을 굴려
-// 장비가 나오고, 실패하면 아무것도 나오지 않는다. 재료는 어느 쪽이든 시작하는 순간 빠진다.
-// 실제 제작/확률 로직은 Forge가 들고 있다 — 이 창은 고르고 보여주기만 한다.
-//
-// 퍼즐이 뜨는 동안은 이 창을 접어 둔다. 창이 떠 있으면 배경막이 퍼즐 판을 가린다.
-// SummonUI와 같은 방식으로 캔버스부터 코드에서 만든다.
+// 장비 제작 — 재료 세 개 → 무기. 가장 많이 넣은 재료가 계열(금속·목재·방패)을, 세 재료의 평균 등급이 결과 등급의
+//   밑변을 정한다(CraftRecipe). 자동 제작은 밑변 등급 그대로, 수동 제작은 퍼즐(난이도)을 풀면 더 높은 등급이 나올
+//   수 있다(EquipmentCraftTable). 실제 제작은 Forge가 한다. 퍼즐이 뜨는 동안은 화면을 접는다.
+// 장비 합성 — 장비 세 개 → 한 개. 결과 등급은 평균 등급 + 1(EquipmentSynthesis). 장착 중인 장비는 못 넣는다.
 [DisallowMultipleComponent]
-public class EquipmentWorkshopUI : FacilityWindow
+public class EquipmentWorkshopUI : UiScreen
 {
-    private enum Mode { Auto, Manual }
+    private enum Page { Craft, Synthesis }
 
     [Header("Forge")]
     [Tooltip("비워두면 씬에서 찾는다.")]
@@ -33,93 +25,53 @@ public class EquipmentWorkshopUI : FacilityWindow
     [Tooltip("장비제작소를 누르지 않아도 처음부터 열려 있게 하려면 켠다.")]
     [SerializeField] private bool openOnStart;
 
-    [Header("Warning Banner")]
-    [Tooltip("경고 배너가 넘지 않을 가로 길이. 모양은 킷의 장식 메시지 박스다.")]
-    [SerializeField] private float bannerWidth = 900f;
+    private const float FlowWidth = 1040f;
+    private const float PageTabWidth = 520f;
 
-    // 오른쪽 칸(넣은 재료·제작 방식) 너비. 왼쪽 재료 칸은 그 앞에 붙는다.
-    private const float ControlColumnWidth = 748f;
-    private static readonly Vector2 PanelPadding = new Vector2(36f, 30f);
-    private const float TitleHeight = 60f;
-    private const float TitleGap = 22f;
-    private const float TabHeight = 72f;
-    private const float Gap = 14f;
-    private const float LabelHeight = 30f;
-
-    // 오른쪽 위 — 넣은 재료 세 칸과 예상 결과.
-    private const float SlotRowHeight = 72f;
-    private const float PreviewHeight = 40f;
-
-    private const float DescHeight = 64f;
-    private const float CraftButtonHeight = 100f;
-
-    private const float DiffTabHeight = 66f;
-    private const float RateHeaderHeight = 34f;
-    private const float RateRowHeight = 44f;
-    private const float StartButtonHeight = 90f;
-    private const float HintHeight = 54f;
-
-    // 왼쪽 재료 칸.
-    private const float MaterialColumnWidth = 440f;
-    private const float ColumnGap = 28f;
-    private const float GridHeaderHeight = 40f;
-    private const float GradeColumnWidth = 64f;
-    private const float CellHeight = 58f;
-    private const float CellGap = 10f;
-
+    private static readonly string[] PageTabs = { "장비 제작", "장비 합성" };
+    private static readonly string[] ModeTabs = { "자동 제작", "수동 제작 (퍼즐)" };
+    private static readonly string[] DifficultyTabs = { "쉬움", "보통", "어려움", "헬" };
     private static readonly PuzzleDifficulty[] Difficulties =
-    {
-        PuzzleDifficulty.Easy, PuzzleDifficulty.Normal, PuzzleDifficulty.Hard, PuzzleDifficulty.Hell
-    };
+        { PuzzleDifficulty.Easy, PuzzleDifficulty.Normal, PuzzleDifficulty.Hard, PuzzleDifficulty.Hell };
+    private static readonly string[] MaterialTabs = { "전체", "강철", "참나무", "가죽" };
+    private static readonly string[] EquipmentTabs = { "전체", "무기", "방어구" };
 
-    // 재료 칸의 행 순서이자 등급표의 행 순서. E가 가장 낮고 S가 가장 높다.
     private static readonly EquipmentGrade[] Grades =
-    {
-        EquipmentGrade.E, EquipmentGrade.D, EquipmentGrade.C, EquipmentGrade.B, EquipmentGrade.A, EquipmentGrade.S
-    };
+        { EquipmentGrade.E, EquipmentGrade.D, EquipmentGrade.C, EquipmentGrade.B, EquipmentGrade.A, EquipmentGrade.S };
 
-    // 결과 띠. 화면 위쪽에 붙인다.
-    private const float BarWidth = 900f;
-    private const float BarHeight = 96f;
-    private const float BarPadding = 22f;
-    private const float BarTopMargin = 32f;
-    private const float BarButtonWidth = 160f;
-    private const float BarButtonHeight = 60f;
+    private UiTabs pageTabs;
+    private RectTransform craftPage;
+    private RectTransform synthesisPage;
 
-    private class MaterialCell
-    {
-        public CraftMaterial Material;
-        public NeonButton Button;
-    }
+    private UiFlowPanel craftFlow;
+    private UiTabs modeTabs;
+    private UiTabs difficultyTabs;
+    private UiButton rateButton;
+    private UiPickerPanel materialPicker;
 
-    private AnnouncementBanner warningBanner;
+    private UiFlowPanel synthFlow;
+    private UiPickerPanel equipmentPicker;
 
-    private RectTransform panelRect;
-    private RectTransform autoSection;
-    private RectTransform manualSection;
-
-    private readonly List<NeonButton> modeTabs = new List<NeonButton>();
-    private readonly List<NeonButton> diffTabs = new List<NeonButton>();
-    private readonly List<TMP_Text> ratePercentLabels = new List<TMP_Text>();
-    private readonly List<MaterialCell> materialCells = new List<MaterialCell>();
-    private readonly List<NeonButton> slotButtons = new List<NeonButton>();
-
-    private GameObject resultBar;
-    private TMP_Text resultText;
-    private TMP_Text autoDescText;
-    private TMP_Text previewText;
-    private TMP_Text rateHeaderText;
-    private TMP_Text materialLabel;
+    private UiPopup ratePopup;
+    private readonly List<TMP_Text> rateCells = new List<TMP_Text>();
+    private UiResultPopup resultPopup;
 
     // 넣은 재료. 앞에서부터 채워지고, 칸을 누르면 그 자리가 빠지며 뒤가 당겨진다.
-    private readonly List<CraftMaterial> slots = new List<CraftMaterial>();
+    private readonly List<CraftMaterial> craftSlots = new List<CraftMaterial>();
+    private readonly List<OwnedEquipment> synthSlots = new List<OwnedEquipment>();
 
-    private Mode mode = Mode.Auto;
-    private PuzzleDifficulty selectedDifficulty = PuzzleDifficulty.Easy;
+    private readonly List<CraftMaterial> visibleMaterials = new List<CraftMaterial>();
+    private readonly List<OwnedEquipment> visibleEquipment = new List<OwnedEquipment>();
+
+    private Page page = Page.Craft;
+    private bool manual;
+    private PuzzleDifficulty difficulty = PuzzleDifficulty.Easy;
 
     protected override string CanvasName => "EquipmentWorkshopCanvas";
     // 소환(96), 합성(97) 다음.
     protected override int SortingOrder => 98;
+    protected override string Title => "장비 제작소";
+    protected override string Subtitle => "재료로 장비를 만들거나, 장비 세 개를 합쳐 더 좋은 장비를 얻습니다.";
 
     private void Awake()
     {
@@ -137,550 +89,631 @@ public class EquipmentWorkshopUI : FacilityWindow
 
     private void OnEnable()
     {
-        MaterialInventory.Changed += HandleMaterialsChanged;
+        MaterialInventory.Changed += HandleDataChanged;
+        EquipmentInventory.Changed += HandleDataChanged;
+        PlayerAccount.Changed += HandleDataChanged;
     }
 
     private void OnDisable()
     {
-        MaterialInventory.Changed -= HandleMaterialsChanged;
+        MaterialInventory.Changed -= HandleDataChanged;
+        EquipmentInventory.Changed -= HandleDataChanged;
+        PlayerAccount.Changed -= HandleDataChanged;
     }
 
     public override void Show()
     {
         EnsureBuilt();
-        RefreshAll();
+        Refresh();
         SetOpen(true);
     }
 
     public override void Hide()
     {
+        if (ratePopup != null) ratePopup.Hide();
         SetOpen(false);
     }
 
-    // ---- 재료 넣고 빼기 ------------------------------------------------------
-
-    private void ClickMaterial(CraftMaterial material)
+    private void HandleDataChanged()
     {
-        if (slots.Count >= CraftRecipe.SlotCount)
-        {
-            warningBanner?.Show("칸이 가득 찼습니다. 넣은 재료를 눌러 빼세요.");
-            return;
-        }
-
-        if (AvailableCount(material) <= 0)
-        {
-            warningBanner?.Show($"남은 {material.DisplayName}{HeroLabel.SubjectParticle(material.DisplayName)} 없습니다.");
-            return;
-        }
-
-        slots.Add(material);
-        RefreshAll();
+        TrimSlots();
+        if (IsOpen) Refresh();
     }
 
-    private void ClickSlot(int index)
-    {
-        if (index < 0 || index >= slots.Count) return;
+    // ---- 짓기 ---------------------------------------------------------------
 
-        slots.RemoveAt(index);
-        RefreshAll();
+    protected override void BuildContent(RectTransform root, Vector2 size)
+    {
+        pageTabs = UiTabs.Create(root, "PageTabs", PageTabs, UiTheme.FontHeading);
+        UiKit.TopLeft(pageTabs.Rect, 0f, 0f, PageTabWidth, UiTheme.TabHeight + 4f);
+        pageTabs.Changed += index => { page = (Page)index; Refresh(); };
+
+        float pageTop = UiTheme.TabHeight + 4f + UiTheme.Space4;
+        var pageSize = new Vector2(size.x, size.y - pageTop);
+
+        craftPage = UiKit.Node(root, "CraftPage");
+        UiKit.Fill(craftPage, 0f, pageTop, 0f, 0f);
+        BuildCraftPage(craftPage, pageSize);
+
+        synthesisPage = UiKit.Node(root, "SynthesisPage");
+        UiKit.Fill(synthesisPage, 0f, pageTop, 0f, 0f);
+        BuildSynthesisPage(synthesisPage, pageSize);
+    }
+
+    private void BuildCraftPage(RectTransform root, Vector2 size)
+    {
+        craftFlow = UiFlowPanel.Create(root, "Flow", FlowWidth, new UiFlowPanel.Layout
+        {
+            InputCount = CraftRecipe.SlotCount,
+            InputSlotSize = UiTheme.SlotMedium,
+            InputTitle = "재료 선택",
+            ResultTitle = "제작 결과",
+            ActionLabel = "제작",
+            HasOptions = true,
+        });
+        UiKit.TopLeft(craftFlow.Rect, 0f, 0f, FlowWidth, craftFlow.Height);
+
+        for (int i = 0; i < CraftRecipe.SlotCount; i++)
+        {
+            int index = i;
+            craftFlow.Input(i).Clicked += () => RemoveCraftSlot(index);
+        }
+        craftFlow.Action.onClick.AddListener(Craft);
+
+        modeTabs = UiTabs.Create(craftFlow.Options, "Mode", ModeTabs, UiTheme.FontLabel);
+        UiKit.TopLeft(modeTabs.Rect, 0f, 0f, 440f, UiTheme.TabHeight);
+        modeTabs.Changed += index => { manual = index == 1; Refresh(); };
+
+        difficultyTabs = UiTabs.Create(craftFlow.Options, "Difficulty", DifficultyTabs, UiTheme.FontLabel);
+        UiKit.TopRight(difficultyTabs.Rect, 0f, 0f, FlowWidth - 440f - UiTheme.Space4, UiTheme.TabHeight);
+        difficultyTabs.Changed += index => { difficulty = Difficulties[index]; Refresh(); };
+
+        rateButton = UiButton.Create(craftFlow.ResultActions, "Rates", "등급 확률", UiButtonStyle.Secondary, UiButtonSize.Small, OpenRates);
+        UiKit.Fill(rateButton.Rect, 60f, 0f, 0f, 0f);
+
+        float pickerX = FlowWidth + UiTheme.ColumnGap;
+        materialPicker = UiPickerPanel.Create(root, "Materials", size.x - pickerX, "보유 재료", MaterialTabs, UiTheme.SlotSmall + 8f);
+        UiKit.Fill(materialPicker.Rect, pickerX, 0f, 0f, 0f);
+        materialPicker.Tabs.Changed += _ => Refresh();
+        materialPicker.Grid.TileClicked += tile =>
+        {
+            if (tile.Payload is CraftMaterial material) AddCraftSlot(material);
+        };
+    }
+
+    private void BuildSynthesisPage(RectTransform root, Vector2 size)
+    {
+        synthFlow = UiFlowPanel.Create(root, "Flow", FlowWidth, new UiFlowPanel.Layout
+        {
+            InputCount = EquipmentSynthesis.SlotCount,
+            InputSlotSize = UiTheme.SlotMedium,
+            InputTitle = "재료 장비 선택",
+            ResultTitle = "합성 결과",
+            ActionLabel = "합성",
+        });
+        UiKit.TopLeft(synthFlow.Rect, 0f, 0f, FlowWidth, synthFlow.Height);
+
+        for (int i = 0; i < EquipmentSynthesis.SlotCount; i++)
+        {
+            int index = i;
+            synthFlow.Input(i).Clicked += () => RemoveSynthSlot(index);
+        }
+        synthFlow.Action.onClick.AddListener(AskSynthesize);
+
+        float pickerX = FlowWidth + UiTheme.ColumnGap;
+        equipmentPicker = UiPickerPanel.Create(root, "Equipment", size.x - pickerX, "보유 장비", EquipmentTabs, UiTheme.SlotSmall + 8f);
+        UiKit.Fill(equipmentPicker.Rect, pickerX, 0f, 0f, 0f);
+        equipmentPicker.Tabs.Changed += _ => Refresh();
+        equipmentPicker.Grid.TileClicked += tile => ToggleSynthSlot(tile.Payload as OwnedEquipment);
+    }
+
+    protected override void BuildOverlays()
+    {
+        BuildRatePopup();
+        resultPopup = new UiResultPopup(overlay);
+        Refresh();
+    }
+
+    // ---- 등급 확률 팝업 --------------------------------------------------------
+
+    private void BuildRatePopup()
+    {
+        rateCells.Clear();
+        ratePopup = UiPopup.Create(overlay, "RatePopup", "등급 확률", new Vector2(900f, 700f), false);
+
+        float[] columns = { 0f, 260f, 480f };
+        string[] titles = { "결과 등급", "확률", "능력치 배율" };
+
+        RectTransform header = UiKit.Node(ratePopup.Body, "Header");
+        UiKit.TopStretch(header, 0f, 44f);
+        UiKit.Rounded(header, "Fill", UiTheme.SurfaceSunken, UiTheme.RadiusS);
+        for (int c = 0; c < titles.Length; c++)
+        {
+            TMP_Text t = UiKit.Text(header, "Col_" + c, titles[c], UiTheme.FontLabel, UiTheme.TextSecondary);
+            UiKit.Fill(t.rectTransform, columns[c] + UiTheme.Space5, 0f, 0f, 0f);
+        }
+
+        const float rowHeight = 60f;
+        for (int g = 0; g < Grades.Length; g++)
+        {
+            RectTransform row = UiKit.Node(ratePopup.Body, "Row_" + g);
+            UiKit.TopStretch(row, 52f + g * rowHeight, rowHeight);
+            UiKit.Rounded(row, "Fill", g % 2 == 0 ? UiTheme.SurfaceRaised : UiTheme.Surface, UiTheme.RadiusS);
+
+            Color color = UiTheme.GradeColor(Grades[g]);
+            TMP_Text grade = UiKit.Text(row, "Grade", UiTheme.Paint(EquipmentGradeNames.NameOf(Grades[g]), color) +
+                "  " + EquipmentGradeNames.PrefixOf(Grades[g]), UiTheme.FontBody, UiTheme.TextPrimary);
+            UiKit.Fill(grade.rectTransform, columns[0] + UiTheme.Space5, 0f, 0f, 0f);
+
+            TMP_Text percent = UiKit.Text(row, "Percent", string.Empty, UiTheme.FontHeading, color);
+            UiKit.Fill(percent.rectTransform, columns[1] + UiTheme.Space5, 0f, 0f, 0f);
+            rateCells.Add(percent);
+
+            TMP_Text power = UiKit.Text(row, "Power", $"x{EquipmentGradeRules.PowerOf(Grades[g]):0.00}", UiTheme.FontBody, UiTheme.TextSecondary);
+            UiKit.Fill(power.rectTransform, columns[2] + UiTheme.Space5, 0f, 0f, 0f);
+        }
+
+        TMP_Text note = UiKit.Wrap(UiKit.Text(ratePopup.Body, "Note",
+            "· 수동 제작은 퍼즐을 풀어야 장비가 나옵니다. 실패하면 재료와 골드를 잃습니다.\n" +
+            "· 어려운 난이도일수록 재료 등급보다 높은 등급이 나올 확률이 커집니다.",
+            UiTheme.FontLabel, UiTheme.TextSecondary));
+        note.alignment = TextAlignmentOptions.BottomLeft;
+        UiKit.BottomStretch(note.rectTransform, 0f, 80f);
+    }
+
+    private void OpenRates()
+    {
+        if (!CraftRecipe.IsComplete(craftSlots))
+        {
+            toast.Show("재료 3개를 넣으면 등급 확률을 볼 수 있습니다.", UiToastKind.Info);
+            return;
+        }
+
+        EquipmentGrade baseGrade = CraftRecipe.BaseGradeOf(craftSlots);
+        ratePopup.SetTitle($"등급 확률 — {DifficultyTabs[System.Array.IndexOf(Difficulties, difficulty)]} · 재료 {EquipmentGradeNames.NameOf(baseGrade)}등급");
+        for (int g = 0; g < Grades.Length; g++)
+            rateCells[g].text = EquipmentCraftTable.PercentText(baseGrade, difficulty, Grades[g]);
+        ratePopup.Show();
+    }
+
+    // ---- 장비 제작 ------------------------------------------------------------
+
+    private void AddCraftSlot(CraftMaterial material)
+    {
+        if (craftSlots.Count >= CraftRecipe.SlotCount)
+        {
+            toast.Show("재료 칸이 가득 찼습니다. 넣은 재료를 눌러 빼세요.", UiToastKind.Info);
+            return;
+        }
+        if (AvailableCount(material) <= 0)
+        {
+            toast.Show($"남은 {material.DisplayName}{HeroLabel.SubjectParticle(material.DisplayName)} 없습니다.", UiToastKind.Warning);
+            return;
+        }
+
+        craftSlots.Add(material);
+        Refresh();
+    }
+
+    private void RemoveCraftSlot(int index)
+    {
+        if (index < 0 || index >= craftSlots.Count) return;
+        craftSlots.RemoveAt(index);
+        Refresh();
     }
 
     // 창고에 있는 개수에서 이미 칸에 넣은 만큼을 뺀 것.
     private int AvailableCount(CraftMaterial material)
     {
         int used = 0;
-        for (int i = 0; i < slots.Count; i++)
-        {
-            if (slots[i].Equals(material)) used++;
-        }
+        for (int i = 0; i < craftSlots.Count; i++) if (craftSlots[i].Equals(material)) used++;
         return MaterialInventory.CountOf(material) - used;
     }
 
-    // 창고의 재료가 줄었는데(다른 곳에서 썼거나 세이브가 지워졌거나) 칸에 그대로 남아 있으면
-    // 없는 재료로 제작을 누르게 된다. 모자란 만큼 뒤에서부터 뺀다.
-    private void TrimSlotsToInventory()
-    {
-        for (int i = slots.Count - 1; i >= 0; i--)
-        {
-            if (AvailableCount(slots[i]) < 0) slots.RemoveAt(i);
-        }
-    }
-
-    private void HandleMaterialsChanged()
-    {
-        TrimSlotsToInventory();
-        if (IsOpen) RefreshAll();
-    }
-
-    // ---- 제작 -------------------------------------------------------------
-
-    private void CraftAuto()
-    {
-        if (!CanCraft()) return;
-
-        // 제작하면 창고에서 재료가 빠지며 Changed가 불린다. 칸을 먼저 비워 둬야 빠진 뒤의 개수로
-        // 칸을 다시 맞출 때 방금 태운 재료가 칸에 남지 않는다. 실패하면 되돌린다.
-        var used = new List<CraftMaterial>(slots);
-        slots.Clear();
-
-        string reason;
-        if (!forge.CraftAuto(used, out reason))
-        {
-            slots.AddRange(used);
-            TrimSlotsToInventory();
-            warningBanner?.Show(reason);
-        }
-        RefreshAll();
-    }
-
-    private void StartManual()
-    {
-        if (!CanCraft()) return;
-
-        var used = new List<CraftMaterial>(slots);
-        slots.Clear();
-
-        string reason;
-        if (!forge.StartManual(used, selectedDifficulty, out reason))
-        {
-            slots.AddRange(used);
-            TrimSlotsToInventory();
-            warningBanner?.Show(reason);
-            RefreshAll();
-            return;
-        }
-
-        // 퍼즐이 뜨는 동안은 창을 접는다. 떠 있으면 배경막이 퍼즐 판을 가린다.
-        Hide();
-    }
-
-    private bool CanCraft()
+    private void Craft()
     {
         if (forge == null)
         {
-            warningBanner?.Show("장비제작소(Forge)를 찾지 못했습니다.");
-            return false;
+            toast.Show("장비 제작소(Forge)를 찾지 못했습니다.", UiToastKind.Danger);
+            return;
         }
 
-        if (!CraftRecipe.IsComplete(slots))
+        // 제작하면 창고에서 재료가 빠지며 Changed가 불린다. 칸을 먼저 비워 둬야 빠진 뒤의 개수로 칸을 다시 맞출 때
+        // 방금 태운 재료가 칸에 남지 않는다. 실패하면 되돌린다.
+        var used = new List<CraftMaterial>(craftSlots);
+        craftSlots.Clear();
+
+        string reason;
+        bool started = manual ? forge.StartManual(used, difficulty, out reason) : forge.CraftAuto(used, out reason);
+        if (!started)
         {
-            warningBanner?.Show($"재료 {CraftRecipe.SlotCount}개를 모두 넣으세요.");
-            return false;
+            craftSlots.AddRange(used);
+            TrimSlots();
+            toast.Show(reason, UiToastKind.Warning);
+            Refresh();
+            return;
         }
-        return true;
+
+        // 퍼즐이 뜨는 동안은 화면을 접는다. 떠 있으면 퍼즐 판을 가린다.
+        if (manual) Hide();
+        else Refresh();
     }
 
     private void HandleCrafted(CraftedEquipment result)
     {
         Show();
-        ShowBar($"{result.name} ({EquipmentGradeNames.NameOf(result.grade)}) 제작 완료 — 무기창고에 보관했습니다", GradeColor(result.grade));
+        var content = new UiSlotContent
+        {
+            Icon = result.weapon != null ? UiIconLibrary.Weapon(result.weapon.type) : null,
+            Fallback = "?",
+            Tier = UiTheme.TierOf(result.grade),
+            Badge = EquipmentGradeNames.NameOf(result.grade),
+        };
+        string stat = result.weapon != null ? UiSlotContents.StatName(result.weapon.slot) : "공격";
+        resultPopup.Show("제작 완료", content, result.name,
+            $"{stat} x{EquipmentGradeRules.PowerOf(result.grade):0.00}\n만든 장비는 장비창에 보관했습니다.");
     }
 
     private void HandleFailed()
     {
         Show();
-        ShowBar("제작 실패 — 재료를 잃었습니다.", BattleHudPalette.Dying);
+        toast.Show("제작 실패 — 재료와 골드를 잃었습니다.", UiToastKind.Danger);
     }
 
-    private void Confirm()
+    // ---- 장비 합성 ------------------------------------------------------------
+
+    private void ToggleSynthSlot(OwnedEquipment item)
     {
-        HideBar();
-    }
+        if (item == null) return;
 
-    // ---- 만들기 -------------------------------------------------------------
-
-    protected override void BuildWindow()
-    {
-        modeTabs.Clear();
-        diffTabs.Clear();
-        ratePercentLabels.Clear();
-        materialCells.Clear();
-        slotButtons.Clear();
-
-        BuildCanvas();
-        BuildPopup();
-        BuildResultBar();
-
-        warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, null, bannerWidth);
-
-        RefreshAll();
-    }
-
-    private void BuildPopup()
-    {
-        BuildPanel(BuildPopupRoot());
-    }
-
-    private void BuildPanel(RectTransform popup)
-    {
-        float controlX = PanelPadding.x + MaterialColumnWidth + ColumnGap;
-        float panelWidth = controlX + ControlColumnWidth + PanelPadding.x;
-        float contentWidth = panelWidth - PanelPadding.x * 2f;
-
-        panelRect = HudFactory.CreatePanel(popup, "Panel").rectTransform;
-        panelRect.anchorMin = new Vector2(0.5f, 0.5f);
-        panelRect.anchorMax = new Vector2(0.5f, 0.5f);
-        panelRect.pivot = new Vector2(0.5f, 0.5f);
-        panelRect.anchoredPosition = Vector2.zero;
-
-        float y = PanelPadding.y;
-
-        BuildTitleBar(panelRect, "장비제작소", PanelPadding.x, y, contentWidth, TitleHeight);
-        y += TitleHeight + TitleGap;
-
-        float columnTop = y;
-
-        BuildSlots(controlX, y, ControlColumnWidth);
-        y += LabelHeight + SlotRowHeight + 8f + PreviewHeight + Gap;
-
-        BuildModeTabs(controlX, y, ControlColumnWidth);
-        y += TabHeight + Gap;
-
-        autoSection = HudFactory.CreateGroup(panelRect, "Auto");
-        HudFactory.SetTopLeft(autoSection, new Vector2(ControlColumnWidth, DescHeight + Gap + CraftButtonHeight), new Vector2(controlX, -y));
-        BuildAutoSection(autoSection, ControlColumnWidth);
-
-        manualSection = HudFactory.CreateGroup(panelRect, "Manual");
-        HudFactory.SetTopLeft(manualSection, new Vector2(ControlColumnWidth,
-            DiffTabHeight + Gap + RateHeaderHeight + Grades.Length * RateRowHeight + Gap + StartButtonHeight + Gap + HintHeight),
-            new Vector2(controlX, -y));
-        BuildManualSection(manualSection, ControlColumnWidth);
-
-        float columnBottom = y + Mathf.Max(autoSection.sizeDelta.y, manualSection.sizeDelta.y);
-        BuildMaterialColumn(PanelPadding.x, columnTop, columnBottom);
-
-        // 두 칸을 가르는 세로선. 킷 구분선은 가로로 옅어지는 그림이라 세로로는 쓸 수 없어 옅은 강조색 선을 긋는다.
-        Image divider = HudFactory.CreateImage(panelRect, "Divider",
-            new Color(BattleHudPalette.Accent.r, BattleHudPalette.Accent.g, BattleHudPalette.Accent.b, 0.18f));
-        HudFactory.SetTopLeft(divider.rectTransform, new Vector2(2f, columnBottom - columnTop),
-            new Vector2(PanelPadding.x + MaterialColumnWidth + ColumnGap * 0.5f - 1f, -columnTop));
-
-        panelRect.sizeDelta = new Vector2(panelWidth, columnBottom + PanelPadding.y);
-    }
-
-    // 왼쪽 — 등급(행) x 종류(열) 재료 칸과, 무엇을 넣으면 무엇이 나오는지 안내.
-    private void BuildMaterialColumn(float x, float top, float bottom)
-    {
-        float y = top;
-
-        materialLabel = HudFactory.CreateText(panelRect, "MaterialLabel", resolvedFont, 24f, BattleHudPalette.TextMuted);
-        materialLabel.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(materialLabel.rectTransform, new Vector2(MaterialColumnWidth, LabelHeight), new Vector2(x, -y));
-        y += LabelHeight;
-
-        MaterialKind[] kinds = MaterialNames.AllKinds;
-        float cellWidth = (MaterialColumnWidth - GradeColumnWidth - CellGap * kinds.Length) / kinds.Length;
-
-        for (int k = 0; k < kinds.Length; k++)
+        if (synthSlots.Remove(item))
         {
-            TMP_Text header = HudFactory.CreateText(panelRect, "Kind_" + kinds[k], resolvedFont, 24f, BattleHudPalette.TextPrimary);
-            HudFactory.SetTopLeft(header.rectTransform, new Vector2(cellWidth, GridHeaderHeight),
-                new Vector2(x + GradeColumnWidth + CellGap + k * (cellWidth + CellGap), -y));
-            header.text = MaterialNames.KindName(kinds[k]);
-        }
-        y += GridHeaderHeight;
-
-        for (int g = 0; g < Grades.Length; g++)
-        {
-            EquipmentGrade grade = Grades[g];
-            float rowY = y + g * (CellHeight + CellGap);
-
-            TMP_Text gradeLabel = HudFactory.CreateText(panelRect, "Grade_" + grade, resolvedFont, 30f, GradeColor(grade));
-            HudFactory.SetTopLeft(gradeLabel.rectTransform, new Vector2(GradeColumnWidth, CellHeight), new Vector2(x, -rowY));
-            gradeLabel.text = EquipmentGradeNames.NameOf(grade);
-
-            for (int k = 0; k < kinds.Length; k++)
-            {
-                var material = new CraftMaterial(kinds[k], grade);
-
-                NeonButton cell = HudFactory.CreateButton(panelRect, "Cell_" + kinds[k] + "_" + grade, NeonButtonStyle.Ghost,
-                    resolvedFont, string.Empty, 26f, () => ClickMaterial(material));
-                HudFactory.SetTopLeft(cell.Rect, new Vector2(cellWidth, CellHeight),
-                    new Vector2(x + GradeColumnWidth + CellGap + k * (cellWidth + CellGap), -rowY));
-
-                materialCells.Add(new MaterialCell { Material = material, Button = cell });
-            }
-        }
-        y += Grades.Length * CellHeight + (Grades.Length - 1) * CellGap + Gap * 2f;
-
-        TMP_Text guide = HudFactory.CreateText(panelRect, "Guide", resolvedFont, 21f, BattleHudPalette.TextMuted);
-        guide.alignment = TextAlignmentOptions.TopLeft;
-        guide.textWrappingMode = TextWrappingModes.Normal;
-        HudFactory.SetTopLeft(guide.rectTransform, new Vector2(MaterialColumnWidth, Mathf.Max(0f, bottom - y)), new Vector2(x, -y));
-        guide.text =
-            "재료를 누르면 빈 칸에 들어갑니다.\n" +
-            "가장 많이 넣은 재료가 계열을 정합니다.\n" +
-            $"  강철 — {CraftRecipe.FamilyContents(WeaponFamily.Metal)}\n" +
-            $"  참나무 — {CraftRecipe.FamilyContents(WeaponFamily.Wood)}\n" +
-            $"  가죽 — {CraftRecipe.FamilyContents(WeaponFamily.Shield)}\n" +
-            $"  셋 다 다르면 — {CraftRecipe.FamilyContents(WeaponFamily.Any)}\n" +
-            "등급은 세 재료의 평균(내림)에서 시작합니다.\n" +
-            "재료는 층을 클리어하면 얻습니다.";
-    }
-
-    // 오른쪽 위 — 넣은 재료 세 칸과, 세 칸이 차면 무엇이 나올지.
-    private void BuildSlots(float x, float y, float contentWidth)
-    {
-        TMP_Text label = HudFactory.CreateText(panelRect, "SlotLabel", resolvedFont, 24f, BattleHudPalette.TextMuted);
-        label.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(label.rectTransform, new Vector2(contentWidth, LabelHeight), new Vector2(x, -y));
-        label.text = "넣은 재료 — 누르면 뺍니다";
-
-        float rowY = y + LabelHeight;
-        float slotWidth = (contentWidth - Gap * (CraftRecipe.SlotCount - 1)) / CraftRecipe.SlotCount;
-
-        for (int i = 0; i < CraftRecipe.SlotCount; i++)
-        {
-            int index = i;
-
-            NeonButton slot = HudFactory.CreateButton(panelRect, "Slot_" + i, NeonButtonStyle.Ghost,
-                resolvedFont, string.Empty, 28f, () => ClickSlot(index));
-            HudFactory.SetTopLeft(slot.Rect, new Vector2(slotWidth, SlotRowHeight), new Vector2(x + i * (slotWidth + Gap), -rowY));
-
-            slotButtons.Add(slot);
+            Refresh();
+            return;
         }
 
-        previewText = HudFactory.CreateText(panelRect, "Preview", resolvedFont, 26f, BattleHudPalette.TextMuted);
-        previewText.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(previewText.rectTransform, new Vector2(contentWidth, PreviewHeight),
-            new Vector2(x, -(rowY + SlotRowHeight + 8f)));
-    }
-
-    private void BuildModeTabs(float x, float y, float contentWidth)
-    {
-        string[] labels = { "자동 제작", "수동 제작" };
-        float tabWidth = (contentWidth - Gap) * 0.5f;
-
-        for (int i = 0; i < labels.Length; i++)
+        if (!EquipmentSynthesis.CanUse(item, out string reason))
         {
-            var thisMode = (Mode)i;
-
-            NeonButton tab = HudFactory.CreateButton(panelRect, "ModeTab_" + thisMode, NeonButtonStyle.Ghost,
-                resolvedFont, labels[i], 30f, () => SelectMode(thisMode));
-            HudFactory.SetTopLeft(tab.Rect, new Vector2(tabWidth, TabHeight), new Vector2(x + i * (tabWidth + Gap), -y));
-
-            modeTabs.Add(tab);
+            toast.Show(reason, UiToastKind.Warning);
+            return;
         }
-    }
-
-    private void BuildAutoSection(RectTransform section, float contentWidth)
-    {
-        autoDescText = HudFactory.CreateText(section, "Desc", resolvedFont, 26f, BattleHudPalette.TextMuted);
-        autoDescText.alignment = TextAlignmentOptions.TopLeft;
-        HudFactory.SetTopLeft(autoDescText.rectTransform, new Vector2(contentWidth, DescHeight), Vector2.zero);
-
-        NeonButton craft = HudFactory.CreateButton(section, "CraftButton", NeonButtonStyle.Primary,
-            resolvedFont, "제작하기", 34f, CraftAuto);
-        HudFactory.SetTopLeft(craft.Rect, new Vector2(contentWidth, CraftButtonHeight), new Vector2(0f, -(DescHeight + Gap)));
-    }
-
-    private void BuildManualSection(RectTransform section, float contentWidth)
-    {
-        string[] diffLabels = { "쉬움", "보통", "어려움", "헬" };
-        float diffTabWidth = (contentWidth - Gap * (Difficulties.Length - 1)) / Difficulties.Length;
-
-        for (int i = 0; i < Difficulties.Length; i++)
+        if (synthSlots.Count >= EquipmentSynthesis.SlotCount)
         {
-            var difficulty = Difficulties[i];
-
-            NeonButton tab = HudFactory.CreateButton(section, "DiffTab_" + difficulty, NeonButtonStyle.Ghost,
-                resolvedFont, diffLabels[i], 26f, () => SelectDifficulty(difficulty));
-            HudFactory.SetTopLeft(tab.Rect, new Vector2(diffTabWidth, DiffTabHeight), new Vector2(i * (diffTabWidth + Gap), 0f));
-
-            diffTabs.Add(tab);
+            toast.Show($"장비는 {EquipmentSynthesis.SlotCount}개까지 넣을 수 있습니다. 넣은 장비를 눌러 빼세요.", UiToastKind.Info);
+            return;
         }
 
-        float y = DiffTabHeight + Gap;
+        synthSlots.Add(item);
+        Refresh();
+    }
 
-        rateHeaderText = HudFactory.CreateText(section, "RateHeader", resolvedFont, 24f, BattleHudPalette.TextMuted);
-        rateHeaderText.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(rateHeaderText.rectTransform, new Vector2(contentWidth, RateHeaderHeight), new Vector2(0f, -y));
-        y += RateHeaderHeight;
+    private void RemoveSynthSlot(int index)
+    {
+        if (index < 0 || index >= synthSlots.Count) return;
+        synthSlots.RemoveAt(index);
+        Refresh();
+    }
 
-        for (int i = 0; i < Grades.Length; i++)
+    private void AskSynthesize()
+    {
+        if (!EquipmentSynthesis.CanSynthesize(synthSlots, out string reason))
         {
-            RectTransform row = HudFactory.CreateGroup(section, "Rate_" + Grades[i]);
-            HudFactory.SetTopLeft(row, new Vector2(contentWidth, RateRowHeight), new Vector2(0f, -y));
-
-            TMP_Text grade = HudFactory.CreateText(row, "Grade", resolvedFont, 27f, BattleHudPalette.TextPrimary);
-            grade.alignment = TextAlignmentOptions.Left;
-            HudFactory.Stretch(grade.rectTransform);
-            // 등급 글자만으로는 무엇이 달라지는지 알 수 없다. 이름에 붙는 말과 배율을 같이 적는다.
-            grade.text = $"{EquipmentGradeNames.NameOf(Grades[i])}  {EquipmentGradeNames.PrefixOf(Grades[i])} · x{EquipmentGradeRules.PowerOf(Grades[i]):0.00}";
-            grade.color = GradeColor(Grades[i]);
-
-            TMP_Text percent = HudFactory.CreateText(row, "Percent", resolvedFont, 27f, BattleHudPalette.TextPrimary);
-            percent.alignment = TextAlignmentOptions.Right;
-            HudFactory.Stretch(percent.rectTransform);
-            percent.color = GradeColor(Grades[i]);
-
-            ratePercentLabels.Add(percent);
-
-            y += RateRowHeight;
+            toast.Show(reason, UiToastKind.Warning);
+            return;
         }
 
-        y += Gap;
+        long cost = EquipmentSynthesis.Cost(synthSlots);
+        if (PlayerAccount.Balance(Currency.Gold) < cost)
+        {
+            toast.Show($"골드가 부족합니다. ({UiKit.Amount(cost)} 필요)", UiToastKind.Warning);
+            return;
+        }
 
-        NeonButton start = HudFactory.CreateButton(section, "StartButton", NeonButtonStyle.Primary,
-            resolvedFont, "제작 시작 (퍼즐)", 34f, StartManual);
-        HudFactory.SetTopLeft(start.Rect, new Vector2(contentWidth, StartButtonHeight), new Vector2(0f, -y));
-        y += StartButtonHeight + Gap;
+        bool enhanced = false;
+        for (int i = 0; i < synthSlots.Count; i++) enhanced |= synthSlots[i].Level > 0;
 
-        TMP_Text hint = HudFactory.CreateText(section, "Hint", resolvedFont, 22f, BattleHudPalette.TextMuted);
-        hint.alignment = TextAlignmentOptions.TopLeft;
-        HudFactory.SetTopLeft(hint.rectTransform, new Vector2(contentWidth, HintHeight), new Vector2(0f, -y));
-        hint.text = "퍼즐을 맞추면 장비가 나옵니다. 시간 안에 못 맞추면 재료만 잃습니다.";
+        confirm.Ask("장비 합성",
+            $"장비 {EquipmentSynthesis.SlotCount}개를 재료로 사용합니다.\n재료 장비는 사라지며 되돌릴 수 없습니다." +
+            (enhanced ? "\n" + UiTheme.Paint("강화한 장비가 있습니다. 강화 단계는 이어지지 않습니다.", UiTheme.Warning) : string.Empty),
+            "합성", true, Synthesize);
     }
 
-    // ---- 결과 띠 ------------------------------------------------------------
-
-    private void BuildResultBar()
+    private void Synthesize()
     {
-        RectTransform barRect = HudFactory.CreateHudStrip(canvasRect, "ResultBar").rectTransform;
-        barRect.anchorMin = new Vector2(0.5f, 1f);
-        barRect.anchorMax = new Vector2(0.5f, 1f);
-        barRect.pivot = new Vector2(0.5f, 1f);
-        barRect.sizeDelta = new Vector2(BarWidth, BarHeight);
-        barRect.anchoredPosition = new Vector2(0f, -BarTopMargin);
-        resultBar = barRect.gameObject;
+        var used = new List<OwnedEquipment>(synthSlots);
+        synthSlots.Clear();
 
-        float textWidth = BarWidth - BarPadding * 2f - BarButtonWidth - Gap;
+        if (!EquipmentSynthesis.TrySynthesize(used, out OwnedEquipment result, out string reason))
+        {
+            synthSlots.AddRange(used);
+            TrimSlots();
+            toast.Show(reason, UiToastKind.Warning);
+            Refresh();
+            return;
+        }
 
-        resultText = HudFactory.CreateText(barRect, "Result", resolvedFont, 28f, BattleHudPalette.TextPrimary);
-        resultText.alignment = TextAlignmentOptions.Left;
-        // 이름이 긴 무기("전설의 원형 강철 방패")면 한 줄에 다 안 들어간다. 잘리느니 글자를 줄인다.
-        resultText.enableAutoSizing = true;
-        resultText.fontSizeMin = 20f;
-        resultText.fontSizeMax = 28f;
-        SetLeftMiddle(resultText.rectTransform, new Vector2(textWidth, BarHeight), BarPadding);
-
-        float confirmX = BarWidth - BarPadding - BarButtonWidth;
-        NeonButton confirm = HudFactory.CreateButton(barRect, "Confirm", NeonButtonStyle.Primary, resolvedFont, "확인", 26f, Confirm);
-        SetLeftMiddle(confirm.Rect, new Vector2(BarButtonWidth, BarButtonHeight), confirmX);
-
-        resultBar.SetActive(false);
+        Refresh();
+        resultPopup.Show("합성 완료", UiSlotContents.Equipment(result), result.DisplayName,
+            $"{UiSlotContents.StatLine(result)}\n새 장비는 장비창에 보관했습니다.");
     }
 
-    private void ShowBar(string message, Color color)
+    // 창고가 바뀌어(다른 곳에서 썼거나 세이브가 지워졌거나) 칸에 넣은 것이 더는 쓸 수 없게 되면 뺀다.
+    private void TrimSlots()
     {
-        if (resultBar == null) return;
+        for (int i = craftSlots.Count - 1; i >= 0; i--)
+            if (AvailableCount(craftSlots[i]) < 0) craftSlots.RemoveAt(i);
 
-        resultBar.SetActive(true);
-        resultText.text = message;
-        resultText.color = color;
-    }
-
-    private void HideBar()
-    {
-        if (resultBar != null) resultBar.SetActive(false);
+        for (int i = synthSlots.Count - 1; i >= 0; i--)
+            if (!EquipmentSynthesis.CanUse(synthSlots[i], out _)) synthSlots.RemoveAt(i);
     }
 
     // ---- 갱신 ---------------------------------------------------------------
 
-    private void RefreshAll()
+    private void Refresh()
     {
-        RefreshMode();
-        RefreshMaterialCells();
-        RefreshSlots();
-        RefreshRates();
+        if (craftFlow == null || synthFlow == null || resultPopup == null) return;
+
+        pageTabs.Select((int)page, false);
+        craftPage.gameObject.SetActive(page == Page.Craft);
+        synthesisPage.gameObject.SetActive(page == Page.Synthesis);
+
+        if (page == Page.Craft) RefreshCraft();
+        else RefreshSynthesis();
     }
 
-    private void SelectMode(Mode newMode)
+    private void RefreshCraft()
     {
-        mode = newMode;
-        RefreshMode();
-    }
-
-    private void RefreshMode()
-    {
-        if (autoSection != null) autoSection.gameObject.SetActive(mode == Mode.Auto);
-        if (manualSection != null) manualSection.gameObject.SetActive(mode == Mode.Manual);
-
-        for (int i = 0; i < modeTabs.Count; i++)
-            modeTabs[i].SetStyle((Mode)i == mode ? NeonButtonStyle.Primary : NeonButtonStyle.Ghost);
-    }
-
-    private void RefreshMaterialCells()
-    {
-        if (materialLabel != null) materialLabel.text = $"보유 재료 {MaterialInventory.TotalCount}개";
-
-        for (int i = 0; i < materialCells.Count; i++)
+        for (int i = 0; i < CraftRecipe.SlotCount; i++)
         {
-            MaterialCell cell = materialCells[i];
-            int available = AvailableCount(cell.Material);
-
-            // 남은 재료가 있는 칸만 네온 테두리로 띄운다. 빈 칸도 누를 수는 있다 — 누르면 왜 안 들어가는지 알려 준다.
-            cell.Button.Label.text = available > 0 ? available.ToString() : "-";
-            cell.Button.SetStyle(available > 0 ? NeonButtonStyle.Secondary : NeonButtonStyle.Muted);
-            cell.Button.SetLabelColor(available > 0 ? GradeColor(cell.Material.Grade) : BattleHudPalette.TextMuted);
-        }
-    }
-
-    private void RefreshSlots()
-    {
-        for (int i = 0; i < slotButtons.Count; i++)
-        {
-            bool filled = i < slots.Count;
-            NeonButton slot = slotButtons[i];
-            // 넣은 재료는 등급색 글자가 읽혀야 해서 밝은 판(Primary) 대신 네온 테두리로 표시한다.
-            slot.SetStyle(filled ? NeonButtonStyle.Secondary : NeonButtonStyle.Ghost);
-            slot.Label.text = filled ? slots[i].DisplayName : "빈 칸";
-            slot.SetLabelColor(filled ? GradeColor(slots[i].Grade) : BattleHudPalette.TextMuted);
+            UiSlot slot = craftFlow.Input(i);
+            if (i < craftSlots.Count)
+            {
+                slot.SetContent(UiSlotContents.Material(craftSlots[i]));
+                craftFlow.Caption(i).text = craftSlots[i].DisplayName;
+            }
+            else
+            {
+                slot.SetEmpty("재료");
+                craftFlow.Caption(i).text = UiTheme.Paint("빈 칸", UiTheme.TextMuted);
+            }
         }
 
-        bool complete = CraftRecipe.IsComplete(slots);
+        bool complete = CraftRecipe.IsComplete(craftSlots);
+        craftFlow.SetCondition($"{craftSlots.Count} / {CraftRecipe.SlotCount}", complete);
+
+        modeTabs.Select(manual ? 1 : 0, false);
+        difficultyTabs.gameObject.SetActive(manual);
+        difficultyTabs.Select(System.Array.IndexOf(Difficulties, difficulty), false);
+        rateButton.gameObject.SetActive(manual);
+
         if (!complete)
         {
-            previewText.text = $"재료를 {CraftRecipe.SlotCount - slots.Count}개 더 넣으세요.";
-            previewText.color = BattleHudPalette.TextMuted;
-            autoDescText.text = "재료 세 개를 넣으면 퍼즐 없이 바로 만듭니다.";
-            return;
+            craftFlow.SetResultPlaceholder(
+                "재료 3개를 넣으면 무엇이 나올지 보입니다.\n가장 많이 넣은 재료가 무기 계열을, 세 재료의 평균이 등급을 정합니다.");
         }
-
-        WeaponFamily family = CraftRecipe.FamilyOf(slots);
-        EquipmentGrade baseGrade = CraftRecipe.BaseGradeOf(slots);
-        string familyName = CraftRecipe.FamilyName(family);
-
-        previewText.text = $"{familyName} ({CraftRecipe.FamilyContents(family)}) · 밑변 {EquipmentGradeNames.NameOf(baseGrade)}등급";
-        previewText.color = BattleHudPalette.TextPrimary;
-        autoDescText.text = $"퍼즐 없이 바로 만듭니다. {EquipmentGradeNames.NameOf(baseGrade)}등급 {familyName}{HeroLabel.SubjectParticle(familyName)} 나옵니다.";
-    }
-
-    private void SelectDifficulty(PuzzleDifficulty difficulty)
-    {
-        selectedDifficulty = difficulty;
-        RefreshRates();
-    }
-
-    private void RefreshRates()
-    {
-        for (int i = 0; i < diffTabs.Count; i++)
-            diffTabs[i].SetStyle(Difficulties[i] == selectedDifficulty ? NeonButtonStyle.Primary : NeonButtonStyle.Ghost);
-
-        bool complete = CraftRecipe.IsComplete(slots);
-        EquipmentGrade baseGrade = CraftRecipe.BaseGradeOf(slots);
-
-        if (rateHeaderText != null)
+        else
         {
-            rateHeaderText.text = complete
-                ? $"밑변 {EquipmentGradeNames.NameOf(baseGrade)}등급에서 고른 난이도로 나올 등급별 확률"
-                : "재료를 넣으면 등급별 확률이 보입니다";
+            WeaponFamily family = CraftRecipe.FamilyOf(craftSlots);
+            EquipmentGrade baseGrade = CraftRecipe.BaseGradeOf(craftSlots);
+            EquipmentGrade topGrade = manual ? TopGrade(baseGrade) : baseGrade;
+            string stat = UiSlotContents.StatNameOf(family);
+
+            UiSlotContent preview = UiSlotContents.Preview(family, baseGrade);
+            if (manual && topGrade != baseGrade) preview.Badge = EquipmentGradeNames.NameOf(baseGrade) + "+";
+
+            string grade = manual && topGrade != baseGrade
+                ? $"{GradeText(baseGrade)} ~ {GradeText(topGrade)}등급 · 퍼즐 결과에 따라"
+                : $"{GradeText(baseGrade)}등급 · {EquipmentGradeNames.PrefixOf(baseGrade)} 장비";
+            string stats =
+                $"{CraftRecipe.FamilyContents(family)} 중 하나\n" +
+                $"예상 능력치  {stat} x{EquipmentGradeRules.PowerOf(baseGrade):0.00}" +
+                (manual && topGrade != baseGrade ? $" ~ x{EquipmentGradeRules.PowerOf(topGrade):0.00}" : string.Empty);
+            string note = manual ? "퍼즐에 실패하면 재료와 골드를 잃습니다." : null;
+
+            craftFlow.SetResult(preview, CraftRecipe.FamilyName(family), grade, stats, note);
         }
 
-        for (int i = 0; i < Grades.Length; i++)
-            ratePercentLabels[i].text = complete ? EquipmentCraftTable.PercentText(baseGrade, selectedDifficulty, Grades[i]) : "-";
+        RefreshCraftRequirements(complete);
+        RefreshMaterialList();
     }
 
-    private static Color GradeColor(EquipmentGrade grade) => EquipmentGradeNames.ColorOf(grade);
-
-    // ---- 자리 잡기 ------------------------------------------------------------
-
-    private static void SetLeftMiddle(RectTransform rect, Vector2 size, float x)
+    // 수동 제작에서 나올 수 있는 가장 높은 등급(난이도표에서 확률이 0보다 큰 가장 윗 칸).
+    private EquipmentGrade TopGrade(EquipmentGrade baseGrade)
     {
-        rect.anchorMin = new Vector2(0f, 0.5f);
-        rect.anchorMax = new Vector2(0f, 0.5f);
-        rect.pivot = new Vector2(0f, 0.5f);
-        rect.sizeDelta = size;
-        rect.anchoredPosition = new Vector2(x, 0f);
+        for (int g = Grades.Length - 1; g >= 0; g--)
+            if (EquipmentCraftTable.PercentText(baseGrade, difficulty, Grades[g]) != "0%") return Grades[g];
+        return baseGrade;
     }
+
+    private void RefreshCraftRequirements(bool complete)
+    {
+        var rows = new List<UiFlowPanel.Requirement>();
+
+        // 넣은 재료를 종류·등급별로 묶어 "보유 / 필요". 모자라면 빨강.
+        var distinct = new List<CraftMaterial>();
+        for (int i = 0; i < craftSlots.Count; i++) if (!distinct.Contains(craftSlots[i])) distinct.Add(craftSlots[i]);
+        for (int i = 0; i < distinct.Count; i++)
+        {
+            int need = 0;
+            for (int j = 0; j < craftSlots.Count; j++) if (craftSlots[j].Equals(distinct[i])) need++;
+            int have = MaterialInventory.CountOf(distinct[i]);
+            rows.Add(new UiFlowPanel.Requirement
+            {
+                Icon = UiIconLibrary.Material(distinct[i].Kind),
+                Label = distinct[i].DisplayName,
+                Have = have.ToString(),
+                Need = need.ToString(),
+                Met = have >= need,
+            });
+        }
+
+        long cost = complete ? Forge.CostOf(craftSlots) : 0;
+        long gold = PlayerAccount.Balance(Currency.Gold);
+        rows.Add(new UiFlowPanel.Requirement
+        {
+            Icon = UiIconLibrary.Currency(Currency.Gold),
+            Label = "골드",
+            Have = UiKit.Amount(gold),
+            Need = complete ? UiKit.Amount(cost) : "-",
+            Met = !complete || gold >= cost,
+        });
+        craftFlow.SetRequirements(rows);
+
+        craftFlow.Action.SetLabel(manual ? "제작 시작" : "제작");
+        if (complete) craftFlow.Action.SetCost(Currency.Gold, cost);
+        else craftFlow.Action.ClearCost();
+        craftFlow.Action.interactable = complete;
+    }
+
+    private void RefreshMaterialList()
+    {
+        visibleMaterials.Clear();
+        int filter = materialPicker.Tabs.Selected;
+        int total = 0;
+
+        // 좋은 재료부터. 같은 등급이면 강철·참나무·가죽 순.
+        for (int g = Grades.Length - 1; g >= 0; g--)
+        {
+            foreach (MaterialKind kind in MaterialNames.AllKinds)
+            {
+                var material = new CraftMaterial(kind, Grades[g]);
+                int count = MaterialInventory.CountOf(material);
+                total += count;
+                if (count <= 0) continue;
+                if (filter > 0 && (int)kind != filter - 1) continue;
+                visibleMaterials.Add(material);
+            }
+        }
+
+        materialPicker.Count.text = $"{total}개";
+        materialPicker.Grid.Show(visibleMaterials.Count, BindMaterial, "재료가 없습니다.\n층을 클리어하면 재료를 얻습니다.");
+    }
+
+    private void BindMaterial(UiTile tile, int index)
+    {
+        CraftMaterial material = visibleMaterials[index];
+        tile.Payload = material;
+
+        int available = AvailableCount(material);
+        int used = MaterialInventory.CountOf(material) - available;
+        tile.Slot.SetContent(UiSlotContents.Material(material, available));
+        tile.Slot.SetSelected(used > 0);
+        tile.Slot.SetDimmed(available <= 0, "모두 넣음");
+        tile.SetText(material.DisplayName, used > 0 ? $"넣음 {used} · 남음 {available}" : $"보유 {available}");
+    }
+
+    private void RefreshSynthesis()
+    {
+        for (int i = 0; i < EquipmentSynthesis.SlotCount; i++)
+        {
+            UiSlot slot = synthFlow.Input(i);
+            if (i < synthSlots.Count)
+            {
+                slot.SetContent(UiSlotContents.Equipment(synthSlots[i]));
+                synthFlow.Caption(i).text = synthSlots[i].DisplayName;
+            }
+            else
+            {
+                slot.SetEmpty("장비");
+                synthFlow.Caption(i).text = UiTheme.Paint("빈 칸", UiTheme.TextMuted);
+            }
+        }
+
+        bool complete = EquipmentSynthesis.IsComplete(synthSlots);
+        synthFlow.SetCondition($"장비 {synthSlots.Count} / {EquipmentSynthesis.SlotCount}", complete);
+
+        if (synthSlots.Count == 0)
+        {
+            synthFlow.SetResultPlaceholder(
+                "장비 3개를 넣으면 결과가 보입니다.\n결과 등급은 세 장비의 평균 등급보다 한 단계 높습니다. 장착 중인 장비는 넣을 수 없습니다.");
+        }
+        else
+        {
+            WeaponFamily family = EquipmentSynthesis.ResultFamily(synthSlots);
+            EquipmentGrade average = EquipmentSynthesis.AverageGrade(synthSlots);
+            EquipmentGrade result = EquipmentSynthesis.ResultGrade(synthSlots);
+            bool ok = EquipmentSynthesis.CanSynthesize(synthSlots, out string reason);
+
+            UiSlotContent preview = UiSlotContents.Preview(family, result);
+            string name = complete ? $"{EquipmentGradeNames.PrefixOf(result)} {CraftRecipe.FamilyName(family)}" : "합성 결과 미리보기";
+            string grade = $"평균 {GradeText(average)} → {GradeText(result)}등급" + (complete ? string.Empty : " (재료를 더 넣으면 바뀝니다)");
+            string stats =
+                $"{CraftRecipe.FamilyContents(family)} 중 하나\n" +
+                $"예상 능력치  {UiSlotContents.StatNameOf(family)} x{EquipmentGradeRules.PowerOf(result):0.00}";
+            string note = !complete ? $"장비를 {EquipmentSynthesis.SlotCount - synthSlots.Count}개 더 넣으세요."
+                : !ok ? reason
+                : "강화 단계는 이어지지 않습니다(결과는 +0).";
+
+            synthFlow.SetResult(preview, name, grade, stats, note, complete && !ok ? UiTheme.Danger : UiTheme.Warning);
+        }
+
+        long cost = complete ? EquipmentSynthesis.Cost(synthSlots) : 0;
+        long gold = PlayerAccount.Balance(Currency.Gold);
+        synthFlow.SetRequirements(new List<UiFlowPanel.Requirement>
+        {
+            new UiFlowPanel.Requirement
+            {
+                Label = "재료 장비 (장착하지 않은 것)",
+                Have = synthSlots.Count.ToString(),
+                Need = EquipmentSynthesis.SlotCount.ToString(),
+                Met = complete,
+            },
+            new UiFlowPanel.Requirement
+            {
+                Icon = UiIconLibrary.Currency(Currency.Gold),
+                Label = "골드",
+                Have = UiKit.Amount(gold),
+                Need = complete ? UiKit.Amount(cost) : "-",
+                Met = !complete || gold >= cost,
+            },
+        });
+
+        if (complete) synthFlow.Action.SetCost(Currency.Gold, cost);
+        else synthFlow.Action.ClearCost();
+        synthFlow.Action.interactable = complete && EquipmentSynthesis.CanSynthesize(synthSlots, out _);
+
+        RefreshEquipmentList();
+    }
+
+    private void RefreshEquipmentList()
+    {
+        visibleEquipment.Clear();
+        int filter = equipmentPicker.Tabs.Selected;
+        IReadOnlyList<OwnedEquipment> items = EquipmentInventory.Items;
+        for (int i = 0; i < items.Count; i++)
+        {
+            OwnedEquipment item = items[i];
+            if (filter == 1 && item.Slot != EquipSlot.MainHand) continue;
+            if (filter == 2 && item.Slot != EquipSlot.OffHand) continue;
+            visibleEquipment.Add(item);
+        }
+        // 넣을 수 있는 것(보관 중)을 앞에, 그 안에서는 낮은 등급부터 — 합성은 보통 낮은 장비를 올리는 데 쓴다.
+        visibleEquipment.Sort((a, b) =>
+        {
+            int byEquipped = a.IsEquipped.CompareTo(b.IsEquipped);
+            if (byEquipped != 0) return byEquipped;
+            int byGrade = ((int)a.Grade).CompareTo((int)b.Grade);
+            return byGrade != 0 ? byGrade : a.Level.CompareTo(b.Level);
+        });
+
+        equipmentPicker.Count.text = $"{items.Count}개";
+        equipmentPicker.Grid.Show(visibleEquipment.Count, BindEquipment,
+            items.Count == 0 ? "장비가 없습니다.\n[장비 제작] 탭에서 먼저 만들어 주세요." : "이 분류에 해당하는 장비가 없습니다.");
+    }
+
+    private void BindEquipment(UiTile tile, int index)
+    {
+        OwnedEquipment item = visibleEquipment[index];
+        tile.Payload = item;
+
+        UiSlotContent content = UiSlotContents.Equipment(item);
+        UiSlotContents.ApplyOwnerTag(ref content, item, null);
+        tile.Slot.SetContent(content);
+        tile.Slot.SetSelected(synthSlots.Contains(item));
+        tile.Slot.SetDimmed(item.IsEquipped, "장착 중");
+        tile.SetText(item.DisplayName, UiSlotContents.StatLine(item), UiTheme.GradeColor(item.Grade));
+    }
+
+    private static string GradeText(EquipmentGrade grade) =>
+        UiTheme.Paint(EquipmentGradeNames.NameOf(grade), UiTheme.GradeColor(grade));
 }

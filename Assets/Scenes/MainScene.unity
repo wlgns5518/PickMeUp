@@ -2033,9 +2033,8 @@ MonoBehaviour:
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   floorsPerPage: 10
   pageColumns: 5
-  panelPadding: {x: 30, y: 26}
   openOnStart: 0
-  bannerWidth: 900
+  deckBuild: {fileID: 0}
 --- !u!4 &247532115
 Transform:
   m_ObjectHideFlags: 0
@@ -2260,6 +2259,53 @@ MonoBehaviour:
   m_biomeWasSpawned: 0
   m_highlightLoadingSettings: 0
   m_highlightLoadingSettingsStartedTimeStamp: 0
+--- !u!1 &303207653
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 303207654}
+  - component: {fileID: 303207655}
+  m_Layer: 0
+  m_Name: TopBarHud
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &303207654
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 303207653}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 953605073}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &303207655
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 303207653}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: adc1d65607da6ba41b9a7d8420c764cb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PickMeUp::TopBarHud
+  koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
+  mailIcon: {fileID: 21300000, guid: 25bb9c947af53ec41bd2232f14f145f6, type: 3}
+  settingsIcon: {fileID: 21300000, guid: 9fabc69c2d973bc4281cd46c92c9fa93, type: 3}
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -8717,14 +8763,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SynthesisUI
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   roster: {fileID: 11400000, guid: 0d619bff89015f24f9a394e847a2bc66, type: 2}
-  cardPrefab: {fileID: -5443837647192553864, guid: e426b271cba2d234b97760ca6340515e,
-    type: 3}
   openOnStart: 0
-  bannerWidth: 900
-  screenMargin: 40
-  cardSpacing: 14
-  maxSlotCardScale: 1
-  maxRosterCardScale: 0.5
 --- !u!4 &448008418
 Transform:
   m_ObjectHideFlags: 0
@@ -14694,9 +14733,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SummonUI
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   cardSpawner: {fileID: 156220772}
-  panelPadding: {x: 36, y: 30}
   openOnStart: 0
-  bannerWidth: 900
 --- !u!4 &842084882
 Transform:
   m_ObjectHideFlags: 0
@@ -15376,7 +15413,6 @@ MonoBehaviour:
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   forge: {fileID: 2068288107}
   openOnStart: 0
-  bannerWidth: 900
 --- !u!114 &883443450
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -15576,6 +15612,7 @@ Transform:
   m_Children:
   - {fileID: 1285276562}
   - {fileID: 1152705545}
+  - {fileID: 303207654}
   - {fileID: 247532115}
   - {fileID: 1912286316}
   - {fileID: 842084882}
@@ -44002,7 +44039,6 @@ MonoBehaviour:
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   roster: {fileID: 11400000, guid: 0d619bff89015f24f9a394e847a2bc66, type: 2}
   openOnStart: 0
-  bannerWidth: 900
 --- !u!1 &1874621891
 GameObject:
   m_ObjectHideFlags: 0
@@ -46196,13 +46232,7 @@ MonoBehaviour:
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   roster: {fileID: 11400000, guid: 0d619bff89015f24f9a394e847a2bc66, type: 2}
   deckCapacity: 5
-  cardPrefab: {fileID: -5443837647192553864, guid: e426b271cba2d234b97760ca6340515e,
-    type: 3}
-  maxCardScale: 0.55
-  showOpenButton: 0
   floorSelect: {fileID: 247532114}
-  screenMargin: 30
-  cardSpacing: 14
 --- !u!4 &1912286316
 Transform:
   m_ObjectHideFlags: 0

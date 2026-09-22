@@ -96,7 +96,7 @@ public class MeshyCharacterGenerator : MonoBehaviour
         // 식별자는 무엇보다 먼저 박는다. 아래에서 에셋으로 저장할 때 이 값이 같이 실려야
         // 그 id로 굽는 몸(CharacterModelStore)과 세이브 기록이 에디터를 다시 켜도 이어진다.
         so.EnsureId();
-        // 등급은 소환 확률표가 정한다. 넘겨받은 값이 없으면 유료 소환과 같은 확률로 굴린다.
+        // 등급은 소환 확률표가 정한다. 넘겨받은 값이 없으면 고급 소환과 같은 확률로 굴린다.
         so.starCount = forcedStars > 0 ? Mathf.Clamp(forcedStars, 1, 7) : SummonTable.RollStars(SummonKind.Paid);
         so.level = 1; so.exp = 0; so.expToNext = 10;
         so.job = JobPool[jIdx];

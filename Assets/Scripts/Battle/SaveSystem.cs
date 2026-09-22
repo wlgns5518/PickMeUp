@@ -9,7 +9,8 @@ using UnityEngine;
 // PartyRoster의 사망 기록은 런타임 컬렉션뿐이라 플레이를 멈추면 사라졌고,
 // 결과적으로 "영구"라는 말이 실제로는 성립하지 않았다.
 //
-// 로스터 상태와 층 해금 상태, 무기창고(제작한 장비와 누가 무엇을 들었는지), 모아 둔 제작 재료를 함께 남긴다.
+// 로스터 상태와 층 해금 상태, 무기창고(제작한 장비와 누가 무엇을 들었는지), 모아 둔 제작 재료,
+// 플레이어 이름과 재화를 함께 남긴다.
 // 캐릭터 식별은 에셋 이름(CharacterSO.name)을 쓴다. GUID는 에디터 전용이라 빌드에서 못 쓴다.
 public static class SaveSystem
 {
@@ -23,6 +24,8 @@ public static class SaveSystem
         public EquipmentGrade grade;
         // 비어 있으면 창고에 보관 중이다.
         public string owner;
+        // 강화 단계. 이 칸이 없던 세이브는 +0으로 읽힌다.
+        public int level;
     }
 
     // 제작 재료 한 칸. 종류와 등급이 같은 재료는 개수로 쌓인다.
@@ -32,6 +35,17 @@ public static class SaveSystem
         public MaterialKind kind;
         public EquipmentGrade grade;
         public int count;
+    }
+
+    // 플레이어 본인의 것. 이름이 비어 있으면 기본 이름(PlayerAccount.DefaultName)을 쓴다.
+    [Serializable]
+    private class AccountRecord
+    {
+        public string name;
+        public long gold;
+        public long gems;
+        // 시작 젬(GameEconomy.StarterGems)을 이미 받았는지. 이 칸이 없던 세이브는 아직 안 받은 것으로 읽혀 한 번 받는다.
+        public bool starterGranted;
     }
 
     [Serializable]
@@ -69,6 +83,8 @@ public static class SaveSystem
         public List<EquipmentRecord> equipment = new List<EquipmentRecord>();
         // 마찬가지로, 없으면 재료 하나 없이 시작한다.
         public List<MaterialRecord> materials = new List<MaterialRecord>();
+        // 없던 시절의 세이브는 기본 이름에 재화 0으로 읽힌다.
+        public AccountRecord account = new AccountRecord();
     }
 
     public static string SavePath => Path.Combine(Application.persistentDataPath, FileName);
@@ -121,6 +137,7 @@ public static class SaveSystem
         // 열지 않은 전투 씬에서 저장해도 방금 덮어쓸 파일에 있던 장비와 재료가 그대로 실린다.
         WriteEquipment(data);
         WriteMaterials(data);
+        WriteAccount(data);
         Write(data);
     }
 
@@ -130,6 +147,9 @@ public static class SaveSystem
 
     // 재료만 저장한다. 이유는 SaveEquipment와 같다.
     public static void SaveMaterials() => Patch(WriteMaterials);
+
+    // 이름과 재화만 저장한다. 이유는 SaveEquipment와 같다.
+    public static void SaveAccount() => Patch(WriteAccount);
 
     // 파일에 이미 있는 것은 그대로 두고 한 칸만 갈아 끼운다.
     private static void Patch(Action<SaveData> write)
@@ -185,6 +205,22 @@ public static class SaveSystem
         }
     }
 
+    // PlayerAccount가 처음 쓰일 때 스스로 부른다. 세이브가 없거나 깨졌으면 기본 이름에 재화 0으로 시작한다.
+    public static void LoadAccount()
+    {
+        SaveData data;
+        AccountRecord record = HasSave && TryRead(out data) ? data.account : null;
+        if (record == null) record = new AccountRecord();
+
+        PlayerAccount.Restore(record.name, record.gold, record.gems, record.starterGranted);
+    }
+
+    private static void WriteAccount(SaveData data)
+    {
+        PlayerAccount.Snapshot(out string name, out long gold, out long gems, out bool starterGranted);
+        data.account = new AccountRecord { name = name, gold = gold, gems = gems, starterGranted = starterGranted };
+    }
+
     // EquipmentInventory가 처음 쓰일 때 스스로 부른다. 세이브가 없거나 깨졌으면 빈 창고로 시작한다.
     public static void LoadEquipment()
     {
@@ -205,7 +241,7 @@ public static class SaveSystem
                     continue;
                 }
 
-                restored.Add(new OwnedEquipment(weapon, record.grade, record.owner));
+                restored.Add(new OwnedEquipment(weapon, record.grade, record.owner, record.level));
             }
         }
 
@@ -227,6 +263,7 @@ public static class SaveSystem
                 weapon = item.Weapon.name,
                 grade = item.Grade,
                 owner = item.OwnerId,
+                level = item.Level,
             });
         }
     }
@@ -302,6 +339,7 @@ public static class SaveSystem
             // 창고와 재료는 파일에서 스스로 읽어 온 값을 들고 있다. 파일이 사라졌는데 그대로 두면 다음 저장이 되살려 놓는다.
             EquipmentInventory.Forget();
             MaterialInventory.Forget();
+            PlayerAccount.Forget();
         }
         catch (Exception e)
         {

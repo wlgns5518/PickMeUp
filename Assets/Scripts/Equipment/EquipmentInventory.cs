@@ -64,6 +64,49 @@ public static class EquipmentInventory
         return item;
     }
 
+    public static bool Contains(OwnedEquipment item)
+    {
+        if (item == null) return false;
+        EnsureLoaded();
+        return items.Contains(item);
+    }
+
+    // 창고에서 영영 뺀다(강화 중 파괴). 들고 있던 영웅은 기본 장비로 돌아간다 — 주인은 장비 쪽에만 적혀 있어
+    // 장비가 사라지면 따로 풀어 줄 것이 없다.
+    public static void Remove(OwnedEquipment item)
+    {
+        if (item == null) return;
+        EnsureLoaded();
+
+        if (items.Remove(item)) Commit();
+    }
+
+    // 재료 장비를 빼고 결과 장비 한 점을 넣는다(장비 합성). 저장과 알림을 한 번만 하려고 한 번에 한다 —
+    // 따로 하면 창고 창이 "재료만 사라진" 중간 상태를 한 번 그린다.
+    internal static OwnedEquipment ReplaceWith(IReadOnlyList<OwnedEquipment> consumed,
+        WeaponDefinition weapon, EquipmentGrade grade)
+    {
+        if (weapon == null) return null;
+        EnsureLoaded();
+
+        for (int i = 0; i < consumed.Count; i++) items.Remove(consumed[i]);
+
+        var item = new OwnedEquipment(weapon, grade);
+        items.Add(item);
+        Commit();
+        return item;
+    }
+
+    // 강화 단계를 바꾼다. 확률과 비용은 EquipmentEnhancement가 따진다.
+    internal static void SetLevel(OwnedEquipment item, int level)
+    {
+        if (item == null) return;
+        EnsureLoaded();
+
+        item.Level = EquipmentEnhancement.ClampLevel(level);
+        Commit();
+    }
+
     // ---- 장착 ------------------------------------------------------------
 
     public static OwnedEquipment EquippedIn(CharacterSO character, EquipSlot slot)

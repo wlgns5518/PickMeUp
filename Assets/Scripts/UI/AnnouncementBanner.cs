@@ -6,13 +6,13 @@ using UnityEngine.UI;
 
 // 화면 정중앙에 잠깐 떠올랐다 사라지는 알림 배너.
 //
-// 파티 편성 안내와 동료의 부고가 같은 장식 배너를 쓴다. 둘 다 "잠깐 읽고 넘기는 말"이라
-// 창처럼 자리를 차지하고 있을 이유가 없다. 그래서 눌러서 바로 넘기거나, 두면 알아서 사라진다.
+// 전투 중 동료의 부고 같은 "잠깐 읽고 넘기는 말"을 띄운다. 창처럼 자리를 차지하고 있을 이유가 없어서
+// 눌러서 바로 넘기거나, 두면 알아서 사라진다. (마을 화면의 짧은 알림은 디자인 시스템의 UiToast가 맡는다.)
 //
 // 모양은 킷의 장식 메시지 박스(msgbox_*)다. 한 줄짜리 경고와 다섯 줄짜리 합류 알림이 같은 배너를 쓰므로
 // 그림 비율에 글자를 끼워 맞추지 않고, 띄울 때마다 글자 크기에 맞춰 박스를 늘린다(README의 OrnateMessageBox와 같은 계산).
 //
-// BattleResultPanel과 같이 화면 주인(BattleHud, DeckBuildUI)이 만들어 들고 있는 평범한 클래스다.
+// BattleResultPanel과 같이 화면 주인(BattleHud)이 만들어 들고 있는 평범한 클래스다.
 // 시간은 배너 루트에 붙은 AnnouncementBannerTicker가 굴린다. 루트는 떠 있는 동안에만 켜져 있으므로
 // 배너가 꺼져 있는 대부분의 시간에는 아무것도 돌지 않는다.
 public class AnnouncementBanner
@@ -87,8 +87,6 @@ public class AnnouncementBanner
         return new AnnouncementBanner(parent, font, starSprites, maxWidth, holdSeconds);
     }
 
-    public bool IsVisible => phase != Phase.Idle;
-
     // 같은 순간에 여럿이 들어와도 한 줄씩 차례로 보여준다. 겹쳐 띄우면 아무것도 읽히지 않는다.
     public void Show(string message)
     {
@@ -155,16 +153,6 @@ public class AnnouncementBanner
                 }
                 break;
         }
-    }
-
-    // 화면을 떠날 때. 남은 줄까지 통째로 버린다.
-    public void Clear()
-    {
-        pending.Clear();
-        phase = Phase.Idle;
-        timer = 0f;
-        group.alpha = 0f;
-        root.gameObject.SetActive(false);
     }
 
     // "몰몬트(★★)가 여신의 품으로 돌아갔습니다."

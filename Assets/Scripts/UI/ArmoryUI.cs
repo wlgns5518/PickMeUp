@@ -1,29 +1,26 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 
-// 마을 무기창고에서 여는 창.
+// 장비창 — 영웅의 장비를 장착하고, 비교하고, 강화한다.
 //
-// 왼쪽에서 영웅을 고르고, 오른쪽 창고 목록에서 장비를 누르면 그 영웅이 든다. 가운데는 고른 영웅이
-// 지금 두 손에 무엇을 들었는지 보여 주고, 들린 제작 장비를 창고로 되돌리는 해제 버튼이 있다.
+//   ┌ 영웅 ──┐ ┌ 선택한 영웅 ─────────────────┐ ┌ 보유 장비 ─────────── 12개 ┐
+//   │ [칸][칸]│ │ [초상화]  이름 ★5 Lv.12       │ │ [ 전체 | 무기 | 방어구 ]    │
+//   │ [칸][칸]│ │           공격 x1.40 방어 x1.00│ │ [칸][칸][칸][칸]            │
+//   │         │ │ [무기] [방어구] [기타(잠김)]  │ │                             │
 //
-// 창고에 드는 것은 장비제작소가 만든 실물(EquipmentInventory)뿐이다. 캐릭터 에셋에 적힌 무기는
-// "기본 장비"라 창고에 없고, 제작 장비를 해제하면 영웅은 다시 그것을 든다(CharacterLoadout).
-// 다른 영웅이 든 장비를 누르면 그 손에서 가져온다 — 한 점은 한 사람 손에만 걸린다.
-// 이미 고른 영웅이 든 장비를 다시 누르면 창고로 돌아간다.
+// 흐름은 장착 → 비교 → 강화다. 목록에서 장비를 누르면 상세 팝업이 뜨고, 같은 자리에 지금 든 것과 나란히
+// 비교해 보여 준다. 거기서 장착하거나, 강화 팝업으로 넘어간다. 상세 정보는 전부 팝업이다 — 메인 화면에는
+// 영웅과 칸과 목록만 둔다.
 //
-// 쓰러진 영웅에게는 새로 들리지 못한다. 대신 들고 있던 것을 내려놓거나 다른 영웅이 가져가는 것은
-// 막지 않는다 — 막으면 그 칼은 다시는 꺼낼 수 없다.
+// 창고에 드는 것은 장비제작소가 만든 실물(EquipmentInventory)뿐이다. 캐릭터 에셋에 적힌 무기는 "기본 장비"라
+// 창고에 없고, 제작 장비를 해제하면 영웅은 다시 그것을 든다(CharacterLoadout). 다른 영웅이 든 장비를 장착하면
+// 그 손에서 가져온다 — 한 점은 한 사람 손에만 걸린다. 쓰러진 영웅은 새로 들지 못한다.
 //
-// 직업은 어디에도 적지 않는다. 플레이어는 초상화만 보고 누가 무엇을 하는 영웅인지 짐작한다.
-// 에셋에 적힌 기본 장비의 이름도 같은 이유로 가린다 — "맨손 시전"이나 "훈련용 활"이라고 적는 순간
-// 직업을 적은 것과 다름없다. 이름이 보이는 것은 플레이어가 직접 골라 들린 제작 장비뿐이다.
-// 마법사가 장비를 거절하는 것처럼 행동으로 드러나는 것은 막지 않는다 — 그건 짐작의 단서다.
-//
-// 다른 시설 창과 같이 캔버스부터 코드에서 만든다.
+// 직업과 기본 장비의 이름은 어디에도 적지 않는다(hidden-job-design). 기본 장비는 "기본 장비"로만 보인다.
+// 칸 이름도 손 이름이 아니라 무기 / 방어구 / 기타 장비다(방어구 칸 = 방패, 기타 장비는 아직 없는 기능이라 잠김).
 [DisallowMultipleComponent]
-public class ArmoryUI : FacilityWindow
+public class ArmoryUI : UiScreen
 {
     [Header("Roster")]
     [Tooltip("시작 명단. 실제 보유 목록은 런타임(OwnedRoster)이 들고, 이건 씬에 부트스트랩이 없을 때의 대비책이다.")]
@@ -33,113 +30,65 @@ public class ArmoryUI : FacilityWindow
     [Tooltip("무기창고를 누르지 않아도 처음부터 열려 있게 하려면 켠다.")]
     [SerializeField] private bool openOnStart;
 
-    [Header("Warning Banner")]
-    [Tooltip("경고 배너가 넘지 않을 가로 길이. 모양은 킷의 장식 메시지 박스다.")]
-    [SerializeField] private float bannerWidth = 900f;
+    private const float HeroColumnWidth = 300f;
+    private const float CenterWidth = 720f;
+    private const float PortraitSize = 280f;
+    private const float EquipSlotSize = 168f;
 
-    private enum Filter { All, MainHand, OffHand }
+    private static readonly string[] EquipmentTabs = { "전체", "무기", "방어구" };
 
-    private const float PanelWidth = 1560f;
-    private const float PanelHeight = 900f;
-    private static readonly Vector2 PanelPadding = new Vector2(36f, 30f);
-    private const float TitleHeight = 60f;
-    private const float TitleGap = 22f;
-    private const float Gap = 14f;
-    private const float ColumnGap = 28f;
-    private const float LabelHeight = 34f;
-    private const float RowGap = 8f;
-    private const float RowInset = 16f;
+    // ---- 메인 화면 ----
+    private UiPickerPanel heroPicker;
+    private UiPickerPanel itemPicker;
+    private UiSlot portrait;
+    private TMP_Text heroName;
+    private TMP_Text heroInfo;
+    private TMP_Text heroPower;
+    private UiSlot weaponSlot;
+    private UiSlot armorSlot;
+    private UiSlot accessorySlot;
+    private TMP_Text weaponName;
+    private TMP_Text armorName;
 
-    private const float HeroColumnWidth = 380f;
-    private const float HeroRowHeight = 72f;
+    // ---- 상세·비교 팝업 ----
+    private UiPopup detailPopup;
+    private CompareCard currentCard;
+    private CompareCard selectedCard;
+    private TMP_Text compareArrow;
+    private TMP_Text compareDelta;
+    private UiButton equipButton;
+    private UiButton enhanceFromDetailButton;
 
-    private const float DetailColumnWidth = 500f;
-    private const float PortraitSize = 150f;
-    private const float SlotBoxHeight = 150f;
-    private const float UnequipWidth = 110f;
-    private const float UnequipHeight = 52f;
-    private const float StatusHeight = 70f;
-    private const float HintHeight = 90f;
+    // ---- 강화 팝업 ----
+    private UiPopup enhancePopup;
+    private UiSlot enhanceBefore;
+    private UiSlot enhanceAfter;
+    private TMP_Text enhanceBeforeText;
+    private TMP_Text enhanceAfterText;
+    private TMP_Text enhanceChances;
+    private TMP_Text enhanceGold;
+    private UiButton enhanceButton;
 
-    private const float FilterTabHeight = 52f;
-    private const float ItemRowHeight = 68f;
-    private const float GradeBadgeSize = 48f;
-    private const float ItemStatusWidth = 160f;
-
-    // 말줄임을 건 글자 칸이 최소한 가져야 할 높이(글자 크기 배수). RowText 주석 참조.
-    private const float LineHeightRatio = 1.6f;
-
-    private static readonly string[] FilterLabels = { "전체", "주무기", "방패" };
-
-    // 목록의 줄은 지우지 않고 다시 쓴다(RebuildHeroRows / RebuildItemRows).
-    //
-    // 이 창은 영웅을 고르거나 장비를 한 번 누를 때마다 목록을 통째로 다시 그린다. 예전에는 그때마다
-    // 줄을 전부 지우고 새로 만들어서, 영웅 여덟에 장비 열여섯이면 클릭 한 번에 버튼·배지·글자 칸 백여 개가
-    // 생겼다 사라졌다. 이제 줄의 뼈대(버튼과 글자 칸)는 한 번만 만들고, 다시 그릴 때는 내용·색·자리만
-    // 새로 칠한다. 남는 줄은 꺼 둔다. 누르면 무엇을 할지도 줄이 지금 들고 있는 값을 보고 정한다.
-    private class HeroRow
-    {
-        public CharacterSO Character;
-        public NeonButton Button;
-        public TMP_Text Name;
-        public TMP_Text Weapon;
-        public TMP_Text Info;
-    }
-
-    private class ItemRow
-    {
-        public OwnedEquipment Item;
-        public NeonButton Button;
-        public TMP_Text Grade;
-        public TMP_Text Name;
-        public TMP_Text Type;
-        public TMP_Text Status;
-    }
-
-    // 가운데 칸의 손 하나.
-    private class SlotView
-    {
-        public EquipSlot Slot;
-        public TMP_Text Name;
-        public TMP_Text Info;
-        public GameObject UnequipButton;
-    }
-
-    private AnnouncementBanner warningBanner;
-
-    private RectTransform panelRect;
-    private RectTransform heroContent;
-    private RectTransform itemContent;
-    private float itemListWidth;
-
-    // 만들어 둔 줄 전부. 앞에서부터 heroRowCount / itemRowCount개가 지금 쓰이는 줄이다.
-    private readonly List<HeroRow> heroRows = new List<HeroRow>();
-    private readonly List<ItemRow> itemRows = new List<ItemRow>();
-    private int heroRowCount;
-    private int itemRowCount;
-
-    // 목록이 비었을 때 띄우는 문구. 줄과 마찬가지로 하나를 만들어 두고 껐다 켠다.
-    private TMP_Text heroEmptyText;
-    private TMP_Text itemEmptyText;
-
-    private readonly List<NeonButton> filterTabs = new List<NeonButton>();
-    private readonly List<OwnedEquipment> visibleItems = new List<OwnedEquipment>();
-
-    private Image portraitImage;
-    private TMP_Text portraitInitial;
-    private TMP_Text heroNameText;
-    private TMP_Text heroInfoText;
-    private SlotView mainSlot;
-    private SlotView offSlot;
-    private TMP_Text statusText;
-    private TMP_Text inventoryLabel;
+    private readonly List<CharacterSO> heroes = new List<CharacterSO>();
+    private readonly List<OwnedEquipment> items = new List<OwnedEquipment>();
 
     private CharacterSO selectedHero;
-    private Filter filter = Filter.All;
+    private OwnedEquipment detailItem;
+
+    private class CompareCard
+    {
+        public RectTransform Root;
+        public TMP_Text Title;
+        public UiSlot Slot;
+        public TMP_Text Name;
+        public TMP_Text Lines;
+    }
 
     protected override string CanvasName => "ArmoryCanvas";
     // 장비제작소(98) 다음.
     protected override int SortingOrder => 99;
+    protected override string Title => "장비창";
+    protected override string Subtitle => "영웅에게 장비를 장착하고, 지금 든 장비와 비교하고, 강화합니다.";
 
     private void Awake()
     {
@@ -154,724 +103,630 @@ public class ArmoryUI : FacilityWindow
     {
         OwnedRoster.Changed += HandleDataChanged;
         EquipmentInventory.Changed += HandleDataChanged;
+        PlayerAccount.Changed += HandleDataChanged;
     }
 
     private void OnDisable()
     {
         OwnedRoster.Changed -= HandleDataChanged;
         EquipmentInventory.Changed -= HandleDataChanged;
+        PlayerAccount.Changed -= HandleDataChanged;
     }
 
     public override void Show()
     {
         EnsureBuilt();
-        SetStatus(string.Empty, BattleHudPalette.TextMuted);
-        RefreshAll();
+        Refresh();
         SetOpen(true);
     }
 
     public override void Hide()
     {
+        if (enhancePopup != null) enhancePopup.Hide();
+        if (detailPopup != null) detailPopup.Hide();
         SetOpen(false);
     }
 
     // 닫혀 있는 동안에는 다시 그리지 않는다. 열 때 Show가 통째로 새로 그린다.
     private void HandleDataChanged()
     {
-        if (IsOpen) RefreshAll();
+        if (!IsOpen) return;
+
+        // 강화 중 파괴되거나 합성으로 사라진 장비의 팝업은 닫는다.
+        if (detailItem != null && !EquipmentInventory.Contains(detailItem))
+        {
+            detailItem = null;
+            enhancePopup.Hide();
+            detailPopup.Hide();
+        }
+        Refresh();
     }
 
-    // ---- 고르기와 장착 ------------------------------------------------------
+    // ---- 짓기 ---------------------------------------------------------------
 
-    private void SelectHero(CharacterSO hero)
+    protected override void BuildContent(RectTransform root, Vector2 size)
     {
-        selectedHero = hero;
-        SetStatus(string.Empty, BattleHudPalette.TextMuted);
-        RefreshHeroHighlight();
-        RebuildItemRows();
-        RefreshDetail();
+        heroPicker = UiPickerPanel.Create(root, "Heroes", HeroColumnWidth, "영웅", null, UiTheme.SlotSmall);
+        UiKit.Column(heroPicker.Rect, 0f, HeroColumnWidth);
+        heroPicker.Grid.TileClicked += tile => SelectHero(tile.Payload as CharacterSO);
+
+        float centerX = HeroColumnWidth + UiTheme.ColumnGap;
+        BuildCenter(root, centerX);
+
+        float itemX = centerX + CenterWidth + UiTheme.ColumnGap;
+        itemPicker = UiPickerPanel.Create(root, "Items", size.x - itemX, "보유 장비", EquipmentTabs, UiTheme.SlotSmall + 16f);
+        UiKit.Fill(itemPicker.Rect, itemX, 0f, 0f, 0f);
+        itemPicker.Tabs.Changed += _ => RefreshItems();
+        itemPicker.Grid.TileClicked += tile => OpenDetail(tile.Payload as OwnedEquipment);
     }
 
-    private void SelectFilter(Filter newFilter)
+    private void BuildCenter(RectTransform root, float x)
     {
-        filter = newFilter;
-        RefreshFilterTabs();
-        RebuildItemRows();
+        UiKit.Surface panel = UiKit.Panel(root, "Hero", UiTheme.Surface, UiTheme.RadiusL, UiTheme.Border);
+        UiKit.Column(panel.Rect, x, CenterWidth);
+        float pad = UiTheme.Space5;
+
+        TMP_Text title = UiKit.SectionTitle(panel.Rect, "Title", "선택한 영웅");
+        UiKit.TopStretch(title.rectTransform, 0f, 64f, pad, pad);
+
+        portrait = UiSlot.Create(panel.Rect, "Portrait", PortraitSize);
+        UiKit.TopLeft(portrait.Rect, pad + 8f, 64f, PortraitSize, PortraitSize);
+        portrait.SetInteractable(false);
+
+        float textX = pad + 8f + PortraitSize + pad;
+        float textWidth = CenterWidth - textX - pad;
+        heroName = UiKit.Ellipsis(UiKit.Text(panel.Rect, "Name", string.Empty, UiTheme.FontDisplay, UiTheme.TextPrimary));
+        UiKit.TopLeft(heroName.rectTransform, textX, 70f, textWidth, 70f);
+        heroInfo = UiKit.Wrap(UiKit.Text(panel.Rect, "Info", string.Empty, UiTheme.FontBody, UiTheme.TextSecondary));
+        heroInfo.alignment = TextAlignmentOptions.TopLeft;
+        UiKit.TopLeft(heroInfo.rectTransform, textX, 144f, textWidth, 70f);
+
+        // 장비가 전투에 곱하는 값의 합계. 무엇을 바꾸면 무엇이 달라지는지 한눈에.
+        UiKit.Surface power = UiKit.Panel(panel.Rect, "Power", UiTheme.SurfaceSunken, UiTheme.RadiusM);
+        UiKit.TopLeft(power.Rect, textX, 224f, textWidth, 116f);
+        heroPower = UiKit.Wrap(UiKit.Text(power.Rect, "Text", string.Empty, UiTheme.FontBody, UiTheme.TextPrimary));
+        heroPower.lineSpacing = 8f;
+        UiKit.Fill(heroPower.rectTransform, UiTheme.Space4, UiTheme.Space3, UiTheme.Space4, UiTheme.Space3);
+
+        // 장비 칸 셋.
+        float slotsTop = 64f + PortraitSize + UiTheme.Space6;
+        TMP_Text slotsTitle = UiKit.SectionTitle(panel.Rect, "SlotsTitle", "장비");
+        UiKit.TopStretch(slotsTitle.rectTransform, slotsTop, 48f, pad, pad);
+
+        float rowTop = slotsTop + 56f;
+        float spacing = (CenterWidth - pad * 2f - EquipSlotSize * 3f) / 2f;
+        weaponSlot = BuildEquipSlot(panel.Rect, "Weapon", "무기", pad, rowTop, out weaponName);
+        armorSlot = BuildEquipSlot(panel.Rect, "Armor", "방어구", pad + EquipSlotSize + spacing, rowTop, out armorName);
+        accessorySlot = BuildEquipSlot(panel.Rect, "Accessory", "기타 장비", pad + (EquipSlotSize + spacing) * 2f, rowTop, out TMP_Text accessoryName);
+        accessoryName.text = UiTheme.Paint("준비 중", UiTheme.TextMuted);
+
+        weaponSlot.Clicked += () => ClickEquipSlot(EquipSlot.MainHand);
+        armorSlot.Clicked += () => ClickEquipSlot(EquipSlot.OffHand);
+
+        TMP_Text hint = UiKit.Wrap(UiKit.Text(panel.Rect, "Hint",
+            "칸을 누르면 지금 든 장비를 자세히 봅니다. 오른쪽 목록에서 장비를 누르면 지금 장비와 비교한 뒤 장착하거나 강화할 수 있습니다.",
+            UiTheme.FontLabel, UiTheme.TextMuted));
+        hint.alignment = TextAlignmentOptions.BottomLeft;
+        UiKit.BottomStretch(hint.rectTransform, pad, 64f, pad, pad);
     }
 
-    private void ClickItem(OwnedEquipment item)
+    private UiSlot BuildEquipSlot(RectTransform parent, string name, string label, float x, float y, out TMP_Text itemName)
+    {
+        UiSlot slot = UiSlot.Create(parent, name, EquipSlotSize);
+        UiKit.TopLeft(slot.Rect, x, y, EquipSlotSize, EquipSlotSize);
+
+        TMP_Text title = UiKit.Text(parent, name + "Label", label, UiTheme.FontBody, UiTheme.TextSecondary, TextAlignmentOptions.Center);
+        UiKit.TopLeft(title.rectTransform, x - 20f, y + EquipSlotSize + 6f, EquipSlotSize + 40f, 36f);
+
+        itemName = UiKit.Ellipsis(UiKit.Text(parent, name + "Item", string.Empty, UiTheme.FontLabel, UiTheme.TextPrimary,
+            TextAlignmentOptions.Center));
+        UiKit.TopLeft(itemName.rectTransform, x - 20f, y + EquipSlotSize + 40f, EquipSlotSize + 40f, 34f);
+        return slot;
+    }
+
+    protected override void BuildOverlays()
+    {
+        BuildDetailPopup();
+        BuildEnhancePopup();
+        Refresh();
+    }
+
+    // ---- 상세·비교 팝업 ---------------------------------------------------------
+
+    private const float CardWidth = 440f;
+
+    private void BuildDetailPopup()
+    {
+        detailPopup = UiPopup.Create(overlay, "Detail", "장비 상세", new Vector2(1140f, 740f));
+
+        currentCard = BuildCompareCard(detailPopup.Body, "Current", 0f);
+        selectedCard = BuildCompareCard(detailPopup.Body, "Selected", 1140f - UiPopup.Padding * 2f - CardWidth);
+
+        compareArrow = UiKit.Text(detailPopup.Body, "Arrow", "→", 64f, UiTheme.TextMuted, TextAlignmentOptions.Center);
+        UiKit.TopCenter(compareArrow.rectTransform, 0f, 150f, 140f, 80f);
+        compareDelta = UiKit.Text(detailPopup.Body, "Delta", string.Empty, UiTheme.FontHeading, UiTheme.TextPrimary, TextAlignmentOptions.Center);
+        UiKit.TopCenter(compareDelta.rectTransform, 0f, 236f, 200f, 44f);
+
+        detailPopup.AddFooterButton("닫기", UiButtonStyle.Ghost, detailPopup.Hide, 180f);
+        enhanceFromDetailButton = detailPopup.AddFooterButton("강화", UiButtonStyle.Secondary, OpenEnhance, 200f);
+        equipButton = detailPopup.AddFooterButton("장착", UiButtonStyle.Primary, EquipOrUnequip, 260f);
+    }
+
+    private CompareCard BuildCompareCard(RectTransform parent, string name, float x)
+    {
+        UiKit.Surface panel = UiKit.Panel(parent, name, UiTheme.SurfaceRaised, UiTheme.RadiusL, UiTheme.Border);
+        UiKit.TopLeft(panel.Rect, x, 0f, CardWidth, 520f);
+
+        var card = new CompareCard { Root = panel.Rect };
+        card.Title = UiKit.Text(panel.Rect, "Title", string.Empty, UiTheme.FontLabel, UiTheme.TextSecondary, TextAlignmentOptions.Center);
+        UiKit.TopStretch(card.Title.rectTransform, UiTheme.Space4, 32f);
+
+        card.Slot = UiSlot.Create(panel.Rect, "Slot", 176f);
+        UiKit.TopCenter(card.Slot.Rect, 0f, 60f, 176f, 176f);
+        card.Slot.SetInteractable(false);
+
+        card.Name = UiKit.Ellipsis(UiKit.Text(panel.Rect, "Name", string.Empty, UiTheme.FontHeading, UiTheme.TextPrimary,
+            TextAlignmentOptions.Center));
+        UiKit.TopStretch(card.Name.rectTransform, 252f, 44f, UiTheme.Space4, UiTheme.Space4);
+
+        card.Lines = UiKit.Wrap(UiKit.Text(panel.Rect, "Lines", string.Empty, UiTheme.FontBody, UiTheme.TextSecondary,
+            TextAlignmentOptions.Top));
+        card.Lines.lineSpacing = 10f;
+        UiKit.Fill(card.Lines.rectTransform, UiTheme.Space5, 306f, UiTheme.Space5, UiTheme.Space4);
+        return card;
+    }
+
+    private void OpenDetail(OwnedEquipment item)
     {
         if (item == null) return;
+        detailItem = item;
+        RefreshDetail();
+        detailPopup.Show();
+    }
 
-        if (selectedHero == null)
+    private void RefreshDetail()
+    {
+        OwnedEquipment item = detailItem;
+        if (item == null) return;
+
+        bool mine = selectedHero != null && item.IsHeldBy(selectedHero);
+        OwnedEquipment current = selectedHero != null ? EquipmentInventory.EquippedIn(selectedHero, item.Slot) : null;
+
+        // 오른쪽 — 누른 장비.
+        ApplyCard(selectedCard, mine ? "장착 중인 장비" : "선택한 장비", item);
+
+        // 왼쪽 — 이 영웅이 같은 칸에 지금 든 것. 누른 장비가 바로 그것이면 비교할 것이 없어 비운다.
+        bool compare = !mine && selectedHero != null;
+        currentCard.Root.gameObject.SetActive(compare);
+        compareArrow.gameObject.SetActive(compare);
+        compareDelta.gameObject.SetActive(compare);
+        if (compare)
         {
-            warningBanner?.Show("먼저 왼쪽에서 영웅을 고르세요.");
-            return;
+            if (current != null) ApplyCard(currentCard, "지금 장착", current);
+            else ApplyBaseCard(currentCard, item.Slot);
+
+            float before = current != null ? current.Power : EquipmentGradeRules.BasePower;
+            float delta = item.Power - before;
+            compareDelta.text = Mathf.Abs(delta) < 0.005f ? "변화 없음"
+                : UiTheme.Paint((delta > 0 ? "+" : "") + delta.ToString("0.00"), delta > 0 ? UiTheme.Success : UiTheme.Danger);
         }
 
-        string heroName = HeroLabel.Name(selectedHero);
+        // 가운데 정렬 — 비교하지 않을 때는 카드 하나를 가운데로.
+        selectedCard.Root.anchoredPosition = new Vector2(compare ? 1140f - UiPopup.Padding * 2f - CardWidth : (1140f - UiPopup.Padding * 2f - CardWidth) * 0.5f,
+            selectedCard.Root.anchoredPosition.y);
 
-        // 이미 든 것을 다시 누르면 내려놓는다.
+        detailPopup.SetTitle(item.DisplayName);
+        equipButton.SetLabel(mine ? "해제" : "장착");
+        equipButton.SetStyle(mine ? UiButtonStyle.Secondary : UiButtonStyle.Primary);
+        equipButton.interactable = selectedHero != null;
+        enhanceFromDetailButton.interactable = !EquipmentEnhancement.IsMaxed(item);
+    }
+
+    private void ApplyCard(CompareCard card, string title, OwnedEquipment item)
+    {
+        card.Title.text = title;
+        UiSlotContent content = UiSlotContents.Equipment(item);
+        UiSlotContents.ApplyOwnerTag(ref content, item, selectedHero);
+        card.Slot.SetContent(content);
+        card.Name.text = item.DisplayName;
+        card.Name.color = UiTheme.GradeColor(item.Grade);
+
+        CharacterSO owner = EquipmentInventory.FindOwner(item, OwnedRoster.Members);
+        card.Lines.text =
+            $"{UiTheme.Paint(EquipmentGradeNames.NameOf(item.Grade) + "등급", UiTheme.GradeColor(item.Grade))} · " +
+            $"{UiSlotContents.SlotName(item.Slot)} · {CharacterRules.Korean(item.Weapon.type)}\n" +
+            $"{UiTheme.Paint(UiSlotContents.StatLine(item), UiTheme.TextPrimary)}\n" +
+            $"강화 +{item.Level} / {EquipmentEnhancement.MaxLevel}\n" +
+            (owner != null ? $"{HeroLabel.Name(owner)} 장착 중" : "보관 중");
+    }
+
+    private void ApplyBaseCard(CompareCard card, EquipSlot slot)
+    {
+        card.Title.text = "지금 장착";
+        card.Slot.SetContent(UiSlotContents.BaseEquipment());
+        card.Name.text = "기본 장비";
+        card.Name.color = UiTheme.TextPrimary;
+        card.Lines.text = $"{UiSlotContents.SlotName(slot)}\n{UiSlotContents.StatName(slot)} x{EquipmentGradeRules.BasePower:0.00}\n" +
+                          "제작 장비를 빼면 다시 드는 장비";
+    }
+
+    private void EquipOrUnequip()
+    {
+        OwnedEquipment item = detailItem;
+        if (item == null || selectedHero == null) return;
+
         if (item.IsHeldBy(selectedHero))
         {
             EquipmentInventory.Unequip(item);
-            SetStatus($"{WithObject(item.DisplayName)} 창고에 넣었습니다.", BattleHudPalette.TextMuted);
+            toast.Show($"{WithObject(item.DisplayName)} 창고에 넣었습니다. 기본 장비를 다시 듭니다.", UiToastKind.Info);
+            RefreshDetail();
             return;
         }
 
         if (PartyRoster.IsFallen(selectedHero))
         {
-            warningBanner?.Show($"{WithTopic(heroName)} 쓰러져 새 장비를 들 수 없습니다.");
+            toast.Show($"{WithTopic(HeroLabel.Name(selectedHero))} 쓰러져 새 장비를 들 수 없습니다.", UiToastKind.Warning);
             return;
         }
 
-        CharacterSO previousOwner = EquipmentInventory.FindOwner(item, OwnedRoster.Members);
+        CharacterSO owner = EquipmentInventory.FindOwner(item, OwnedRoster.Members);
+        if (owner != null && owner != selectedHero)
+        {
+            confirm.Ask("장비 가져오기",
+                $"{WithSubject(HeroLabel.Name(owner))} 들고 있는 장비입니다.\n{WithObject(HeroLabel.Name(selectedHero))} 위해 가져올까요?",
+                "가져오기", false, () => Equip(item));
+            return;
+        }
+
+        Equip(item);
+    }
+
+    private void Equip(OwnedEquipment item)
+    {
         OwnedEquipment droppedShield = item.Slot == EquipSlot.MainHand && item.Weapon.IsTwoHanded
             ? EquipmentInventory.EquippedIn(selectedHero, EquipSlot.OffHand)
             : null;
 
-        string reason;
-        if (!EquipmentInventory.Equip(selectedHero, item, out reason))
+        if (!EquipmentInventory.Equip(selectedHero, item, out string reason))
         {
-            warningBanner?.Show(reason);
+            toast.Show(reason, UiToastKind.Warning);
             return;
         }
 
-        string message = previousOwner != null && previousOwner != selectedHero
-            ? $"{WithSubject(heroName)} {HeroLabel.Name(previousOwner)}에게서 {WithObject(item.DisplayName)} 넘겨받았습니다."
-            : $"{WithSubject(heroName)} {WithObject(item.DisplayName)} 듭니다.";
-        // 왜 방패를 내려놓았는지는 가운데 칸의 보조 손이 말해 준다. 여기서는 어디로 갔는지만.
-        if (droppedShield != null)
-            message += $"\n{WithTopic(droppedShield.DisplayName)} 창고로 돌아갔습니다.";
-
-        SetStatus(message, BattleHudPalette.Accent);
+        string message = $"{WithSubject(HeroLabel.Name(selectedHero))} {WithObject(item.DisplayName)} 장착했습니다.";
+        if (droppedShield != null) message += $" 두손 무기라 {WithTopic(droppedShield.DisplayName)} 창고로 돌아갔습니다.";
+        toast.Show(message, UiToastKind.Success);
+        detailPopup.Hide();
     }
 
-    private void UnequipSlot(EquipSlot slot)
+    // ---- 강화 팝업 ------------------------------------------------------------
+
+    private void BuildEnhancePopup()
+    {
+        const float width = 1000f;
+        enhancePopup = UiPopup.Create(overlay, "Enhance", "장비 강화", new Vector2(width, 690f));
+        RectTransform body = enhancePopup.Body;
+        float inner = width - UiPopup.Padding * 2f;
+
+        // 현재 → 결과. 흐름 부품과 같은 순서(왼쪽이 지금, 오른쪽이 결과)로 읽힌다.
+        const float slot = 176f;
+        float leftX = inner * 0.25f - slot * 0.5f;
+        float rightX = inner * 0.75f - slot * 0.5f;
+
+        TMP_Text beforeTitle = UiKit.Text(body, "BeforeTitle", "현재", UiTheme.FontLabel, UiTheme.TextSecondary, TextAlignmentOptions.Center);
+        UiKit.TopLeft(beforeTitle.rectTransform, leftX - 60f, 0f, slot + 120f, 32f);
+        TMP_Text afterTitle = UiKit.Text(body, "AfterTitle", "성공하면", UiTheme.FontLabel, UiTheme.Success, TextAlignmentOptions.Center);
+        UiKit.TopLeft(afterTitle.rectTransform, rightX - 60f, 0f, slot + 120f, 32f);
+
+        enhanceBefore = UiSlot.Create(body, "Before", slot);
+        UiKit.TopLeft(enhanceBefore.Rect, leftX, 40f, slot, slot);
+        enhanceBefore.SetInteractable(false);
+        enhanceAfter = UiSlot.Create(body, "After", slot);
+        UiKit.TopLeft(enhanceAfter.Rect, rightX, 40f, slot, slot);
+        enhanceAfter.SetInteractable(false);
+
+        TMP_Text arrow = UiKit.Text(body, "Arrow", "→", 64f, UiTheme.TextMuted, TextAlignmentOptions.Center);
+        UiKit.TopCenter(arrow.rectTransform, 0f, 40f + slot * 0.5f - 40f, 120f, 80f);
+
+        enhanceBeforeText = UiKit.Wrap(UiKit.Text(body, "BeforeText", string.Empty, UiTheme.FontBody, UiTheme.TextPrimary, TextAlignmentOptions.Top));
+        UiKit.TopLeft(enhanceBeforeText.rectTransform, leftX - 100f, 40f + slot + UiTheme.Space3, slot + 200f, 76f);
+        enhanceAfterText = UiKit.Wrap(UiKit.Text(body, "AfterText", string.Empty, UiTheme.FontBody, UiTheme.TextPrimary, TextAlignmentOptions.Top));
+        UiKit.TopLeft(enhanceAfterText.rectTransform, rightX - 100f, 40f + slot + UiTheme.Space3, slot + 200f, 76f);
+
+        // 확률과 비용. 무엇이 필요하고 무엇을 잃을 수 있는지가 버튼 바로 위에 있어야 한다.
+        UiKit.Surface info = UiKit.Panel(body, "Info", UiTheme.SurfaceSunken, UiTheme.RadiusM);
+        UiKit.TopLeft(info.Rect, 0f, 40f + slot + 100f, inner, 150f);
+        enhanceChances = UiKit.Wrap(UiKit.Text(info.Rect, "Chances", string.Empty, UiTheme.FontBody, UiTheme.TextPrimary));
+        enhanceChances.lineSpacing = 10f;
+        enhanceChances.alignment = TextAlignmentOptions.MidlineLeft;
+        UiKit.Fill(enhanceChances.rectTransform, UiTheme.Space5, UiTheme.Space3, inner * 0.45f, UiTheme.Space3);
+        enhanceGold = UiKit.Wrap(UiKit.Text(info.Rect, "Gold", string.Empty, UiTheme.FontBody, UiTheme.TextPrimary, TextAlignmentOptions.MidlineRight));
+        enhanceGold.lineSpacing = 10f;
+        UiKit.Fill(enhanceGold.rectTransform, inner * 0.55f, UiTheme.Space3, UiTheme.Space5, UiTheme.Space3);
+
+        enhancePopup.AddFooterButton("닫기", UiButtonStyle.Ghost, enhancePopup.Hide, 180f);
+        enhanceButton = enhancePopup.AddFooterButton("강화", UiButtonStyle.Primary, AskEnhance, 320f);
+    }
+
+    private void OpenEnhance()
+    {
+        if (detailItem == null) return;
+        RefreshEnhance();
+        enhancePopup.Show();
+    }
+
+    private void RefreshEnhance()
+    {
+        OwnedEquipment item = detailItem;
+        if (item == null) return;
+
+        int level = item.Level;
+        bool maxed = EquipmentEnhancement.IsMaxed(item);
+        string stat = UiSlotContents.StatName(item.Slot);
+        float before = item.Power;
+        float after = EquipmentGradeRules.PowerOf(item.Grade) * EquipmentEnhancement.Multiplier(level + 1);
+
+        enhancePopup.SetTitle("장비 강화 — " + item.DisplayName);
+        enhanceBefore.SetContent(UiSlotContents.Equipment(item));
+        enhanceBeforeText.text = $"+{level}\n{stat} x{before:0.00}";
+
+        if (maxed)
+        {
+            enhanceAfter.SetLocked("최대");
+            enhanceAfterText.text = UiTheme.Paint("최대 강화 단계입니다", UiTheme.TextMuted);
+            enhanceChances.text = $"+{EquipmentEnhancement.MaxLevel}까지 모두 강화했습니다.";
+            enhanceGold.text = string.Empty;
+            enhanceButton.ClearCost();
+            enhanceButton.interactable = false;
+            return;
+        }
+
+        UiSlotContent next = UiSlotContents.Equipment(item);
+        next.Corner = "+" + (level + 1);
+        enhanceAfter.SetContent(next);
+        enhanceAfterText.text = $"{UiTheme.Paint("+" + (level + 1), UiTheme.Success)}\n{stat} x{after:0.00} {UiTheme.Paint($"(+{after - before:0.00})", UiTheme.Success)}";
+
+        float success = EquipmentEnhancement.SuccessChance(level);
+        float destroy = EquipmentEnhancement.DestroyChance(level);
+        float keep = Mathf.Max(0f, 1f - success - destroy);
+        enhanceChances.text =
+            $"성공 확률  {UiTheme.Paint(UiKit.Percent(success), UiTheme.Success)}\n" +
+            $"실패 (단계 유지)  {UiTheme.Paint(UiKit.Percent(keep), UiTheme.TextSecondary)}\n" +
+            $"파괴 확률  {(destroy > 0f ? UiTheme.Paint(UiKit.Percent(destroy), UiTheme.Danger) : UiTheme.Paint("없음", UiTheme.TextMuted))}";
+
+        long cost = EquipmentEnhancement.Cost(item);
+        long gold = PlayerAccount.Balance(Currency.Gold);
+        enhanceGold.text =
+            $"보유 골드  {UiTheme.Paint(UiKit.Amount(gold), gold >= cost ? UiTheme.Success : UiTheme.Danger)}\n" +
+            $"필요 골드  {UiKit.Amount(cost)}\n" +
+            UiTheme.Paint($"+{EquipmentEnhancement.DestroyFromLevel}부터 파괴될 수 있습니다", UiTheme.TextMuted);
+
+        enhanceButton.SetCost(Currency.Gold, cost);
+        enhanceButton.interactable = true;
+    }
+
+    private void AskEnhance()
+    {
+        OwnedEquipment item = detailItem;
+        if (item == null) return;
+
+        long cost = EquipmentEnhancement.Cost(item);
+        if (PlayerAccount.Balance(Currency.Gold) < cost)
+        {
+            toast.Show($"골드가 부족합니다. ({UiKit.Amount(cost)} 필요)", UiToastKind.Warning);
+            return;
+        }
+
+        float destroy = EquipmentEnhancement.DestroyChance(item.Level);
+        if (destroy > 0f)
+        {
+            confirm.Ask("강화 확인",
+                $"이번 강화는 {UiTheme.Paint(UiKit.Percent(destroy), UiTheme.Danger)} 확률로 장비가 파괴됩니다.\n" +
+                "파괴된 장비는 되돌릴 수 없습니다. 강화할까요?",
+                "강화", true, Enhance);
+            return;
+        }
+
+        Enhance();
+    }
+
+    private void Enhance()
+    {
+        OwnedEquipment item = detailItem;
+        if (item == null) return;
+
+        string name = item.DisplayName;
+        if (!EquipmentEnhancement.TryEnhance(item, out EnhanceOutcome outcome, out string reason))
+        {
+            toast.Show(reason, UiToastKind.Warning);
+            return;
+        }
+
+        switch (outcome)
+        {
+            case EnhanceOutcome.Success:
+                toast.Show($"강화 성공! +{item.Level}", UiToastKind.Success);
+                break;
+            case EnhanceOutcome.Fail:
+                toast.Show("강화 실패 — 강화 단계는 그대로입니다.", UiToastKind.Warning);
+                break;
+            default:
+                toast.Show($"{WithSubject(name)} 파괴되었습니다.", UiToastKind.Danger);
+                break;
+        }
+
+        // 파괴됐으면 HandleDataChanged가 팝업을 닫는다. 남아 있으면 새 단계로 다시 그린다.
+        if (detailItem != null)
+        {
+            RefreshEnhance();
+            RefreshDetail();
+        }
+    }
+
+    // ---- 메인 화면 --------------------------------------------------------------
+
+    private void SelectHero(CharacterSO hero)
+    {
+        if (hero == null) return;
+        selectedHero = hero;
+        Refresh();
+    }
+
+    private void ClickEquipSlot(EquipSlot slot)
     {
         if (selectedHero == null) return;
 
         OwnedEquipment item = EquipmentInventory.EquippedIn(selectedHero, slot);
-        if (item == null) return;
-
-        EquipmentInventory.Unequip(item);
-        SetStatus($"{WithObject(item.DisplayName)} 창고에 넣었습니다.\n{WithTopic(HeroLabel.Name(selectedHero))} 기본 장비를 다시 듭니다.", BattleHudPalette.TextMuted);
-    }
-
-    // ---- 만들기 -------------------------------------------------------------
-
-    protected override void BuildWindow()
-    {
-        // 창을 다시 지을 때(도메인 리로드) 옛 줄은 옛 캔버스와 함께 사라졌다. 목록도 비운다.
-        heroRows.Clear();
-        itemRows.Clear();
-        heroRowCount = 0;
-        itemRowCount = 0;
-        heroEmptyText = null;
-        itemEmptyText = null;
-        filterTabs.Clear();
-        visibleItems.Clear();
-
-        BuildCanvas();
-        BuildPanel(BuildPopupRoot());
-
-        warningBanner = AnnouncementBanner.Create(canvasRect, resolvedFont, null, bannerWidth);
-
-        RefreshAll();
-    }
-
-    private void BuildPanel(RectTransform popup)
-    {
-        panelRect = HudFactory.CreatePanel(popup, "Panel").rectTransform;
-        panelRect.anchorMin = new Vector2(0.5f, 0.5f);
-        panelRect.anchorMax = new Vector2(0.5f, 0.5f);
-        panelRect.pivot = new Vector2(0.5f, 0.5f);
-        panelRect.anchoredPosition = Vector2.zero;
-        panelRect.sizeDelta = new Vector2(PanelWidth, PanelHeight);
-
-        float contentWidth = PanelWidth - PanelPadding.x * 2f;
-        float y = PanelPadding.y;
-
-        BuildTitleBar(panelRect, "무기창고", PanelPadding.x, y, contentWidth, TitleHeight);
-        y += TitleHeight + TitleGap;
-
-        float columnHeight = PanelHeight - PanelPadding.y - y;
-        float heroX = PanelPadding.x;
-        float detailX = heroX + HeroColumnWidth + ColumnGap;
-        float itemX = detailX + DetailColumnWidth + ColumnGap;
-        float itemWidth = PanelPadding.x + contentWidth - itemX;
-
-        BuildHeroColumn(heroX, y, columnHeight);
-        BuildDetailColumn(detailX, y, columnHeight);
-        BuildItemColumn(itemX, y, itemWidth, columnHeight);
-    }
-
-    private void BuildHeroColumn(float x, float y, float height)
-    {
-        TMP_Text label = HudFactory.CreateText(panelRect, "HeroLabel", resolvedFont, 24f, BattleHudPalette.TextMuted);
-        label.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(label.rectTransform, new Vector2(HeroColumnWidth, LabelHeight), new Vector2(x, -y));
-        label.text = "보유 영웅";
-
-        float listTop = y + LabelHeight + RowGap;
-        heroContent = BuildScrollList("Heroes", new Vector2(HeroColumnWidth, y + height - listTop), new Vector2(x, -listTop));
-    }
-
-    private void BuildDetailColumn(float x, float y, float height)
-    {
-        float bottom = y + height;
-
-        // 초상화 테두리는 정사각 아이콘 판(icon_btn). 잘린 모서리가 초상화에 가리지 않게 안쪽을 넉넉히 비운다.
-        NeonUISkin skin = NeonUISkin.Current;
-        Image portraitFrame = HudFactory.CreateSkinnedImage(panelRect, "Portrait",
-            skin != null ? skin.iconButton : null, BattleHudPalette.PortraitFrame);
-        HudFactory.SetTopLeft(portraitFrame.rectTransform, new Vector2(PortraitSize, PortraitSize), new Vector2(x, -y));
-
-        const float portraitInset = 12f;
-        portraitImage = HudFactory.CreateImage(portraitFrame.rectTransform, "Image", Color.white);
-        portraitImage.preserveAspect = true;
-        HudFactory.Stretch(portraitImage.rectTransform);
-        portraitImage.rectTransform.offsetMin = new Vector2(portraitInset, portraitInset);
-        portraitImage.rectTransform.offsetMax = new Vector2(-portraitInset, -portraitInset);
-
-        portraitInitial = HudFactory.CreateText(portraitFrame.rectTransform, "Initial", resolvedFont, 64f, BattleHudPalette.TextMuted);
-        HudFactory.Stretch(portraitInitial.rectTransform);
-
-        float textX = x + PortraitSize + 20f;
-        float textWidth = DetailColumnWidth - PortraitSize - 20f;
-
-        heroNameText = HudFactory.CreateText(panelRect, "HeroName", resolvedFont, 38f, BattleHudPalette.TextPrimary);
-        heroNameText.alignment = TextAlignmentOptions.Left;
-        heroNameText.overflowMode = TextOverflowModes.Ellipsis;
-        HudFactory.SetTopLeft(heroNameText.rectTransform, new Vector2(textWidth, 38f * LineHeightRatio), new Vector2(textX, -(y + 4f)));
-
-        heroInfoText = HudFactory.CreateText(panelRect, "HeroInfo", resolvedFont, 23f, BattleHudPalette.TextMuted);
-        heroInfoText.alignment = TextAlignmentOptions.TopLeft;
-        heroInfoText.textWrappingMode = TextWrappingModes.Normal;
-        HudFactory.SetTopLeft(heroInfoText.rectTransform, new Vector2(textWidth, 80f), new Vector2(textX, -(y + 70f)));
-
-        y += PortraitSize + Gap * 2f;
-
-        mainSlot = BuildSlotBox(EquipSlot.MainHand, "주무기", x, y);
-        y += SlotBoxHeight + Gap;
-
-        offSlot = BuildSlotBox(EquipSlot.OffHand, "보조 손", x, y);
-        y += SlotBoxHeight + Gap;
-
-        statusText = HudFactory.CreateText(panelRect, "Status", resolvedFont, 23f, BattleHudPalette.TextMuted);
-        statusText.alignment = TextAlignmentOptions.TopLeft;
-        statusText.textWrappingMode = TextWrappingModes.Normal;
-        HudFactory.SetTopLeft(statusText.rectTransform, new Vector2(DetailColumnWidth, StatusHeight), new Vector2(x, -y));
-
-        TMP_Text hint = HudFactory.CreateText(panelRect, "Hint", resolvedFont, 21f, BattleHudPalette.TextMuted);
-        hint.alignment = TextAlignmentOptions.BottomLeft;
-        hint.textWrappingMode = TextWrappingModes.Normal;
-        HudFactory.SetTopLeft(hint.rectTransform, new Vector2(DetailColumnWidth, HintHeight), new Vector2(x, -(bottom - HintHeight)));
-        hint.text = "오른쪽 창고에서 장비를 누르면 고른 영웅이 듭니다. 이미 든 장비를 다시 누르거나 해제하면 " +
-                    "창고로 돌아가고, 영웅은 원래 들고 있던 기본 장비를 다시 듭니다.";
-    }
-
-    private SlotView BuildSlotBox(EquipSlot slot, string title, float x, float y)
-    {
-        NeonUISkin skin = NeonUISkin.Current;
-        Image frame = HudFactory.CreateSkinnedImage(panelRect, "Slot_" + slot,
-            skin != null ? skin.buttonGhost : null, BattleHudPalette.PortraitFrame);
-        HudFactory.SetTopLeft(frame.rectTransform, new Vector2(DetailColumnWidth, SlotBoxHeight), new Vector2(x, -y));
-        RectTransform rect = frame.rectTransform;
-
-        TMP_Text titleText = RowText(rect, "Title", 22f, BattleHudPalette.TextMuted, TextAlignmentOptions.Left, 14f, 28f, 20f, 20f);
-        titleText.text = title;
-
-        var view = new SlotView
+        if (item != null)
         {
-            Slot = slot,
-            Name = RowText(rect, "Name", 32f, BattleHudPalette.TextPrimary, TextAlignmentOptions.Left, 46f, 46f, 20f, UnequipWidth + 36f),
-            Info = RowText(rect, "Info", 22f, BattleHudPalette.TextMuted, TextAlignmentOptions.Left, 98f, 36f, 20f, 20f),
-        };
-
-        NeonButton unequip = HudFactory.CreateButton(rect, "Unequip", NeonButtonStyle.Secondary,
-            resolvedFont, "해제", 24f, () => UnequipSlot(slot));
-        RectTransform buttonRect = unequip.Rect;
-        buttonRect.anchorMin = new Vector2(1f, 1f);
-        buttonRect.anchorMax = new Vector2(1f, 1f);
-        buttonRect.pivot = new Vector2(1f, 1f);
-        buttonRect.sizeDelta = new Vector2(UnequipWidth, UnequipHeight);
-        buttonRect.anchoredPosition = new Vector2(-20f, -44f);
-
-        view.UnequipButton = unequip.gameObject;
-        return view;
-    }
-
-    private void BuildItemColumn(float x, float y, float width, float height)
-    {
-        float bottom = y + height;
-
-        inventoryLabel = HudFactory.CreateText(panelRect, "InventoryLabel", resolvedFont, 24f, BattleHudPalette.TextMuted);
-        inventoryLabel.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(inventoryLabel.rectTransform, new Vector2(width, LabelHeight), new Vector2(x, -y));
-        y += LabelHeight + RowGap;
-
-        float tabWidth = (width - Gap * (FilterLabels.Length - 1)) / FilterLabels.Length;
-        for (int i = 0; i < FilterLabels.Length; i++)
-        {
-            var thisFilter = (Filter)i;
-
-            NeonButton tab = HudFactory.CreateButton(panelRect, "Filter_" + thisFilter, NeonButtonStyle.Ghost,
-                resolvedFont, FilterLabels[i], 24f, () => SelectFilter(thisFilter));
-            HudFactory.SetTopLeft(tab.Rect, new Vector2(tabWidth, FilterTabHeight), new Vector2(x + i * (tabWidth + Gap), -y));
-
-            filterTabs.Add(tab);
+            OpenDetail(item);
+            return;
         }
-        y += FilterTabHeight + Gap;
 
-        // 목록 너비는 여기서 기억해 둔다. Awake에서 막 만든 캔버스는 아직 레이아웃 전이라 rect가 0으로 읽힌다.
-        itemListWidth = width;
-        itemContent = BuildScrollList("Items", new Vector2(width, bottom - y), new Vector2(x, -y));
+        // 비어 있으면(기본 장비) 그 칸에 맞는 장비만 목록에 보여 준다.
+        itemPicker.Tabs.Select(slot == EquipSlot.OffHand ? 2 : 1, true);
+        toast.Show($"오른쪽 목록에서 {UiSlotContents.SlotName(slot)}를 고르세요.", UiToastKind.Info);
     }
 
-    // 세로로만 구르는 목록 하나. 영웅이 소환으로 늘고 장비가 제작으로 늘어나므로 칸 수를 미리 정할 수 없다.
-    private RectTransform BuildScrollList(string listName, Vector2 size, Vector2 offset)
+    private void Refresh()
     {
-        Image viewport = HudFactory.CreateImage(panelRect, listName, BattleHudPalette.ListGround);
-        // 줄 사이 빈 곳에서도 휠과 끌기를 받아야 한다.
-        viewport.raycastTarget = true;
-        HudFactory.SetTopLeft(viewport.rectTransform, size, offset);
-        viewport.gameObject.AddComponent<RectMask2D>();
+        if (heroPicker == null || detailPopup == null) return;
 
-        RectTransform content = HudFactory.CreateGroup(viewport.rectTransform, "Content");
-        content.anchorMin = new Vector2(0f, 1f);
-        content.anchorMax = new Vector2(1f, 1f);
-        content.pivot = new Vector2(0.5f, 1f);
-        content.sizeDelta = Vector2.zero;
-        content.anchoredPosition = Vector2.zero;
-
-        var scroll = viewport.gameObject.AddComponent<ScrollRect>();
-        scroll.viewport = viewport.rectTransform;
-        scroll.content = content;
-        scroll.horizontal = false;
-        scroll.vertical = true;
-        scroll.movementType = ScrollRect.MovementType.Clamped;
-        scroll.scrollSensitivity = 40f;
-
-        return content;
-    }
-
-    // ---- 갱신 ---------------------------------------------------------------
-
-    private void RefreshAll()
-    {
         if (selectedHero != null && !OwnedRoster.Contains(selectedHero)) selectedHero = null;
         if (selectedHero == null && OwnedRoster.Count > 0) selectedHero = OwnedRoster.Members[0];
 
-        RebuildHeroRows();
-        RefreshFilterTabs();
-        RebuildItemRows();
-        RefreshDetail();
+        RefreshHeroes();
+        RefreshHero();
+        RefreshItems();
+        if (detailPopup.IsOpen) RefreshDetail();
+        if (enhancePopup.IsOpen) RefreshEnhance();
     }
 
-    private void RebuildHeroRows()
+    private void RefreshHeroes()
     {
-        if (heroContent == null) return;
-
+        heroes.Clear();
         IReadOnlyList<CharacterSO> members = OwnedRoster.Members;
-        heroRowCount = 0;
+        for (int i = 0; i < members.Count; i++) if (members[i] != null) heroes.Add(members[i]);
 
-        float y = 0f;
-        for (int i = 0; i < members.Count; i++)
-        {
-            CharacterSO hero = members[i];
-            if (hero == null) continue;
-
-            BindHeroRow(TakeHeroRow(heroRowCount), hero, y);
-            heroRowCount++;
-            y += HeroRowHeight + RowGap;
-        }
-
-        HideUnusedRows(heroRows, heroRowCount);
-
-        bool empty = heroRowCount == 0;
-        float emptyHeight = ShowEmptyText(ref heroEmptyText, heroContent, empty,
-            "보유한 영웅이 없습니다.\n소환소에서 먼저 영웅을 뽑아주세요.");
-        SetContentHeight(heroContent, empty ? emptyHeight : y - RowGap);
-        RefreshHeroHighlight();
+        heroPicker.Count.text = $"{heroes.Count}명";
+        heroPicker.Grid.Show(heroes.Count, BindHero, "보유한 영웅이 없습니다.");
     }
 
-    // index번째 줄. 만들어 둔 것이 있으면 그것을 쓰고, 모자라면 뼈대를 새로 만든다.
-    private HeroRow TakeHeroRow(int index)
+    private void BindHero(UiTile tile, int index)
     {
-        if (index < heroRows.Count) return heroRows[index];
-
-        var row = new HeroRow();
-
-        // 글자가 여러 줄 따로 깔리므로 버튼 자체의 글자는 두지 않는다.
-        // 누르면 이 줄이 지금 보여 주는 영웅을 고른다 — 줄은 다른 영웅으로 다시 칠해져 쓰인다.
-        row.Button = HudFactory.CreateButton(heroContent, "Hero_" + index, NeonButtonStyle.Ghost,
-            resolvedFont, null, 0f, () => SelectHero(row.Character));
-
-        RectTransform rect = row.Button.Rect;
-        row.Name = RowText(rect, "Name", 26f, BattleHudPalette.TextPrimary, TextAlignmentOptions.Left, 8f, 34f, RowInset, 170f);
-        row.Weapon = RowText(rect, "Weapon", 20f, BattleHudPalette.TextPrimary, TextAlignmentOptions.Right, 12f, 28f, 200f, RowInset);
-        row.Info = RowText(rect, "Info", 20f, BattleHudPalette.TextMuted, TextAlignmentOptions.Left, 42f, 26f, RowInset, RowInset);
-
-        heroRows.Add(row);
-        return row;
-    }
-
-    private void BindHeroRow(HeroRow row, CharacterSO hero, float y)
-    {
-        row.Character = hero;
-        row.Button.gameObject.SetActive(true);
-        HudFactory.SetTopLeft(row.Button.Rect, new Vector2(HeroColumnWidth, HeroRowHeight), new Vector2(0f, -y));
-
+        CharacterSO hero = heroes[index];
+        tile.Payload = hero;
+        tile.Slot.SetContent(UiSlotContents.Hero(hero));
+        tile.Slot.SetSelected(hero == selectedHero);
         bool fallen = PartyRoster.IsFallen(hero);
-
-        row.Name.text = HeroLabel.Name(hero);
-        row.Name.color = fallen ? BattleHudPalette.TextMuted : BattleHudPalette.TextPrimary;
-
-        // 제작 장비를 든 영웅만 무기 이름이 뜬다. 기본 장비 이름은 직업을 드러낸다.
-        OwnedEquipment crafted = EquipmentInventory.EquippedIn(hero, EquipSlot.MainHand);
-        row.Weapon.gameObject.SetActive(crafted != null);
-        if (crafted != null)
-        {
-            row.Weapon.text = crafted.DisplayName;
-            row.Weapon.color = EquipmentGradeNames.ColorOf(crafted.Grade);
-        }
-
-        row.Info.text = $"Lv.{hero.Level} · {hero.starCount}성" + (fallen ? " · 쓰러짐" : string.Empty);
-        row.Info.color = fallen ? BattleHudPalette.Warn : BattleHudPalette.TextMuted;
+        tile.Slot.SetDimmed(fallen, "쓰러짐");
+        tile.SetText(HeroLabel.Name(hero), fallen ? "쓰러짐" : $"Lv.{hero.Level}", fallen ? (Color?)UiTheme.TextMuted : null);
     }
 
-    private void RefreshHeroHighlight()
+    private void RefreshHero()
     {
-        // 고른 줄은 네온 테두리로. 밝은 판(Primary)을 깔면 줄 안의 밝은 글자와 등급색이 묻힌다.
-        for (int i = 0; i < heroRowCount; i++)
-            heroRows[i].Button.SetStyle(heroRows[i].Character == selectedHero ? NeonButtonStyle.Secondary : NeonButtonStyle.Ghost);
-    }
-
-    private void RefreshFilterTabs()
-    {
-        for (int i = 0; i < filterTabs.Count; i++)
-            filterTabs[i].SetStyle((Filter)i == filter ? NeonButtonStyle.Primary : NeonButtonStyle.Ghost);
-    }
-
-    private void RebuildItemRows()
-    {
-        if (itemContent == null) return;
-
-        IReadOnlyList<OwnedEquipment> items = EquipmentInventory.Items;
-        int stored = 0;
-        visibleItems.Clear();
-        for (int i = 0; i < items.Count; i++)
-        {
-            if (!items[i].IsEquipped) stored++;
-            if (PassesFilter(items[i])) visibleItems.Add(items[i]);
-        }
-        visibleItems.Sort(CompareItems);
-
-        inventoryLabel.text = $"제작한 장비 {items.Count}점 · 보관 중 {stored}점";
-
-        itemRowCount = 0;
-        float y = 0f;
-        for (int i = 0; i < visibleItems.Count; i++)
-        {
-            BindItemRow(TakeItemRow(itemRowCount), visibleItems[i], y);
-            itemRowCount++;
-            y += ItemRowHeight + RowGap;
-        }
-
-        HideUnusedRows(itemRows, itemRowCount);
-
-        bool empty = itemRowCount == 0;
-        string message = items.Count == 0
-            ? "제작한 장비가 없습니다.\n장비제작소에서 먼저 만들어 주세요."
-            : "이 분류에 해당하는 장비가 없습니다.";
-        float emptyHeight = ShowEmptyText(ref itemEmptyText, itemContent, empty, message);
-        SetContentHeight(itemContent, empty ? emptyHeight : y - RowGap);
-    }
-
-    // index번째 장비 줄. 모자라면 뼈대(판·등급 배지·글자 칸)를 새로 만든다. 내용은 BindItemRow가 칠한다.
-    private ItemRow TakeItemRow(int index)
-    {
-        if (index < itemRows.Count) return itemRows[index];
-
-        var row = new ItemRow();
-        float width = itemListWidth;
-
-        // 누르면 이 줄이 지금 보여 주는 장비를 누른 것으로 친다.
-        row.Button = HudFactory.CreateButton(itemContent, "Item_" + index, NeonButtonStyle.Ghost,
-            resolvedFont, null, 0f, () => ClickItem(row.Item));
-
-        RectTransform rect = row.Button.Rect;
-
-        NeonUISkin skin = NeonUISkin.Current;
-        Image badge = HudFactory.CreateSkinnedImage(rect, "Grade", skin != null ? skin.iconButton : null, BattleHudPalette.GaugeBackground);
-        HudFactory.SetTopLeft(badge.rectTransform, new Vector2(GradeBadgeSize, GradeBadgeSize),
-            new Vector2(RowInset, -(ItemRowHeight - GradeBadgeSize) * 0.5f));
-
-        row.Grade = HudFactory.CreateText(badge.rectTransform, "Label", resolvedFont, 30f, BattleHudPalette.TextPrimary);
-        HudFactory.Stretch(row.Grade.rectTransform);
-
-        float textLeft = RowInset + GradeBadgeSize + 14f;
-
-        row.Name = RowText(rect, "Name", 26f, BattleHudPalette.TextPrimary,
-            TextAlignmentOptions.Left, 6f, 34f, textLeft, ItemStatusWidth + RowInset);
-        row.Type = RowText(rect, "Type", 20f, BattleHudPalette.TextMuted,
-            TextAlignmentOptions.Left, 38f, 26f, textLeft, ItemStatusWidth + RowInset);
-        row.Status = RowText(rect, "Status", 21f, BattleHudPalette.TextMuted,
-            TextAlignmentOptions.Right, 0f, ItemRowHeight, width - ItemStatusWidth - RowInset, RowInset);
-
-        itemRows.Add(row);
-        return row;
-    }
-
-    private void BindItemRow(ItemRow row, OwnedEquipment item, float y)
-    {
-        bool mine = item.IsHeldBy(selectedHero);
-        bool other = item.IsEquipped && !mine;
-
-        row.Item = item;
-        row.Button.gameObject.SetActive(true);
-        HudFactory.SetTopLeft(row.Button.Rect, new Vector2(itemListWidth, ItemRowHeight), new Vector2(0f, -y));
-
-        // 고른 영웅이 든 것은 네온 테두리, 다른 영웅이 든 것은 흐린 판(누르면 가져온다), 창고에 있는 것은 옅은 판.
-        row.Button.SetStyle(mine ? NeonButtonStyle.Secondary : other ? NeonButtonStyle.Muted : NeonButtonStyle.Ghost);
-
-        row.Grade.text = EquipmentGradeNames.NameOf(item.Grade);
-        row.Grade.color = EquipmentGradeNames.ColorOf(item.Grade);
-
-        row.Name.text = item.DisplayName;
-        row.Name.color = other ? BattleHudPalette.TextMuted : BattleHudPalette.TextPrimary;
-
-        row.Type.text = $"{CharacterRules.Korean(item.Weapon.type)} · {EffectText(item)}";
-
-        row.Status.text = mine ? "장착 중" : other ? OwnerLabel(item) : "보관 중";
-        row.Status.color = mine ? BattleHudPalette.Accent : BattleHudPalette.TextMuted;
-    }
-
-    private void RefreshDetail()
-    {
-        if (heroNameText == null) return;
-
         if (selectedHero == null)
         {
-            heroNameText.text = "영웅 없음";
-            heroInfoText.text = "왼쪽에서 장비를 들 영웅을 고르세요.";
-            portraitImage.enabled = false;
-            portraitInitial.text = "?";
-            ApplyEmpty(mainSlot);
-            ApplyEmpty(offSlot);
+            portrait.SetEmpty(string.Empty);
+            heroName.text = "영웅 없음";
+            heroInfo.text = "소환소에서 먼저 영웅을 소환해 주세요.";
+            heroPower.text = string.Empty;
+            weaponSlot.SetLocked(string.Empty);
+            armorSlot.SetLocked(string.Empty);
+            accessorySlot.SetLocked("준비 중");
+            weaponName.text = armorName.text = string.Empty;
             return;
         }
 
-        heroNameText.text = HeroLabel.Name(selectedHero);
+        portrait.SetContent(UiSlotContents.Hero(selectedHero));
+        heroName.text = HeroLabel.Name(selectedHero);
+        heroName.color = UiTheme.StarColor(selectedHero.starCount);
+        string info = $"{UiTheme.Paint(UiKit.Stars(selectedHero.starCount), UiTheme.StarColor(selectedHero.starCount))} · Lv.{selectedHero.Level}";
+        if (PartyRoster.IsFallen(selectedHero)) info += "\n" + UiTheme.Paint("쓰러진 영웅 — 새 장비를 들 수 없습니다", UiTheme.Warning);
+        heroInfo.text = info;
 
-        string info = $"Lv.{selectedHero.Level} · {selectedHero.starCount}성";
-        if (PartyRoster.IsFallen(selectedHero)) info += "\n<color=#F29E59>쓰러진 영웅 — 새 장비를 들 수 없습니다</color>";
-        heroInfoText.text = info;
+        heroPower.text =
+            $"공격 배율  {UiTheme.Paint("x" + CharacterLoadout.MainHandPower(selectedHero).ToString("0.00"), UiTheme.TextPrimary)}\n" +
+            $"방어 배율  {UiTheme.Paint("x" + CharacterLoadout.ShieldPower(selectedHero).ToString("0.00"), UiTheme.TextPrimary)}";
 
-        bool hasPortrait = selectedHero.portrait != null;
-        portraitImage.enabled = hasPortrait;
-        portraitImage.sprite = selectedHero.portrait;
-        portraitInitial.text = hasPortrait ? string.Empty : HeroLabel.Name(selectedHero).Substring(0, 1);
-
-        ApplyMainHand(mainSlot, selectedHero);
-        ApplyOffHand(offSlot, selectedHero);
+        ApplyEquipSlot(weaponSlot, weaponName, EquipSlot.MainHand);
+        ApplyEquipSlot(armorSlot, armorName, EquipSlot.OffHand);
+        // 칸 아래 이름줄이 이미 "준비 중"이라 칸 안에는 자물쇠만.
+        accessorySlot.SetLocked(string.Empty, UiIconLibrary.Accessory);
     }
 
-    private static void ApplyEmpty(SlotView view)
+    private void ApplyEquipSlot(UiSlot slot, TMP_Text label, EquipSlot equipSlot)
     {
-        view.Name.text = "-";
-        view.Name.color = BattleHudPalette.TextMuted;
-        view.Info.text = string.Empty;
-        view.UnequipButton.SetActive(false);
-    }
+        OwnedEquipment item = EquipmentInventory.EquippedIn(selectedHero, equipSlot);
+        slot.SetSelected(false);
+        slot.SetDimmed(false);
 
-    private static void ApplyMainHand(SlotView view, CharacterSO hero)
-    {
-        OwnedEquipment item = EquipmentInventory.EquippedIn(hero, EquipSlot.MainHand);
         if (item != null)
         {
-            ApplyCrafted(view, item);
+            slot.SetContent(UiSlotContents.Equipment(item));
+            label.text = item.DisplayName;
+            label.color = UiTheme.GradeColor(item.Grade);
             return;
         }
 
-        ApplyBase(view);
-    }
-
-    private static void ApplyOffHand(SlotView view, CharacterSO hero)
-    {
-        OwnedEquipment item = EquipmentInventory.EquippedIn(hero, EquipSlot.OffHand);
-        if (item != null)
+        // 방패를 못 드는 이유가 직접 들린 제작 두손 무기일 때만 말한다. 기본 장비가 두손 무기라서 못 드는 것이라면
+        // 그렇게 적는 순간 기본 장비가 무엇인지 드러난다.
+        if (equipSlot == EquipSlot.OffHand && EquipmentInventory.EquippedIn(selectedHero, EquipSlot.MainHand) != null
+            && !CharacterLoadout.CanHoldShield(selectedHero))
         {
-            ApplyCrafted(view, item);
+            // 빈 칸("+")으로 두면 넣을 수 있는 것처럼 보인다. 막힌 칸으로 보여 준다.
+            slot.SetLocked("두손 무기", UiIconLibrary.Weapon(WeaponType.Shield));
+            label.text = UiTheme.Paint("두손 무기를 들고 있음", UiTheme.TextMuted);
             return;
         }
 
-        // 방패를 못 드는 이유가 직접 들린 제작 두손 무기일 때만 말한다. 기본 장비가 두손 무기라서
-        // 못 드는 것이라면 그렇게 적는 순간 기본 장비가 무엇인지(활·창·맨손 시전) 드러난다.
-        if (EquipmentInventory.EquippedIn(hero, EquipSlot.MainHand) != null && !CharacterLoadout.CanHoldShield(hero))
+        // 기본 장비. 비어 있는 손도 똑같이 적는다 — "비어 있음"과 "기본 방패"가 갈리면 그것만으로 직업이 드러난다.
+        slot.SetContent(UiSlotContents.BaseEquipment());
+        label.text = UiTheme.Paint("기본 장비", UiTheme.TextSecondary);
+    }
+
+    private void RefreshItems()
+    {
+        items.Clear();
+        int filter = itemPicker.Tabs.Selected;
+        IReadOnlyList<OwnedEquipment> all = EquipmentInventory.Items;
+        for (int i = 0; i < all.Count; i++)
         {
-            view.UnequipButton.SetActive(false);
-            view.Name.text = "비어 있음";
-            view.Name.color = BattleHudPalette.TextMuted;
-            view.Info.text = "두손 무기를 들고 있어 방패를 들 수 없습니다";
-            return;
+            OwnedEquipment item = all[i];
+            if (filter == 1 && item.Slot != EquipSlot.MainHand) continue;
+            if (filter == 2 && item.Slot != EquipSlot.OffHand) continue;
+            items.Add(item);
         }
-
-        ApplyBase(view);
-    }
-
-    // 에셋에 적힌 기본 장비. 무엇인지는 적지 않는다 — 기본 장비의 이름과 종류는 곧 직업이다.
-    // 비어 있는 손도 똑같이 적는다. "비어 있음"과 "기본 방패"가 갈리면 그것만으로 방패를 든 직업이 드러난다.
-    private static void ApplyBase(SlotView view)
-    {
-        view.UnequipButton.SetActive(false);
-        view.Name.text = "기본 장비";
-        view.Name.color = BattleHudPalette.TextPrimary;
-        view.Info.text = string.Empty;
-    }
-
-    private static void ApplyCrafted(SlotView view, OwnedEquipment item)
-    {
-        view.Name.text = item.DisplayName;
-        view.Name.color = EquipmentGradeNames.ColorOf(item.Grade);
-        view.Info.text = $"{EquipmentGradeNames.NameOf(item.Grade)}등급 · {CharacterRules.Korean(item.Weapon.type)} · {EffectText(item)}";
-        view.UnequipButton.SetActive(true);
-    }
-
-    private void SetStatus(string message, Color color)
-    {
-        if (statusText == null) return;
-
-        statusText.text = message;
-        statusText.color = color;
-    }
-
-    // ---- 도우미 -------------------------------------------------------------
-
-    private bool PassesFilter(OwnedEquipment item)
-    {
-        switch (filter)
+        // 좋은 것부터. 같은 등급이면 강화 단계가 높은 것, 그다음 주무기가 방패보다 앞.
+        items.Sort((a, b) =>
         {
-            case Filter.MainHand: return item.Slot == EquipSlot.MainHand;
-            case Filter.OffHand:  return item.Slot == EquipSlot.OffHand;
-            default:              return true;
-        }
+            int byGrade = ((int)b.Grade).CompareTo((int)a.Grade);
+            if (byGrade != 0) return byGrade;
+            int byLevel = b.Level.CompareTo(a.Level);
+            if (byLevel != 0) return byLevel;
+            return ((int)a.Slot).CompareTo((int)b.Slot);
+        });
+
+        itemPicker.Count.text = $"{all.Count}개";
+        itemPicker.Grid.Show(items.Count, BindItem,
+            all.Count == 0 ? "장비가 없습니다.\n장비 제작소에서 먼저 만들어 주세요." : "이 분류에 해당하는 장비가 없습니다.");
     }
 
-    // 좋은 것부터. 같은 등급이면 주무기가 방패보다 앞, 그 안에서는 종류와 이름 순.
-    private static int CompareItems(OwnedEquipment a, OwnedEquipment b)
+    private void BindItem(UiTile tile, int index)
     {
-        int byGrade = ((int)b.Grade).CompareTo((int)a.Grade);
-        if (byGrade != 0) return byGrade;
+        OwnedEquipment item = items[index];
+        tile.Payload = item;
 
-        int bySlot = ((int)a.Slot).CompareTo((int)b.Slot);
-        if (bySlot != 0) return bySlot;
-
-        int byType = ((int)a.Weapon.type).CompareTo((int)b.Weapon.type);
-        if (byType != 0) return byType;
-
-        return string.CompareOrdinal(a.DisplayName, b.DisplayName);
-    }
-
-    // 등급이 무엇을 얼마나 올리는지. 주무기는 공격력, 방패는 피해 감소와 막기에 곱해진다(EquipmentGradeRules).
-    // 기본 장비가 1이므로, 1보다 작으면 원래 들던 것보다 못하다는 뜻이다.
-    private static string EffectText(OwnedEquipment item)
-    {
-        string stat = item.Slot == EquipSlot.OffHand ? "방어" : "공격";
-        return $"{stat} x{item.Power:0.00}";
-    }
-
-    private static string OwnerLabel(OwnedEquipment item)
-    {
-        CharacterSO owner = EquipmentInventory.FindOwner(item, OwnedRoster.Members);
-        return owner != null ? HeroLabel.Name(owner) + " 장착" : "다른 영웅 장착";
+        UiSlotContent content = UiSlotContents.Equipment(item);
+        UiSlotContents.ApplyOwnerTag(ref content, item, selectedHero);
+        tile.Slot.SetContent(content);
+        tile.Slot.SetSelected(item.IsHeldBy(selectedHero));
+        tile.Slot.SetDimmed(false);
+        tile.SetText(item.DisplayName, UiSlotContents.StatLine(item), UiTheme.GradeColor(item.Grade));
     }
 
     // "아엘리아이(가)" 대신 "아엘리아가". 영웅 이름도 무기 이름도 무엇이 올지 모른다.
     private static string WithSubject(string word) => word + HeroLabel.SubjectParticle(word);
     private static string WithObject(string word) => word + HeroLabel.ObjectParticle(word);
     private static string WithTopic(string word) => word + HeroLabel.TopicParticle(word);
-
-    // 줄 안의 글자 한 칸. 줄의 왼쪽/오른쪽 여백과 위에서부터의 자리로 잡는다.
-    //
-    // 칸 높이가 글꼴의 줄 높이보다 낮으면 말줄임(Ellipsis)이 첫 줄부터 잘라내 글자가 통째로 사라진다.
-    // NotoSansKR는 줄 높이가 글자 크기의 1.45배쯤이라 눈으로 맞춘 높이로는 곧잘 모자란다 —
-    // 모자라면 같은 가운데를 두고 위아래로 넓힌다(정렬이 가운데 줄 기준이라 보이는 자리는 그대로다).
-    private TMP_Text RowText(RectTransform parent, string textName, float size, Color color,
-        TextAlignmentOptions alignment, float top, float height, float left, float right)
-    {
-        float minHeight = size * LineHeightRatio;
-        if (height < minHeight)
-        {
-            top -= (minHeight - height) * 0.5f;
-            height = minHeight;
-        }
-
-        TMP_Text text = HudFactory.CreateText(parent, textName, resolvedFont, size, color);
-        text.alignment = alignment;
-        text.overflowMode = TextOverflowModes.Ellipsis;
-
-        RectTransform rect = text.rectTransform;
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(1f, 1f);
-        rect.pivot = new Vector2(0.5f, 1f);
-        rect.offsetMin = new Vector2(left, -(top + height));
-        rect.offsetMax = new Vector2(-right, -top);
-        return text;
-    }
-
-    // 목록이 비었을 때의 문구. 처음 필요할 때 한 번 만들고, 그 뒤로는 켜고 끄며 글만 바꾼다.
-    // 문구가 차지하는 높이를 돌려준다(보이지 않으면 0).
-    private float ShowEmptyText(ref TMP_Text text, RectTransform content, bool show, string message)
-    {
-        const float height = 120f;
-
-        if (!show)
-        {
-            if (text != null) text.gameObject.SetActive(false);
-            return 0f;
-        }
-
-        if (text == null)
-        {
-            text = HudFactory.CreateText(content, "Empty", resolvedFont, 22f, BattleHudPalette.TextMuted);
-            text.textWrappingMode = TextWrappingModes.Normal;
-            RectTransform rect = text.rectTransform;
-            rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(1f, 1f);
-            rect.pivot = new Vector2(0.5f, 1f);
-            rect.offsetMin = new Vector2(RowInset, -height);
-            rect.offsetMax = new Vector2(-RowInset, 0f);
-        }
-
-        text.gameObject.SetActive(true);
-        text.text = message;
-        return height;
-    }
-
-    // 이번에 쓰지 않은 줄은 꺼 둔다. 들고 있던 값도 놓는다 — 꺼진 줄이 명단에서 빠진 영웅이나
-    // 사라진 장비를 붙들고 있을 이유가 없다.
-    private static void HideUnusedRows(List<HeroRow> rows, int used)
-    {
-        for (int i = used; i < rows.Count; i++)
-        {
-            rows[i].Character = null;
-            rows[i].Button.gameObject.SetActive(false);
-        }
-    }
-
-    private static void HideUnusedRows(List<ItemRow> rows, int used)
-    {
-        for (int i = used; i < rows.Count; i++)
-        {
-            rows[i].Item = null;
-            rows[i].Button.gameObject.SetActive(false);
-        }
-    }
-
-    private static void SetContentHeight(RectTransform content, float height)
-    {
-        content.sizeDelta = new Vector2(0f, Mathf.Max(0f, height));
-    }
 }

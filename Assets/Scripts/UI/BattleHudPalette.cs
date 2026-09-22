@@ -26,10 +26,6 @@ public static class BattleHudPalette
     public static readonly Color PortraitFrame = new Color32(0x22, 0x1A, 0x36, 0xF2);
     // 게이지 빈 칸(스프라이트가 없을 때).
     public static readonly Color GaugeBackground = new Color(BgDeep.r, BgDeep.g, BgDeep.b, 0.85f);
-    // 목록 바닥처럼 판 위에 한 겹 더 까는 옅은 면. 선형 색공간에서는 낮은 알파도 눈에 크게 보여 아주 옅게 둔다.
-    public static readonly Color ListGround = new Color(Accent.r, Accent.g, Accent.b, 0.015f);
-    // 밝은 버튼(btn_primary) 위에 올리는 글자.
-    public static readonly Color TextOnAccent = BgPanel;
 
     // 게이지 채움(스프라이트가 없을 때). 스프라이트가 있으면 gauge_fill_hp/mp가 색을 들고 있다.
     public static readonly Color PartyHp = Danger;
@@ -47,12 +43,9 @@ public static class BattleHudPalette
     public static readonly Color Dying = new Color(0.72f, 0.70f, 0.78f);
     public static readonly Color Broken = new Color(0.85f, 0.13f, 0.36f);
 
-    // 경고 문구("더 배울 수 없습니다"). 오류(Danger)만큼 급하지 않은 것.
-    public static readonly Color Warn = new Color(0.95f, 0.62f, 0.35f);
-
-    // MVP와 최고 등급(S·5성). 보라 일색인 화면에서 가장 귀한 것만 금색으로 튀게 둔다.
+    // 전투 결과의 MVP. 보라 일색인 화면에서 가장 귀한 것만 금색으로 튀게 둔다.
+    // (장비·영웅 등급 색은 디자인 시스템의 UiTheme.Tier가 정한다.)
     public static readonly Color Mvp = new Color(1.00f, 0.83f, 0.32f);
-    public static readonly Color Victory = new Color(0.45f, 0.90f, 0.55f);
 
     public static Color ForEmotion(EmotionState state)
     {

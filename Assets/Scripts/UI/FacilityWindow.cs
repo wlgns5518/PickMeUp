@@ -1,20 +1,13 @@
 using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 
-// 마을 시설을 눌러 여는 창의 공통 뼈대.
+// 마을 시설을 눌러 여는 화면의 여닫기 뼈대.
 //
-// 소환소·합성소·시공의 틈·장비제작소·층 선택은 안에 들어가는 내용만 다를 뿐,
-// 창으로서 하는 일은 똑같다. 캔버스를 한 번 세우고, 팝업을 껐다 켠다.
-// 그 다섯 벌이 각자 같은 코드를 들고 있어서, 창을 하나 더 만들 때마다 다시 베껴 써야 했고
-// 도메인 리로드로 남은 캔버스를 치우는 처리 같은 것을 빠뜨리면 그 창만 조용히 어긋났다.
+// 소환소·합성소·장비창·제작소·파티 편성·층 선택은 안에 들어가는 내용만 다를 뿐, 화면으로서 하는 일은 똑같다.
+// 캔버스를 한 번 세우고, 화면 루트를 껐다 켠다. 여기서 정하는 것은 그 "열리고 닫히는 방식" 하나뿐이다.
+// 모양(배경·머리줄·팝업 층)은 디자인 시스템의 UiScreen이, 무엇을 그릴지와 언제 갱신할지는 각 화면이 정한다.
 //
-// 창에는 Update가 없다. 배너 시간은 배너가 떠 있는 동안 배너 스스로 굴린다(AnnouncementBannerTicker) —
-// 예전에는 창마다 매 프레임 배너를 두드려서, 창이 전부 닫혀 있어도 그 수만큼 Update가 돌았다.
-//
-// 여기서 정하는 것은 "창이 열리고 닫히는 방식" 하나뿐이다.
-// 무엇을 그릴지(BuildWindow)와 언제 무엇을 갱신할지(Show/Hide)는 각 창이 그대로 정한다 —
-// 창마다 열기 전에 목록을 다시 만들거나, 닫을 때 올려둔 카드를 내려놓는 등 할 일이 다르기 때문이다.
+// 화면에는 Update가 없다. 창마다 매 프레임 무언가를 두드리면 화면이 전부 닫혀 있어도 그 수만큼 Update가 돈다.
 public abstract class FacilityWindow : MonoBehaviour, IFacilityWindow
 {
     [Header("Font")]
@@ -26,16 +19,16 @@ public abstract class FacilityWindow : MonoBehaviour, IFacilityWindow
     protected GameObject popupRoot;
     protected TMP_FontAsset resolvedFont;
 
-    // 이 창이 세우는 캔버스 오브젝트 이름. 다시 세울 때 남아 있는 옛 캔버스를 찾는 열쇠다.
+    // 이 화면이 세우는 캔버스 오브젝트 이름. 다시 세울 때 남아 있는 옛 캔버스를 찾는 열쇠다.
     protected abstract string CanvasName { get; }
 
-    // 창끼리 겹칠 때의 앞뒤. 두 창이 함께 열릴 일은 없지만 순서를 정해 두면 겹쳐도 헷갈리지 않는다.
+    // 화면끼리 겹칠 때의 앞뒤. 두 화면이 함께 열릴 일은 없지만 순서를 정해 두면 겹쳐도 헷갈리지 않는다.
     protected abstract int SortingOrder { get; }
 
-    // 캔버스와 팝업을 실제로 만드는 곳. EnsureBuilt가 한 번만 부른다.
+    // 캔버스와 화면을 실제로 만드는 곳. EnsureBuilt가 한 번만 부른다.
     protected abstract void BuildWindow();
 
-    // 여닫는 순간에 갱신할 것이 창마다 다르다(목록 다시 만들기, 올려둔 카드 내려놓기 …).
+    // 여닫는 순간에 갱신할 것이 화면마다 다르다(목록 다시 그리기, 올려 둔 것 내려놓기 …).
     public abstract void Show();
     public abstract void Hide();
 
@@ -65,88 +58,9 @@ public abstract class FacilityWindow : MonoBehaviour, IFacilityWindow
         BuildWindow();
     }
 
-    // 창을 담을 캔버스를 세운다. BuildWindow가 맨 먼저 부른다.
+    // 화면을 담을 캔버스를 세운다. BuildWindow가 맨 먼저 부른다.
     protected void BuildCanvas()
     {
         canvas = HudFactory.CreateScreenCanvas(transform, CanvasName, SortingOrder, out canvasRect);
-    }
-
-    // 팝업 루트와 그 뒤의 배경막까지 만들어 돌려준다. 창 내용은 받은 popup 안에 이어 붙이면 된다.
-    //
-    // 배경막과 창 패널은 형제로 둔다. 패널을 배경막의 자식으로 넣으면 패널 안을 누른 클릭이
-    // 배경막까지 거슬러 올라가 창이 곧바로 닫힌다.
-    protected RectTransform BuildPopupRoot()
-    {
-        RectTransform popup = HudFactory.CreateGroup(canvasRect, "Popup");
-        HudFactory.Stretch(popup);
-        popup.pivot = new Vector2(0.5f, 0.5f);
-        popupRoot = popup.gameObject;
-
-        Image backdrop = HudFactory.CreateImage(popup, "Backdrop", BattleHudPalette.PanelBackdrop);
-        // 창 밖을 누르면 닫는다. 열려 있는 동안 뒤쪽 세계로 새는 클릭도 여기서 막힌다.
-        backdrop.raycastTarget = true;
-        HudFactory.Stretch(backdrop.rectTransform);
-
-        var button = backdrop.gameObject.AddComponent<Button>();
-        button.transition = Selectable.Transition.None;
-        button.onClick.AddListener(Hide);
-
-        return popup;
-    }
-
-    // 창의 제목줄 — 왼쪽에 제목, 오른쪽 끝에 정사각 닫기(X), 그 아래 구분선. 창마다 같은 모양이어야 한다.
-    // 구분선은 제목줄 바로 아래의 틈에 걸치므로 제목줄 뒤에 조금이라도 간격을 두고 다음 줄을 놓는다.
-    protected TMP_Text BuildTitleBar(RectTransform panel, string title, float x, float y, float width, float height)
-    {
-        TMP_Text label = HudFactory.CreateText(panel, "Title", resolvedFont, 40f, BattleHudPalette.TextPrimary);
-        label.alignment = TextAlignmentOptions.Left;
-        HudFactory.SetTopLeft(label.rectTransform, new Vector2(width - height, height), new Vector2(x, -y));
-        label.text = title;
-
-        BuildCloseButton(panel, x + width - height, y, height);
-
-        Image divider = HudFactory.CreateDivider(panel, "TitleDivider");
-        HudFactory.SetTopLeft(divider.rectTransform, new Vector2(width, DividerHeight), new Vector2(x, -(y + height - 2f)));
-        return label;
-    }
-
-    // 정사각 닫기 버튼. (x, y)는 창 왼쪽 위에서 버튼 왼쪽 위까지.
-    protected NeonButton BuildCloseButton(RectTransform panel, float x, float y, float size)
-    {
-        NeonButton close = HudFactory.CreateCloseButton(panel, resolvedFont, size, Hide);
-        HudFactory.SetTopLeft(close.Rect, new Vector2(size, size), new Vector2(x, -y));
-        return close;
-    }
-
-    // divider.png는 32px 높이 안에 가는 선이 위쪽에 그어져 있다. 절반으로 줄여 2px 선으로 쓴다.
-    protected const float DividerHeight = 16f;
-
-    // ---- 보유 명단이 바뀌었을 때 ------------------------------------------
-    //
-    // 카드를 늘어놓는 창(편성·합성)은 인원이 바뀌면 칸 수도 카드 크기도 달라져 통째로 다시 지어야 한다.
-    // 다만 닫혀 있는 동안에는 미뤄 둔다 — 10연차 소환은 한 명씩 열 번 늘어나므로,
-    // 그때마다 아무도 보지 않는 캔버스를 다시 지으면 그대로 멈춤이 된다.
-
-    // 카드를 몇 장 깔아 두고 지었는지. 인원이 이 수에서 달라지면 슬롯을 새로 깔아야 한다.
-    protected int builtRosterCount = -1;
-
-    // 닫혀 있는 동안 인원이 바뀌었다. 다음에 열 때 다시 짓는다.
-    protected bool rosterDirty;
-
-    protected void RebuildRoster()
-    {
-        rosterDirty = false;
-
-        bool wasOpen = IsOpen;
-        // canvas를 놓으면 EnsureBuilt가 남아 있는 캔버스를 치우고 처음부터 다시 만든다.
-        canvas = null;
-        EnsureBuilt();
-        AfterRosterRebuilt();
-        SetOpen(wasOpen);
-    }
-
-    // 다시 지은 뒤 화면 값을 맞출 것이 있으면 여기서.
-    protected virtual void AfterRosterRebuilt()
-    {
     }
 }
