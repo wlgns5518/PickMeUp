@@ -97,6 +97,7 @@ public class BattleResultPanel
         AppendSkillUnlocks(result);
         AppendGold(result);
         AppendMaterials(result);
+        AppendUnlocks(result);
 
         if (result.Mvp != null && result.Mvp.Character != null)
         {
@@ -213,6 +214,16 @@ public class BattleResultPanel
 
         Builder.Append("<color=#").Append(AccentColor).Append(">골드 획득</color>  ")
             .Append(result.Gold.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)).Append('\n');
+    }
+
+    // 이 판으로 열린 콘텐츠(요일 던전·탐험 던전). 시공의 틈에 새 칸이 생겼다는 것을 여기서 처음 알게 된다.
+    private void AppendUnlocks(BattleResult result)
+    {
+        for (int i = 0; i < result.UnlockedDungeons.Count; i++)
+        {
+            Builder.Append("<color=#").Append(MvpColor).Append(">새 콘텐츠 해금</color>  ")
+                .Append(DungeonCatalog.Korean(result.UnlockedDungeons[i])).Append('\n');
+        }
     }
 
     // 영구 사망은 승패와 무관하게 항상 알린다. 이 게임에서 되돌릴 수 없는 유일한 손실이다.

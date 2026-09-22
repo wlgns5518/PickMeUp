@@ -2034,7 +2034,7 @@ MonoBehaviour:
   floorsPerPage: 10
   pageColumns: 5
   openOnStart: 0
-  deckBuild: {fileID: 0}
+  deckBuild: {fileID: 1912286315}
 --- !u!4 &247532115
 Transform:
   m_ObjectHideFlags: 0
@@ -15619,6 +15619,7 @@ Transform:
   - {fileID: 448008418}
   - {fileID: 871901320}
   - {fileID: 1871696427}
+  - {fileID: 1300978605}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &960920119
@@ -21832,6 +21833,53 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0, y: 0}
+--- !u!1 &1300978604
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1300978605}
+  - component: {fileID: 1300978606}
+  m_Layer: 0
+  m_Name: DungeonSelectUI
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1300978605
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1300978604}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 953605073}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1300978606
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1300978604}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c4457892094d6d549a7d189f1db9d8c5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PickMeUp::DungeonSelectUI
+  koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
+  deckBuild: {fileID: 1912286315}
+  openOnStart: 0
 --- !u!1 &1314986322
 GameObject:
   m_ObjectHideFlags: 0
@@ -46233,6 +46281,7 @@ MonoBehaviour:
   roster: {fileID: 11400000, guid: 0d619bff89015f24f9a394e847a2bc66, type: 2}
   deckCapacity: 5
   floorSelect: {fileID: 247532114}
+  dungeonSelect: {fileID: 1300978606}
 --- !u!4 &1912286316
 Transform:
   m_ObjectHideFlags: 0

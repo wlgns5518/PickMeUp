@@ -83,9 +83,9 @@ public class FacilityGate : MonoBehaviour, IPointerClickHandler, IPointerEnterHa
                 return FindAnyObjectByType<SummonUI>(FindObjectsInactive.Include);
             case VillageBlockout.Kind.Synthesis:
                 return FindAnyObjectByType<SynthesisUI>(FindObjectsInactive.Include);
-            // 시공의 틈은 원정을 떠나는 자리다. 누구를 데려갈지부터 고른다.
+            // 시공의 틈은 원정을 떠나는 자리다. 어느 던전으로 갈지부터 고른다(DungeonSelectUI → 편성 → 층 선택).
             case VillageBlockout.Kind.Rift:
-                return FindAnyObjectByType<DeckBuildUI>(FindObjectsInactive.Include);
+                return FindAnyObjectByType<DungeonSelectUI>(FindObjectsInactive.Include);
             case VillageBlockout.Kind.EquipmentWorkshop:
                 return FindAnyObjectByType<EquipmentWorkshopUI>(FindObjectsInactive.Include);
             // 제작소에서 만든 장비를 영웅에게 들리는 자리.

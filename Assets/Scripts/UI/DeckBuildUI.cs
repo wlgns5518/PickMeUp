@@ -33,6 +33,10 @@ public class DeckBuildUI : UiScreen, ICardDragHost
     [Tooltip("편성을 마치고 층을 고를 화면. 비워두면 씬에서 찾는다.")]
     [SerializeField] private FloorSelectUI floorSelect;
 
+    [Header("Back")]
+    [Tooltip("뒤로가기로 돌아갈 던전 선택 화면. 비워두면 씬에서 찾는다.")]
+    [SerializeField] private DungeonSelectUI dungeonSelect;
+
     private const float LeftWidth = 1040f;
     private const float PartySlotSize = 164f;
     private const float PartyPanelHeader = 60f;
@@ -58,7 +62,7 @@ public class DeckBuildUI : UiScreen, ICardDragHost
 
     protected override string CanvasName => "DeckBuildCanvas";
     protected override int SortingOrder => 91;
-    protected override string Title => "파티 편성";
+    protected override string Title => "메인 던전 — 파티 편성";
     protected override string Subtitle => "출전할 영웅을 골라 파티를 짜고 층을 골라 출전합니다. 출전 순서대로 전장에 배치됩니다.";
     protected override Currency[] HeaderCurrencies => new Currency[0];
 
@@ -102,6 +106,14 @@ public class DeckBuildUI : UiScreen, ICardDragHost
     public override void Hide()
     {
         SetOpen(false);
+    }
+
+    // 뒤로가기는 앞 단계(던전 선택)로. 마을로 곧장 나가면 다른 던전을 고르러 시공의 틈을 다시 눌러야 한다.
+    protected override void OnBack()
+    {
+        Hide();
+        if (dungeonSelect == null) dungeonSelect = FindAnyObjectByType<DungeonSelectUI>(FindObjectsInactive.Include);
+        if (dungeonSelect != null) dungeonSelect.Show();
     }
 
     private void HandleDataChanged()

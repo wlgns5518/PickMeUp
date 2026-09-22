@@ -33,6 +33,9 @@ public class BattleResult
     // 이번 판에 받은 골드. 이긴 판에만 채워진다(GameEconomy.FloorClearGold). 지갑에는 이미 들어가 있다.
     public long Gold { get; internal set; }
 
+    // 이 판으로 새로 열린 콘텐츠(DungeonCatalog). 이미 열려 있던 층을 다시 깨면 비어 있다.
+    public readonly List<DungeonKind> UnlockedDungeons = new List<DungeonKind>();
+
     public string KoreanOutcome
     {
         get
@@ -59,5 +62,6 @@ public class BattleResult
         Mvp = null;
         Materials.Clear();
         Gold = 0;
+        UnlockedDungeons.Clear();
     }
 }

@@ -76,7 +76,7 @@ public class FloorSelectUI : UiScreen
     protected override string CanvasName => "FloorSelectCanvas";
     // 편성 화면(91)보다 위.
     protected override int SortingOrder => 95;
-    protected override string Title => "층 선택";
+    protected override string Title => "메인 던전 — 층 선택";
     protected override string Subtitle => "도전할 층을 고르고 출전합니다. 이긴 층의 다음 층이 열립니다.";
     protected override Currency[] HeaderCurrencies => new Currency[0];
 

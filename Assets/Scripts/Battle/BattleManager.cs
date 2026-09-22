@@ -219,7 +219,11 @@ public class BattleManager : MonoBehaviour
             MaterialInventory.AddRange(result.Materials);
             result.Gold = GameEconomy.FloorClearGold(FloorProgress.SelectedFloor);
             PlayerAccount.Add(Currency.Gold, result.Gold);
+
+            // 새 콘텐츠가 열렸는지는 깨기 전후의 진행도로 가른다. 이미 깼던 층을 다시 깨면 아무것도 열리지 않는다.
+            int clearedBefore = FloorProgress.HighestCleared;
             FloorProgress.MarkCleared(FloorProgress.SelectedFloor);
+            DungeonCatalog.CollectNewlyUnlocked(clearedBefore, FloorProgress.HighestCleared, result.UnlockedDungeons);
         }
 
         CaptureStress();
