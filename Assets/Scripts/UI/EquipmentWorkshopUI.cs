@@ -108,9 +108,14 @@ public class EquipmentWorkshopUI : UiScreen
         SetOpen(true);
     }
 
+    // 닫으면 넣어 둔 재료와 장비를 내려놓는다. 지난번에 무엇을 올려 뒀는지 화면이 기억하고 있으면,
+    // 다시 열었을 때 그 사실을 모른 채 제작·합성을 눌러 엉뚱한 것을 태우게 된다(캐릭터 합성소도 같은 규칙).
+    // 수동 제작으로 퍼즐이 뜨는 동안에도 닫히지만, 그때는 이미 재료가 창고에서 빠져 칸이 비어 있다.
     public override void Hide()
     {
         if (ratePopup != null) ratePopup.Hide();
+        craftSlots.Clear();
+        synthSlots.Clear();
         SetOpen(false);
     }
 
