@@ -3,13 +3,12 @@ using UnityEngine.UI;
 
 // 시설 화면(소환소·합성소·장비창·제작소)의 공통 뼈대 — 화면을 덮는 배경, 머리줄, 내용 칸, 팝업 층, 알림.
 //
-//   ┌ ‹  제목 ──────────────────────────────── [골드] [젬] ┐   머리줄: 뒤로가기 · 무엇을 하는 화면인지 · 보유 재화
-//   │  한 줄 설명                                            │
+//   ┌ ‹  제목 ──────────────────────────────── [골드] [젬] ┐   머리줄: 뒤로가기 · 제목 · 보유 재화
 //   ├───────────────────────────────────────────────────────┤
 //   │                     내용(BuildContent)                 │
 //   └───────────────────────────────────────────────────────┘
 //
-// 화면마다 다른 것은 제목·설명·보여 줄 재화·내용뿐이다. 나머지(배경색, 머리줄 높이, 뒤로가기 자리, 알림 자리,
+// 화면마다 다른 것은 제목·보여 줄 재화·내용뿐이다. 나머지(배경색, 머리줄 높이, 뒤로가기 자리, 알림 자리,
 // 팝업 배경막)는 여기서 한 번만 정한다 — 어느 시설에 들어가든 같은 게임의 화면으로 보이게.
 //
 // 여닫기 규칙(캔버스 한 번 세우기, 다시 짓기, 명단이 바뀌었을 때 미뤄 두기)은 FacilityWindow를 그대로 쓴다.
@@ -27,9 +26,6 @@ public abstract class UiScreen : FacilityWindow
     protected UiConfirm confirm;
 
     protected abstract string Title { get; }
-
-    // 무엇을 하는 화면인지 한 줄로. 제목 아래에 흐린 글자로 붙는다.
-    protected abstract string Subtitle { get; }
 
     // 머리줄 오른쪽에 보여 줄 재화. 이 화면에서 쓰는 것만 둔다.
     protected virtual Currency[] HeaderCurrencies => new[] { Currency.Gold };
@@ -90,10 +86,7 @@ public abstract class UiScreen : FacilityWindow
 
         float textX = UiTheme.ScreenPadding + backSize + UiTheme.Space5;
         var title = UiKit.Text(bar, "Title", Title, UiTheme.FontTitle, UiTheme.TextPrimary);
-        UiKit.TopLeft(title.rectTransform, textX, 12f, 900f, 50f);
-
-        var subtitle = UiKit.Text(bar, "Subtitle", Subtitle, UiTheme.FontLabel, UiTheme.TextSecondary);
-        UiKit.TopLeft(subtitle.rectTransform, textX, 60f, 1100f, 32f);
+        UiKit.LeftMiddle(title.rectTransform, textX, 900f, 52f);
 
         float right = UiTheme.ScreenPadding;
         Currency[] currencies = HeaderCurrencies;

@@ -39,9 +39,9 @@ public static class DungeonCatalog
     {
         switch (kind)
         {
-            case DungeonKind.Daily:      return "요일마다 열리는 던전에서 성장 재화와 재료를 모읍니다.";
-            case DungeonKind.Expedition: return "갈림길을 골라 나아가며 전투·보물·사건을 만나고 최종 보스에 이릅니다.";
-            default:                     return "탑을 한 층씩 오릅니다. 깬 층의 다음 층이 열립니다.";
+            case DungeonKind.Daily:      return "요일마다 다른 재화·재료";
+            case DungeonKind.Expedition: return "갈림길을 골라 나아가는 원정";
+            default:                     return "한 층씩 오르는 탑";
         }
     }
 

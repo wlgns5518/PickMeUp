@@ -48,7 +48,6 @@ public class SynthesisUI : UiScreen
     // 소환 창(96)보다 위.
     protected override int SortingOrder => 97;
     protected override string Title => "캐릭터 합성소";
-    protected override string Subtitle => "베이스 영웅이 다른 영웅을 재료로 바쳐 새 스킬을 배웁니다. 재료 영웅은 사라집니다.";
 
     private void Awake()
     {
@@ -163,8 +162,8 @@ public class SynthesisUI : UiScreen
 
         string materialName = UiTheme.Paint(HeroLabel.Name(material), UiTheme.Danger);
         confirm.Ask("캐릭터 합성",
-            $"{materialName}{HeroLabel.ObjectParticle(HeroLabel.Name(material))} 재료로 사용합니다.\n" +
-            "재료로 쓴 영웅은 사라지며 되돌릴 수 없습니다.\n장착한 장비는 창고로 돌아갑니다.",
+            $"{materialName}{HeroLabel.SubjectParticle(HeroLabel.Name(material))} 사라집니다.\n" +
+            "장착한 장비는 창고로 돌아갑니다.",
             "합성", true, Synthesize);
     }
 
@@ -229,7 +228,7 @@ public class SynthesisUI : UiScreen
     {
         if (main == null)
         {
-            flow.SetResultPlaceholder("오른쪽 목록에서 스킬을 배울 베이스 영웅을 고르세요.");
+            flow.SetResultPlaceholder("베이스 영웅을 고르세요.");
             flow.Action.interactable = false;
             return;
         }
@@ -241,7 +240,7 @@ public class SynthesisUI : UiScreen
         if (material == null)
         {
             flow.SetResult(UiSlotContents.Hero(main), HeroLabel.Name(main), grade,
-                $"스킬 {skills} / {max}\n재료 영웅을 고르면 무엇을 배울 수 있는지 보입니다.", null);
+                $"스킬 {skills} / {max}", "재료 영웅을 고르세요.", UiTheme.TextMuted);
             flow.Action.interactable = false;
             return;
         }
@@ -249,13 +248,10 @@ public class SynthesisUI : UiScreen
         bool ok = CharacterSynthesis.CanSynthesize(main, material, out string reason);
         string stats = ok
             ? $"스킬 {skills} → {UiTheme.Paint((skills + 1).ToString(), UiTheme.Success)} / {max}\n" +
-              $"{UiKit.Stars(1)} ~ {UiTheme.Paint(UiKit.Stars(material.starCount), UiTheme.StarColor(material.starCount))} 등급 스킬 중 하나를 무작위로 배웁니다.\n" +
-              "레벨과 능력치는 그대로입니다."
+              $"{UiKit.Stars(1)} ~ {UiTheme.Paint(UiKit.Stars(material.starCount), UiTheme.StarColor(material.starCount))} 스킬 중 무작위"
             : $"스킬 {skills} / {max}";
 
-        string note = ok
-            ? $"재료 영웅 {HeroLabel.Name(material)}{HeroLabel.TopicParticle(HeroLabel.Name(material))} 합성 후 사라집니다."
-            : reason;
+        string note = ok ? $"{HeroLabel.Name(material)} 소멸" : reason;
 
         flow.SetResult(UiSlotContents.Hero(main), HeroLabel.Name(main), grade, stats, note, ok ? UiTheme.Danger : UiTheme.Warning);
         flow.Action.interactable = ok;
@@ -298,7 +294,7 @@ public class SynthesisUI : UiScreen
         });
 
         picker.Count.text = $"{sorted.Count}명";
-        picker.Grid.Show(sorted.Count, BindHero, "보유한 영웅이 없습니다.\n소환소에서 먼저 영웅을 소환해 주세요.");
+        picker.Grid.Show(sorted.Count, BindHero, "보유한 영웅이 없습니다.");
     }
 
     private void BindHero(UiTile tile, int index)

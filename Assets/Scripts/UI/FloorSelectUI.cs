@@ -77,7 +77,6 @@ public class FloorSelectUI : UiScreen
     // 편성 화면(91)보다 위.
     protected override int SortingOrder => 95;
     protected override string Title => "메인 던전 — 층 선택";
-    protected override string Subtitle => "도전할 층을 고르고 출전합니다. 이긴 층의 다음 층이 열립니다.";
     protected override Currency[] HeaderCurrencies => new Currency[0];
 
     private void Awake()
@@ -172,13 +171,6 @@ public class FloorSelectUI : UiScreen
             cards.Add(BuildCard(panel.Rect, "Floor_" + i, x, y, cardWidth, () => SelectFloor(FloorAt(slot))));
         }
 
-        TMP_Text note = UiKit.Wrap(UiKit.Text(root, "Note",
-            "· 다섯 층마다 전장이 바뀝니다. 층이 높을수록 적이 많고 강해지며, 보상도 커집니다.\n" +
-            "· 이긴 판에서만 골드와 제작 재료를 얻습니다. 재료 등급은 층 구간이 정합니다.",
-            UiTheme.FontLabel, UiTheme.TextSecondary));
-        note.alignment = TextAlignmentOptions.TopLeft;
-        note.lineSpacing = 8f;
-        UiKit.TopLeft(note.rectTransform, 4f, top + gridHeight + UiTheme.Space5, LeftWidth, 90f);
     }
 
     private FloorCard BuildCard(RectTransform parent, string name, float x, float y, float width,

@@ -50,7 +50,6 @@ public class DeckBuildUI : UiScreen, ICardDragHost
     private readonly List<UiTile> partyTiles = new List<UiTile>();
     private TMP_Text infoStats;
     private TMP_Text actionTitle;
-    private TMP_Text actionNote;
     private UiButton departButton;
     private UiPickerPanel picker;
 
@@ -63,7 +62,6 @@ public class DeckBuildUI : UiScreen, ICardDragHost
     protected override string CanvasName => "DeckBuildCanvas";
     protected override int SortingOrder => 91;
     protected override string Title => "메인 던전 — 파티 편성";
-    protected override string Subtitle => "출전할 영웅을 골라 파티를 짜고 층을 골라 출전합니다. 출전 순서대로 전장에 배치됩니다.";
     protected override Currency[] HeaderCurrencies => new Currency[0];
 
     private void Awake()
@@ -196,16 +194,8 @@ public class DeckBuildUI : UiScreen, ICardDragHost
         infoStats = UiKit.Wrap(UiKit.Text(panel.Rect, "Stats", string.Empty, UiTheme.FontBody, UiTheme.TextPrimary));
         infoStats.alignment = TextAlignmentOptions.TopLeft;
         infoStats.lineSpacing = 10f;
-        UiKit.Fill(infoStats.rectTransform, UiTheme.Space5, PartyPanelHeader, LeftWidth * 0.5f, UiTheme.Space4);
+        UiKit.Fill(infoStats.rectTransform, UiTheme.Space5, PartyPanelHeader, UiTheme.Space5, UiTheme.Space4);
 
-        TMP_Text guide = UiKit.Wrap(UiKit.Text(panel.Rect, "Guide",
-            "· 오른쪽 목록의 영웅을 누르면 빈 자리에 들어가고, 자리의 영웅을 누르면 빠집니다.\n" +
-            "· 끌어다 놓을 수도 있습니다. 자리끼리 끌면 출전 순서가 바뀝니다.\n" +
-            "· 한 영웅은 한 파티에만 들어갑니다. 쓰러진 영웅은 출전할 수 없습니다.",
-            UiTheme.FontLabel, UiTheme.TextSecondary));
-        guide.alignment = TextAlignmentOptions.TopLeft;
-        guide.lineSpacing = 8f;
-        UiKit.Fill(guide.rectTransform, LeftWidth * 0.5f, PartyPanelHeader, UiTheme.Space5, UiTheme.Space4);
     }
 
     private void BuildActionBar(RectTransform root)
@@ -215,9 +205,7 @@ public class DeckBuildUI : UiScreen, ICardDragHost
 
         float textWidth = LeftWidth - DepartWidth - UiTheme.Space5 * 3f;
         actionTitle = UiKit.Text(bar.Rect, "Title", string.Empty, UiTheme.FontHeading, UiTheme.TextPrimary);
-        UiKit.TopLeft(actionTitle.rectTransform, UiTheme.Space5, 26f, textWidth, 44f);
-        actionNote = UiKit.Text(bar.Rect, "Note", string.Empty, UiTheme.FontLabel, UiTheme.TextSecondary);
-        UiKit.TopLeft(actionNote.rectTransform, UiTheme.Space5, 74f, textWidth, 34f);
+        UiKit.LeftMiddle(actionTitle.rectTransform, UiTheme.Space5, textWidth, 44f);
 
         departButton = UiButton.Create(bar.Rect, "Depart", "출전하기", UiButtonStyle.Primary, UiButtonSize.Large, Depart);
         UiKit.RightMiddle(departButton.Rect, UiTheme.Space5, DepartWidth, UiTheme.ButtonLarge);
@@ -444,7 +432,6 @@ public class DeckBuildUI : UiScreen, ICardDragHost
         }
 
         actionTitle.text = members.Count > 0 ? $"{party}파티 · {members.Count}명 출전" : $"{party}파티 · 편성 전";
-        actionNote.text = members.Count > 0 ? "출전하기를 누르면 도전할 층을 고릅니다." : "영웅을 한 명 이상 넣어야 출전할 수 있습니다.";
         departButton.interactable = members.Count > 0;
     }
 
@@ -467,7 +454,7 @@ public class DeckBuildUI : UiScreen, ICardDragHost
         });
 
         picker.Count.text = $"{sorted.Count}명";
-        picker.Grid.Show(sorted.Count, BindHero, "보유한 영웅이 없습니다.\n소환소에서 먼저 영웅을 소환해 주세요.");
+        picker.Grid.Show(sorted.Count, BindHero, "보유한 영웅이 없습니다.");
     }
 
     private void BindHero(UiTile tile, int index)

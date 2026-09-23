@@ -28,7 +28,7 @@ public class DungeonSelectUI : UiScreen
     [SerializeField] private bool openOnStart;
 
     private const float CardGap = UiTheme.ColumnGap;
-    private const float CardHeight = 640f;
+    private const float CardHeight = 560f;
     private const float LockGlyphSize = 96f;
 
     private class DungeonCard
@@ -49,7 +49,6 @@ public class DungeonSelectUI : UiScreen
     // 마을 상단바(90)를 덮는다. 시설 화면끼리는 함께 열리지 않는다 — 다음 단계로 넘어갈 때 이 화면은 닫는다.
     protected override int SortingOrder => 92;
     protected override string Title => "시공의 틈";
-    protected override string Subtitle => "도전할 던전을 고릅니다. 메인 던전을 오르면 새 던전이 열립니다.";
     protected override Currency[] HeaderCurrencies => new Currency[0];
 
     private void Awake()
@@ -80,14 +79,6 @@ public class DungeonSelectUI : UiScreen
         for (int i = 0; i < DungeonCatalog.All.Length; i++)
             cards.Add(BuildCard(root, DungeonCatalog.All[i], i * (cardWidth + CardGap), cardWidth));
 
-        TMP_Text note = UiKit.Wrap(UiKit.Text(root, "Note",
-            $"· {DungeonCatalog.Korean(DungeonKind.Main)}은 처음부터 들어갈 수 있습니다. " +
-            $"{DungeonCatalog.UnlockText(DungeonKind.Daily)}, {DungeonCatalog.UnlockText(DungeonKind.Expedition)}.\n" +
-            "· 한 번 열린 던전은 낮은 층을 다시 깨도 잠기지 않습니다.",
-            UiTheme.FontLabel, UiTheme.TextSecondary));
-        note.alignment = TextAlignmentOptions.TopLeft;
-        note.lineSpacing = 8f;
-        UiKit.TopLeft(note.rectTransform, 4f, CardHeight + UiTheme.Space5, size.x, 80f);
     }
 
     private DungeonCard BuildCard(RectTransform root, DungeonKind kind, float x, float width)
@@ -115,12 +106,12 @@ public class DungeonSelectUI : UiScreen
         UiKit.TopStretch(body.Rect, 188f, CardHeight - 188f - UiTheme.ButtonLarge - pad * 2f, pad, pad);
 
         card.Lock = UiKit.Glyph(body.Rect, "Lock", UiSprites.Glyph.Lock, UiTheme.TextMuted);
-        UiKit.TopCenter(card.Lock.rectTransform, 0f, UiTheme.Space6, LockGlyphSize, LockGlyphSize);
+        UiKit.TopCenter(card.Lock.rectTransform, 0f, UiTheme.Space5, LockGlyphSize, LockGlyphSize);
 
         card.Condition = UiKit.Wrap(UiKit.Text(body.Rect, "Condition", string.Empty, UiTheme.FontBody, UiTheme.Warning,
             TextAlignmentOptions.Top));
         card.Condition.lineSpacing = 8f;
-        UiKit.TopStretch(card.Condition.rectTransform, UiTheme.Space6 + LockGlyphSize + UiTheme.Space4, 120f, pad, pad);
+        UiKit.TopStretch(card.Condition.rectTransform, UiTheme.Space5 + LockGlyphSize + UiTheme.Space4, 100f, pad, pad);
 
         card.State = UiKit.Wrap(UiKit.Text(body.Rect, "State", string.Empty, UiTheme.FontBody, UiTheme.TextPrimary));
         card.State.alignment = TextAlignmentOptions.TopLeft;
@@ -209,22 +200,18 @@ public class DungeonSelectUI : UiScreen
                 int cleared = FloorProgress.HighestCleared;
                 string clearedText = cleared > 0 ? $"{cleared}층" : "없음";
                 return
-                    $"클리어한 층  {UiTheme.Paint(clearedText, UiTheme.Success)}\n" +
-                    $"다음 도전  {UiTheme.Paint(FloorProgress.HighestUnlocked + "층", UiTheme.Primary)}\n" +
-                    $"꼭대기  {FloorProgress.LastFloor}층\n" +
-                    "깬 층은 다시 도전할 수 있습니다.";
+                    $"클리어  {UiTheme.Paint(clearedText, UiTheme.Success)}\n" +
+                    $"다음  {UiTheme.Paint(FloorProgress.HighestUnlocked + "층", UiTheme.Primary)}  /  {FloorProgress.LastFloor}층";
 
             case DungeonKind.Daily:
                 return
                     $"오늘  {Weekday()}\n" +
-                    "요일마다 다른 던전이 열립니다.\n" +
-                    UiTheme.Paint("던전 내용은 아직 준비 중입니다.", UiTheme.TextMuted);
+                    UiTheme.Paint("준비 중", UiTheme.TextMuted);
 
             default:
                 return
-                    "갈림길을 골라 나아갑니다.\n" +
-                    "전투 · 보물 · 사건 · 회복 · 최종 보스\n" +
-                    UiTheme.Paint("던전 내용은 아직 준비 중입니다.", UiTheme.TextMuted);
+                    "전투 · 보물 · 사건 · 회복 · 보스\n" +
+                    UiTheme.Paint("준비 중", UiTheme.TextMuted);
         }
     }
 

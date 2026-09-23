@@ -71,7 +71,6 @@ public class EquipmentWorkshopUI : UiScreen
     // 소환(96), 합성(97) 다음.
     protected override int SortingOrder => 98;
     protected override string Title => "장비 제작소";
-    protected override string Subtitle => "재료로 장비를 만들거나, 장비 세 개를 합쳐 더 좋은 장비를 얻습니다.";
 
     private void Awake()
     {
@@ -258,12 +257,10 @@ public class EquipmentWorkshopUI : UiScreen
             UiKit.Fill(power.rectTransform, columns[2] + UiTheme.Space5, 0f, 0f, 0f);
         }
 
-        TMP_Text note = UiKit.Wrap(UiKit.Text(ratePopup.Body, "Note",
-            "· 수동 제작은 퍼즐을 풀어야 장비가 나옵니다. 실패하면 재료와 골드를 잃습니다.\n" +
-            "· 어려운 난이도일수록 재료 등급보다 높은 등급이 나올 확률이 커집니다.",
-            UiTheme.FontLabel, UiTheme.TextSecondary));
+        TMP_Text note = UiKit.Text(ratePopup.Body, "Note", "실패하면 재료와 골드를 잃습니다.",
+            UiTheme.FontLabel, UiTheme.TextSecondary);
         note.alignment = TextAlignmentOptions.BottomLeft;
-        UiKit.BottomStretch(note.rectTransform, 0f, 80f);
+        UiKit.BottomStretch(note.rectTransform, 0f, 44f);
     }
 
     private void OpenRates()
@@ -418,8 +415,8 @@ public class EquipmentWorkshopUI : UiScreen
         for (int i = 0; i < synthSlots.Count; i++) enhanced |= synthSlots[i].Level > 0;
 
         confirm.Ask("장비 합성",
-            $"장비 {EquipmentSynthesis.SlotCount}개를 재료로 사용합니다.\n재료 장비는 사라지며 되돌릴 수 없습니다." +
-            (enhanced ? "\n" + UiTheme.Paint("강화한 장비가 있습니다. 강화 단계는 이어지지 않습니다.", UiTheme.Warning) : string.Empty),
+            $"재료 장비 {EquipmentSynthesis.SlotCount}개가 사라집니다." +
+            (enhanced ? "\n" + UiTheme.Paint("강화 단계는 이어지지 않습니다.", UiTheme.Warning) : string.Empty),
             "합성", true, Synthesize);
     }
 
@@ -494,7 +491,7 @@ public class EquipmentWorkshopUI : UiScreen
         if (!complete)
         {
             craftFlow.SetResultPlaceholder(
-                "재료 3개를 넣으면 무엇이 나올지 보입니다.\n가장 많이 넣은 재료가 무기 계열을, 세 재료의 평균이 등급을 정합니다.");
+                "재료 3개를 넣으세요.");
         }
         else
         {
@@ -507,13 +504,13 @@ public class EquipmentWorkshopUI : UiScreen
             if (manual && topGrade != baseGrade) preview.Badge = EquipmentGradeNames.NameOf(baseGrade) + "+";
 
             string grade = manual && topGrade != baseGrade
-                ? $"{GradeText(baseGrade)} ~ {GradeText(topGrade)}등급 · 퍼즐 결과에 따라"
-                : $"{GradeText(baseGrade)}등급 · {EquipmentGradeNames.PrefixOf(baseGrade)} 장비";
+                ? $"{GradeText(baseGrade)} ~ {GradeText(topGrade)}등급"
+                : $"{GradeText(baseGrade)}등급";
             string stats =
                 $"{CraftRecipe.FamilyContents(family)} 중 하나\n" +
                 $"예상 능력치  {stat} x{EquipmentGradeRules.PowerOf(baseGrade):0.00}" +
                 (manual && topGrade != baseGrade ? $" ~ x{EquipmentGradeRules.PowerOf(topGrade):0.00}" : string.Empty);
-            string note = manual ? "퍼즐에 실패하면 재료와 골드를 잃습니다." : null;
+            string note = manual ? "실패하면 재료와 골드를 잃습니다." : null;
 
             craftFlow.SetResult(preview, CraftRecipe.FamilyName(family), grade, stats, note);
         }
@@ -591,7 +588,7 @@ public class EquipmentWorkshopUI : UiScreen
         }
 
         materialPicker.Count.text = $"{total}개";
-        materialPicker.Grid.Show(visibleMaterials.Count, BindMaterial, "재료가 없습니다.\n층을 클리어하면 재료를 얻습니다.");
+        materialPicker.Grid.Show(visibleMaterials.Count, BindMaterial, "재료가 없습니다.");
     }
 
     private void BindMaterial(UiTile tile, int index)
@@ -630,7 +627,7 @@ public class EquipmentWorkshopUI : UiScreen
         if (synthSlots.Count == 0)
         {
             synthFlow.SetResultPlaceholder(
-                "장비 3개를 넣으면 결과가 보입니다.\n결과 등급은 세 장비의 평균 등급보다 한 단계 높습니다. 장착 중인 장비는 넣을 수 없습니다.");
+                $"장비 {EquipmentSynthesis.SlotCount}개를 넣으세요.");
         }
         else
         {
@@ -640,14 +637,14 @@ public class EquipmentWorkshopUI : UiScreen
             bool ok = EquipmentSynthesis.CanSynthesize(synthSlots, out string reason);
 
             UiSlotContent preview = UiSlotContents.Preview(family, result);
-            string name = complete ? $"{EquipmentGradeNames.PrefixOf(result)} {CraftRecipe.FamilyName(family)}" : "합성 결과 미리보기";
-            string grade = $"평균 {GradeText(average)} → {GradeText(result)}등급" + (complete ? string.Empty : " (재료를 더 넣으면 바뀝니다)");
+            string name = $"{EquipmentGradeNames.PrefixOf(result)} {CraftRecipe.FamilyName(family)}";
+            string grade = $"평균 {GradeText(average)} → {GradeText(result)}등급";
             string stats =
                 $"{CraftRecipe.FamilyContents(family)} 중 하나\n" +
                 $"예상 능력치  {UiSlotContents.StatNameOf(family)} x{EquipmentGradeRules.PowerOf(result):0.00}";
             string note = !complete ? $"장비를 {EquipmentSynthesis.SlotCount - synthSlots.Count}개 더 넣으세요."
                 : !ok ? reason
-                : "강화 단계는 이어지지 않습니다(결과는 +0).";
+                : "강화 단계는 이어지지 않습니다.";
 
             synthFlow.SetResult(preview, name, grade, stats, note, complete && !ok ? UiTheme.Danger : UiTheme.Warning);
         }
@@ -658,7 +655,7 @@ public class EquipmentWorkshopUI : UiScreen
         {
             new UiFlowPanel.Requirement
             {
-                Label = "재료 장비 (장착하지 않은 것)",
+                Label = "재료 장비",
                 Have = synthSlots.Count.ToString(),
                 Need = EquipmentSynthesis.SlotCount.ToString(),
                 Met = complete,
@@ -703,7 +700,7 @@ public class EquipmentWorkshopUI : UiScreen
 
         equipmentPicker.Count.text = $"{items.Count}개";
         equipmentPicker.Grid.Show(visibleEquipment.Count, BindEquipment,
-            items.Count == 0 ? "장비가 없습니다.\n[장비 제작] 탭에서 먼저 만들어 주세요." : "이 분류에 해당하는 장비가 없습니다.");
+            items.Count == 0 ? "장비가 없습니다." : "해당하는 장비가 없습니다.");
     }
 
     private void BindEquipment(UiTile tile, int index)

@@ -72,7 +72,6 @@ public class SummonUI : UiScreen
     // 층 선택 창(95)보다 위.
     protected override int SortingOrder => 96;
     protected override string Title => "캐릭터 소환소";
-    protected override string Subtitle => "새로운 영웅을 소환합니다. 모든 영웅은 소환될 때 새로 태어나는 고유한 존재입니다.";
     protected override Currency[] HeaderCurrencies => new[] { Currency.Gold, Currency.Gem };
 
     private void Awake()
@@ -283,13 +282,13 @@ public class SummonUI : UiScreen
             Color color = UiTheme.StarColor(stars);
             SetCell(rateRows[i], 0, UiTheme.Paint(UiKit.Stars(stars), color) + "  " + stars + "성");
             SetCell(rateRows[i], 1, UiTheme.Paint(SummonTable.PercentText(kind, stars), color));
-            SetCell(rateRows[i], 2, $"무작위로 태어나는 {stars}성 영웅");
+            SetCell(rateRows[i], 2, $"{stars}성 영웅");
         }
 
+        // 영웅은 소환될 때마다 새로 태어나므로 영웅별 개별 확률이 없다. 그것만 짚어 준다.
         rateSummary.text =
-            $"· {BannerName(kind)}은 1회마다 위 확률로 등급을 정하고, 그 등급의 영웅이 새로 태어납니다.\n" +
-            "· 영웅은 소환될 때마다 새로 만들어지는 고유한 존재라 같은 영웅이 다시 나오지 않습니다. 그래서 영웅별 개별 확률은 없습니다.\n" +
-            $"· {UiKit.Stars(UiTheme.MaxTier)} 영웅은 소환으로 등장하지 않습니다.";
+            "영웅별 개별 확률은 없습니다.\n" +
+            $"{UiKit.Stars(UiTheme.MaxTier)}은 소환으로 등장하지 않습니다.";
     }
 
     private static void SetCell(RectTransform row, int column, string text) =>
@@ -487,9 +486,7 @@ public class SummonUI : UiScreen
         int max = SummonTable.MaxStars(kind);
         string top = UiTheme.Paint(UiKit.Stars(max), UiTheme.StarColor(max));
         string topRate = SummonTable.PercentText(kind, max);
-        return kind == SummonKind.Paid
-            ? $"젬으로 소환합니다. 최고 {top} 영웅까지 등장합니다.\n{top} 등장 확률 {topRate}"
-            : $"골드로 소환합니다. 최고 {top} 영웅까지 등장합니다.\n{top} 등장 확률 {topRate}";
+        return $"최고 {top} 등장  ·  확률 {topRate}";
     }
 
     private static string CurrencyName(Currency currency) => currency == Currency.Gem ? "젬" : "골드";

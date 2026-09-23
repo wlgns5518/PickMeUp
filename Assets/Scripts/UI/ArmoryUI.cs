@@ -88,7 +88,6 @@ public class ArmoryUI : UiScreen
     // 장비제작소(98) 다음.
     protected override int SortingOrder => 99;
     protected override string Title => "장비창";
-    protected override string Subtitle => "영웅에게 장비를 장착하고, 지금 든 장비와 비교하고, 강화합니다.";
 
     private void Awake()
     {
@@ -203,11 +202,6 @@ public class ArmoryUI : UiScreen
         weaponSlot.Clicked += () => ClickEquipSlot(EquipSlot.MainHand);
         armorSlot.Clicked += () => ClickEquipSlot(EquipSlot.OffHand);
 
-        TMP_Text hint = UiKit.Wrap(UiKit.Text(panel.Rect, "Hint",
-            "칸을 누르면 지금 든 장비를 자세히 봅니다. 오른쪽 목록에서 장비를 누르면 지금 장비와 비교한 뒤 장착하거나 강화할 수 있습니다.",
-            UiTheme.FontLabel, UiTheme.TextMuted));
-        hint.alignment = TextAlignmentOptions.BottomLeft;
-        UiKit.BottomStretch(hint.rectTransform, pad, 64f, pad, pad);
     }
 
     private UiSlot BuildEquipSlot(RectTransform parent, string name, string label, float x, float y, out TMP_Text itemName)
@@ -346,8 +340,7 @@ public class ArmoryUI : UiScreen
         card.Slot.SetContent(UiSlotContents.BaseEquipment());
         card.Name.text = "기본 장비";
         card.Name.color = UiTheme.TextPrimary;
-        card.Lines.text = $"{UiSlotContents.SlotName(slot)}\n{UiSlotContents.StatName(slot)} x{EquipmentGradeRules.BasePower:0.00}\n" +
-                          "제작 장비를 빼면 다시 드는 장비";
+        card.Lines.text = $"{UiSlotContents.SlotName(slot)}\n{UiSlotContents.StatName(slot)} x{EquipmentGradeRules.BasePower:0.00}";
     }
 
     private void EquipOrUnequip()
@@ -473,8 +466,8 @@ public class ArmoryUI : UiScreen
         if (maxed)
         {
             enhanceAfter.SetLocked("최대");
-            enhanceAfterText.text = UiTheme.Paint("최대 강화 단계입니다", UiTheme.TextMuted);
-            enhanceChances.text = $"+{EquipmentEnhancement.MaxLevel}까지 모두 강화했습니다.";
+            enhanceAfterText.text = UiTheme.Paint($"+{EquipmentEnhancement.MaxLevel} 도달", UiTheme.TextMuted);
+            enhanceChances.text = string.Empty;
             enhanceGold.text = string.Empty;
             enhanceButton.ClearCost();
             enhanceButton.interactable = false;
@@ -498,8 +491,7 @@ public class ArmoryUI : UiScreen
         long gold = PlayerAccount.Balance(Currency.Gold);
         enhanceGold.text =
             $"보유 골드  {UiTheme.Paint(UiKit.Amount(gold), gold >= cost ? UiTheme.Success : UiTheme.Danger)}\n" +
-            $"필요 골드  {UiKit.Amount(cost)}\n" +
-            UiTheme.Paint($"+{EquipmentEnhancement.DestroyFromLevel}부터 파괴될 수 있습니다", UiTheme.TextMuted);
+            $"필요 골드  {UiKit.Amount(cost)}";
 
         enhanceButton.SetCost(Currency.Gold, cost);
         enhanceButton.interactable = true;
@@ -521,8 +513,7 @@ public class ArmoryUI : UiScreen
         if (destroy > 0f)
         {
             confirm.Ask("강화 확인",
-                $"이번 강화는 {UiTheme.Paint(UiKit.Percent(destroy), UiTheme.Danger)} 확률로 장비가 파괴됩니다.\n" +
-                "파괴된 장비는 되돌릴 수 없습니다. 강화할까요?",
+                $"{UiTheme.Paint(UiKit.Percent(destroy), UiTheme.Danger)} 확률로 파괴됩니다. 강화할까요?",
                 "강화", true, Enhance);
             return;
         }
@@ -629,7 +620,7 @@ public class ArmoryUI : UiScreen
         {
             portrait.SetEmpty(string.Empty);
             heroName.text = "영웅 없음";
-            heroInfo.text = "소환소에서 먼저 영웅을 소환해 주세요.";
+            heroInfo.text = string.Empty;
             heroPower.text = string.Empty;
             weaponSlot.SetLocked(string.Empty);
             armorSlot.SetLocked(string.Empty);
@@ -642,7 +633,7 @@ public class ArmoryUI : UiScreen
         heroName.text = HeroLabel.Name(selectedHero);
         heroName.color = UiTheme.StarColor(selectedHero.starCount);
         string info = $"{UiTheme.Paint(UiKit.Stars(selectedHero.starCount), UiTheme.StarColor(selectedHero.starCount))} · Lv.{selectedHero.Level}";
-        if (PartyRoster.IsFallen(selectedHero)) info += "\n" + UiTheme.Paint("쓰러진 영웅 — 새 장비를 들 수 없습니다", UiTheme.Warning);
+        if (PartyRoster.IsFallen(selectedHero)) info += "  " + UiTheme.Paint("쓰러짐", UiTheme.Warning);
         heroInfo.text = info;
 
         heroPower.text =
@@ -709,7 +700,7 @@ public class ArmoryUI : UiScreen
 
         itemPicker.Count.text = $"{all.Count}개";
         itemPicker.Grid.Show(items.Count, BindItem,
-            all.Count == 0 ? "장비가 없습니다.\n장비 제작소에서 먼저 만들어 주세요." : "이 분류에 해당하는 장비가 없습니다.");
+            all.Count == 0 ? "장비가 없습니다." : "해당하는 장비가 없습니다.");
     }
 
     private void BindItem(UiTile tile, int index)
