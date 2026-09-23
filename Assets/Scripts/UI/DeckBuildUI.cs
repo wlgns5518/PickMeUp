@@ -9,16 +9,16 @@ using UnityEngine;
 //   │ [1] [2] [3] [ ] [ ]                 │   │ [칸][칸][칸][칸][칸]        │
 //   └─────────────────────────────────────┘   │                             │
 //   ┌ 파티 정보 ──────────────────────────┐   │                             │
-//   └─────────────────────────────────────┘   │                             │
-//   ┌ 1파티 · 3명 출전 ─────── [ 출전하기 ] ┐   └─────────────────────────────┘
+//   │                                     │   │                             │
+//   └─────────────────────────────────────┘   └─────────────────────────────┘
 //
-// 합성소·장비창과 같은 자리 배치다: 오른쪽 목록에서 골라 왼쪽에 넣고, 왼쪽 아래에서 실행한다.
+// 합성소·장비창과 같은 자리 배치다: 오른쪽 목록에서 골라 왼쪽에 넣는다. 다만 여기에는 실행 버튼이 없다 —
+// 짜 두면 그것이 곧 출전 파티라서, 편성을 "마치는" 동작이 따로 없다.
 // 넣고 빼는 길은 두 가지 — 누르거나(목록의 영웅을 누르면 빈 자리에, 자리의 영웅을 누르면 뺀다), 끌거나(목록에서
 // 자리로, 자리끼리 끌면 순서가 바뀌고, 자리에서 목록이나 허공으로 끌면 뺀다). 출전 순서가 전장의 배치 순서다.
 //
 // 한 영웅은 한 파티에만 들어간다(PartyDeck). 다른 파티 영웅은 목록에서 흐리게 "n파티"로 보이고, 누르면 이유를 알려 준다.
 // 여기서 고른 파티가 그대로 출전 파티다 — 시공의 틈으로 들어가면 이 파티로 곧장 층을 고른다.
-// 출전하기는 지름길이다: 이 화면을 닫고 층 선택(FloorSelectUI)으로 바로 넘어간다.
 [DisallowMultipleComponent]
 public class DeckBuildUI : UiScreen, ICardDragHost
 {
@@ -30,18 +30,12 @@ public class DeckBuildUI : UiScreen, ICardDragHost
     [Tooltip("한 번에 출전할 수 있는 인원. 출전 슬롯 개수이기도 하다.")]
     [SerializeField, Min(1)] private int deckCapacity = 5;
 
-    [Header("Depart")]
-    [Tooltip("편성을 마치고 층을 고를 화면. 비워두면 씬에서 찾는다.")]
-    [SerializeField] private FloorSelectUI floorSelect;
-
     // 뒤로가기로 돌아갈 화면. 층 선택에서 "파티 변경"으로 들어왔을 때만 채워지고, 마을에서 열었으면 비어 있다.
     private UiScreen returnTo;
 
     private const float LeftWidth = 1040f;
     private const float PartySlotSize = 164f;
     private const float PartyPanelHeader = 60f;
-    private const float ActionBarHeight = 136f;
-    private const float DepartWidth = 380f;
 
     private static readonly string[] SortTabs = { "등급순", "레벨순" };
 
@@ -49,8 +43,6 @@ public class DeckBuildUI : UiScreen, ICardDragHost
     private TMP_Text partyCondition;
     private readonly List<UiTile> partyTiles = new List<UiTile>();
     private TMP_Text infoStats;
-    private TMP_Text actionTitle;
-    private UiButton departButton;
     private UiPickerPanel picker;
 
     private RectTransform dragLayer;
@@ -145,7 +137,6 @@ public class DeckBuildUI : UiScreen, ICardDragHost
         y += partyHeight + UiTheme.Space4;
 
         BuildInfoPanel(root, y);
-        BuildActionBar(root);
 
         float pickerX = LeftWidth + UiTheme.ColumnGap;
         picker = UiPickerPanel.Create(root, "Heroes", size.x - pickerX, "보유 영웅", SortTabs, UiTheme.SlotMedium);
@@ -193,7 +184,7 @@ public class DeckBuildUI : UiScreen, ICardDragHost
         panel.Rect.anchorMin = new Vector2(0f, 0f);
         panel.Rect.anchorMax = new Vector2(0f, 1f);
         panel.Rect.pivot = new Vector2(0f, 1f);
-        panel.Rect.offsetMin = new Vector2(0f, ActionBarHeight + UiTheme.Space4);
+        panel.Rect.offsetMin = new Vector2(0f, 0f);
         panel.Rect.offsetMax = new Vector2(LeftWidth, -y);
 
         TMP_Text title = UiKit.SectionTitle(panel.Rect, "Title", "파티 정보");
@@ -204,19 +195,6 @@ public class DeckBuildUI : UiScreen, ICardDragHost
         infoStats.lineSpacing = 10f;
         UiKit.Fill(infoStats.rectTransform, UiTheme.Space5, PartyPanelHeader, UiTheme.Space5, UiTheme.Space4);
 
-    }
-
-    private void BuildActionBar(RectTransform root)
-    {
-        UiKit.Surface bar = UiKit.Panel(root, "ActionBar", UiTheme.Surface, UiTheme.RadiusL, UiTheme.Border);
-        UiKit.BottomLeft(bar.Rect, 0f, 0f, LeftWidth, ActionBarHeight);
-
-        float textWidth = LeftWidth - DepartWidth - UiTheme.Space5 * 3f;
-        actionTitle = UiKit.Text(bar.Rect, "Title", string.Empty, UiTheme.FontHeading, UiTheme.TextPrimary);
-        UiKit.LeftMiddle(actionTitle.rectTransform, UiTheme.Space5, textWidth, 44f);
-
-        departButton = UiButton.Create(bar.Rect, "Depart", "출전하기", UiButtonStyle.Primary, UiButtonSize.Large, Depart);
-        UiKit.RightMiddle(departButton.Rect, UiTheme.Space5, DepartWidth, UiTheme.ButtonLarge);
     }
 
     protected override void BuildOverlays()
@@ -271,27 +249,6 @@ public class DeckBuildUI : UiScreen, ICardDragHost
             return true;
         }
         return false;
-    }
-
-    // 편성을 마치고 층 선택으로 넘어간다. 두 화면이 겹쳐 떠 있으면 어느 쪽을 만지는지 알 수 없어 이 화면은 닫는다.
-    private void Depart()
-    {
-        if (PartyDeck.Count == 0)
-        {
-            toast.Show($"{PartyDeck.ActiveIndex + 1}파티에 출전할 영웅이 없습니다. 먼저 영웅을 편성해 주세요.", UiToastKind.Warning);
-            return;
-        }
-
-        if (floorSelect == null) floorSelect = FindAnyObjectByType<FloorSelectUI>(FindObjectsInactive.Include);
-        if (floorSelect == null)
-        {
-            toast.Show("층 선택 화면을 찾지 못했습니다.", UiToastKind.Danger);
-            return;
-        }
-
-        returnTo = null;
-        Hide();
-        floorSelect.Show();
     }
 
     // ---- 드래그 앤 드롭 --------------------------------------------------------
@@ -407,7 +364,6 @@ public class DeckBuildUI : UiScreen, ICardDragHost
     private void RefreshInfo()
     {
         IReadOnlyList<CharacterSO> members = PartyDeck.Members;
-        int party = PartyDeck.ActiveIndex + 1;
 
         if (members.Count == 0)
         {
@@ -439,9 +395,6 @@ public class DeckBuildUI : UiScreen, ICardDragHost
                 $"등급 구성  {composition}\n" +
                 $"제작 장비 장착  {equipped}명";
         }
-
-        actionTitle.text = members.Count > 0 ? $"{party}파티 · {members.Count}명 출전" : $"{party}파티 · 편성 전";
-        departButton.interactable = members.Count > 0;
     }
 
     private void RefreshList()

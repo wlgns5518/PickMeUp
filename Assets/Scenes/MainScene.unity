@@ -46328,7 +46328,6 @@ MonoBehaviour:
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
   roster: {fileID: 11400000, guid: 0d619bff89015f24f9a394e847a2bc66, type: 2}
   deckCapacity: 5
-  floorSelect: {fileID: 247532114}
 --- !u!4 &1912286316
 Transform:
   m_ObjectHideFlags: 0
