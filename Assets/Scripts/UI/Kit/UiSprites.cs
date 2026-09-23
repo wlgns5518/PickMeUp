@@ -71,6 +71,39 @@ public static class UiSprites
         });
     }
 
+    /// 별 무늬 — 흰 점을 흩뿌린 한 장. 위아래·좌우로 이어 붙여도 이음새가 없어 Image(Tiled)로 넓게 깐다.
+    public static Sprite StarField(int size = 256, int count = 44, int seed = 7)
+    {
+        return Get($"stars{size}_{count}_{seed}", () =>
+        {
+            var random = new System.Random(seed);
+            var dots = new Vector4[count]; // x, y, 반지름, 밝기
+            for (int i = 0; i < count; i++)
+            {
+                float radius = (float)(0.5 + random.NextDouble() * random.NextDouble() * 1.6);
+                dots[i] = new Vector4((float)random.NextDouble() * size, (float)random.NextDouble() * size, radius,
+                    (float)(0.35 + random.NextDouble() * 0.65));
+            }
+
+            Sprite sprite = Build(size, size, 0, (x, y) =>
+            {
+                float alpha = 0f;
+                for (int i = 0; i < count; i++)
+                {
+                    // 가장자리 너머의 점도 돌아서 재야 이어 붙인 곳에서 점이 잘리지 않는다.
+                    float dx = Mathf.Abs(x - dots[i].x), dy = Mathf.Abs(y - dots[i].y);
+                    dx = Mathf.Min(dx, size - dx);
+                    dy = Mathf.Min(dy, size - dy);
+                    float d = Mathf.Sqrt(dx * dx + dy * dy) - dots[i].z;
+                    alpha = Mathf.Max(alpha, Mathf.Clamp01(0.5f - d) * dots[i].w);
+                }
+                return alpha;
+            });
+            sprite.texture.wrapMode = TextureWrapMode.Repeat;
+            return sprite;
+        });
+    }
+
     // ---- 기호 ---------------------------------------------------------------
     //
     // 글꼴(NotoSansKR)에 없거나 굵기가 들쭉날쭉한 기호는 선분으로 직접 그린다. 64px 한 장을 늘려 쓴다.

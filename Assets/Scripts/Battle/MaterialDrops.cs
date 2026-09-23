@@ -35,6 +35,13 @@ public static class MaterialDrops
         return EquipmentGrade.S;
     }
 
+    // 그 층에서 나올 수 있는 가장 좋은 재료 등급 — 구간 등급의 한 단계 위(S 구간은 S). 층 선택 화면이 "E ~ D등급"으로 보여 준다.
+    public static EquipmentGrade HighestGrade(int floor)
+    {
+        EquipmentGrade grade = BaseGrade(floor);
+        return grade < EquipmentGrade.S ? grade + 1 : grade;
+    }
+
     public static void Roll(int floor, BattleRewardSettings settings, List<CraftMaterial> results)
     {
         results.Clear();

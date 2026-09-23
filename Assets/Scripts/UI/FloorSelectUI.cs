@@ -2,31 +2,26 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityEngine.UI;
 
 // 층 선택 — 시공의 틈에서 메인 던전에 들어가면 열린다. 도전할 층을 고르고, 보상과 파티를 확인한 뒤 출전한다.
 //
-//   ┌ ‹ 층 선택 ──────────────────────────────────────────────┐
-//   │ [‹]  11 ~ 20층  [›]                 ┌ 선택한 층 ─────────┐│
-//   │ [11층][12층][13층][14층][15층]       │ 12층  도전          ││
-//   │ [16층][17층][18층][19층][20층]       │ 보상 · 전장         ││
-//   │                                      │ 출전 파티 [칸]x5    ││
-//   │                                      │ [ 12층 출전 ]       ││
+//   ┌ ‹ 층 선택 ──────────────────────────────────────────────────┐
+//   │ ┌ 탑 ───────────────────┬─┐  ┌ 선택한 층 ─────────────────┐│
+//   │ │  ☁   ▢ [ 8층 ] ▢      │▒│  │ 7층                 도전    ││
+//   │ │      ▣ [ 7층 ] ▣  ☁   │▒│  │ 클리어 보상 · 제작 재료     ││
+//   │ │      ▣ [ 6층 ] ▣      │█│  │ 출전 파티     [칸][칸][칸]… ││  ← 칸 줄은 판 가운데
+//   │ │ ▁▁▁▁▁▁  [ 문 ]  ▁▁▁▁▁ │█│  │      [ 파티 변경 ]          ││
+//   │ └───────────────────────┴─┘  │ [ 7층 출전 ]                ││
 //
+// 층은 탑처럼 1층이 아래, 위로 쌓인다(FloorTowerView). 위로 굴리면 위층, 아래로 굴리면 아래층이 보인다.
 // 층은 자동으로 넘어가지 않는다. 여기서 직접 고른 뒤 전투 씬으로 들어가고, 전투가 끝나면 마을로 돌아온다.
 // 흐름은 시공의 틈 → 메인 던전 → 여기. 편성은 마을 훈련소에서 미리 해 두고, 여기서 바꾸려면 "파티 변경"을 누른다.
 //
-// 고르는 것(층 칸)과 실행(출전)을 나눴다. 층을 누르면 오른쪽에 그 층의 보상과 출전 파티가 보이고, 출전 버튼을
-// 눌러야 들어간다 — 층 칸을 누르는 순간 씬이 넘어가면 무엇을 얻는 층인지 볼 틈이 없다.
+// 고르는 것(층 줄)과 실행(출전)을 나눴다. 층을 누르면 오른쪽에 그 층의 보상과 출전 파티가 보이고, 출전 버튼을
+// 눌러야 들어간다 — 층 줄을 누르는 순간 씬이 넘어가면 무엇을 얻는 층인지 볼 틈이 없다.
 [DisallowMultipleComponent]
 public class FloorSelectUI : UiScreen
 {
-    [Header("Layout")]
-    [Tooltip("한 쪽에 늘어놓을 층 칸 개수. 층이 100개라 한 화면에 다 깔지 않고 쪽으로 넘긴다.")]
-    [SerializeField, Min(1)] private int floorsPerPage = 10;
-    [Tooltip("한 쪽의 층 칸을 몇 칸씩 늘어놓을지. 10층에 5칸이면 두 줄이다.")]
-    [SerializeField, Min(1)] private int pageColumns = 5;
-
     [Header("Open State")]
     [Tooltip("문을 누르지 않아도 처음부터 열려 있게 하려면 켠다.")]
     [SerializeField] private bool openOnStart;
@@ -40,26 +35,15 @@ public class FloorSelectUI : UiScreen
     [SerializeField] private DeckBuildUI deckBuild;
 
     private const float LeftWidth = 1040f;
-    private const float PagerHeight = 64f;
-    private const float CardHeight = 170f;
-    private const float CardGap = 16f;
-    private const float PartySlotSize = UiTheme.SlotSmall;
+    // 보상 두 줄(골드·재료)이 들어가는 칸.
+    private const float InfoTop = 164f;
+    private const float InfoHeight = 128f;
+    // 출전 파티 칸은 판이 허락하는 만큼 크게, 판 가운데에.
+    private const float PartySlotMax = UiTheme.SlotMedium;
+    private const float PartySlotGap = UiTheme.Space3;
+    private const float ChangePartyWidth = 200f;
 
-    private class FloorCard
-    {
-        public Button Button;
-        public Image Fill;
-        public Image Border;
-        public Image Ring;
-        public TMP_Text Number;
-        public TMP_Text Status;
-        public Image Lock;
-    }
-
-    private readonly List<FloorCard> cards = new List<FloorCard>();
-    private TMP_Text pageLabel;
-    private UiButton previousPage;
-    private UiButton nextPage;
+    private FloorTowerView tower;
 
     private TMP_Text detailFloor;
     private TMP_Text detailStatus;
@@ -68,14 +52,7 @@ public class FloorSelectUI : UiScreen
     private readonly List<UiSlot> partySlots = new List<UiSlot>();
     private UiButton enterButton;
 
-    // 지금 보고 있는 쪽(0부터)과 고른 층.
-    private int page;
     private int selectedFloor = FloorProgress.FirstFloor;
-
-    private int PageCount => Mathf.CeilToInt((FloorProgress.LastFloor - FloorProgress.FirstFloor + 1) / (float)floorsPerPage);
-
-    // 이 쪽의 slot번째 칸이 가리키는 층.
-    private int FloorAt(int slot) => FloorProgress.FirstFloor + page * floorsPerPage + slot;
 
     protected override string CanvasName => "FloorSelectCanvas";
     // 편성 화면(91)보다 위.
@@ -96,12 +73,11 @@ public class FloorSelectUI : UiScreen
     public override void Show()
     {
         EnsureBuilt();
-        // 열 때는 지금 도전할 층(열린 층 중 가장 높은 층)을 고르고 그 층이 있는 쪽을 펼친다.
-        // 1층 쪽부터 보여 주면 60층까지 온 플레이어가 매번 다섯 쪽을 넘겨야 한다.
+        // 열 때는 지금 도전할 층(열린 층 중 가장 높은 층)을 고르고, 탑을 몇 층 아래에서부터 그 층까지 올려 보인다.
         selectedFloor = FloorProgress.HighestUnlocked;
-        page = Mathf.Clamp((selectedFloor - FloorProgress.FirstFloor) / floorsPerPage, 0, PageCount - 1);
         Refresh();
         SetOpen(true);
+        tower.ShowFloor(selectedFloor, rise: true);
     }
 
     public override void Hide()
@@ -140,84 +116,12 @@ public class FloorSelectUI : UiScreen
 
     protected override void BuildContent(RectTransform root, Vector2 size)
     {
-        cards.Clear();
         partySlots.Clear();
 
-        BuildPager(root);
-        BuildGrid(root);
+        tower = FloorTowerView.Create(root, SelectFloor);
+        UiKit.Column(tower.Panel, 0f, LeftWidth);
+
         BuildDetail(root, size);
-    }
-
-    private void BuildPager(RectTransform root)
-    {
-        previousPage = UiButton.CreateIcon(root, "PreviousPage", UiSprites.Icon(UiSprites.Glyph.ChevronLeft), true, 56f,
-            UiButtonStyle.Secondary, () => TurnPage(-1));
-        UiKit.TopLeft(previousPage.Rect, 0f, (PagerHeight - 56f) * 0.5f, 56f, 56f);
-
-        pageLabel = UiKit.Text(root, "PageLabel", string.Empty, UiTheme.FontTitle, UiTheme.TextPrimary, TextAlignmentOptions.Center);
-        UiKit.TopLeft(pageLabel.rectTransform, 72f, 0f, 280f, PagerHeight);
-
-        nextPage = UiButton.CreateIcon(root, "NextPage", UiSprites.Icon(UiSprites.Glyph.ChevronRight), true, 56f,
-            UiButtonStyle.Secondary, () => TurnPage(1));
-        UiKit.TopLeft(nextPage.Rect, 368f, (PagerHeight - 56f) * 0.5f, 56f, 56f);
-
-        // 칸 색이 무엇을 뜻하는지. 칸마다 글자로도 적지만, 한눈에 훑을 때는 색이 먼저 읽힌다.
-        TMP_Text legend = UiKit.Text(root, "Legend",
-            $"{UiTheme.Paint("●", UiTheme.Primary)} 도전   {UiTheme.Paint("●", UiTheme.Success)} 클리어   {UiTheme.Paint("●", UiTheme.TextMuted)} 잠김",
-            UiTheme.FontLabel, UiTheme.TextSecondary, TextAlignmentOptions.Right);
-        UiKit.TopLeft(legend.rectTransform, LeftWidth - 460f, 0f, 460f, PagerHeight);
-    }
-
-    private void BuildGrid(RectTransform root)
-    {
-        int count = Mathf.Max(1, floorsPerPage);
-        int columns = Mathf.Clamp(pageColumns, 1, count);
-        int rows = Mathf.CeilToInt(count / (float)columns);
-        float pad = UiTheme.Space5;
-        float cardWidth = (LeftWidth - pad * 2f - (columns - 1) * CardGap) / columns;
-        float gridHeight = pad * 2f + rows * CardHeight + (rows - 1) * CardGap;
-
-        float top = PagerHeight + UiTheme.Space4;
-        UiKit.Surface panel = UiKit.Panel(root, "Floors", UiTheme.Surface, UiTheme.RadiusL, UiTheme.Border);
-        UiKit.TopLeft(panel.Rect, 0f, top, LeftWidth, gridHeight);
-
-        for (int i = 0; i < count; i++)
-        {
-            int slot = i;
-            float x = pad + (i % columns) * (cardWidth + CardGap);
-            float y = pad + (i / columns) * (CardHeight + CardGap);
-            cards.Add(BuildCard(panel.Rect, "Floor_" + i, x, y, cardWidth, () => SelectFloor(FloorAt(slot))));
-        }
-
-    }
-
-    private FloorCard BuildCard(RectTransform parent, string name, float x, float y, float width,
-        UnityEngine.Events.UnityAction onClick)
-    {
-        UiKit.Surface surface = UiKit.Panel(parent, name, UiTheme.SurfaceRaised, UiTheme.RadiusM, UiTheme.Border);
-        UiKit.TopLeft(surface.Rect, x, y, width, CardHeight);
-        surface.Fill.raycastTarget = true;
-        surface.Border.sprite = UiSprites.Outline(UiTheme.RadiusM, 3);
-
-        var card = new FloorCard { Fill = surface.Fill, Border = surface.Border };
-
-        card.Number = UiKit.Text(surface.Rect, "Number", string.Empty, UiTheme.FontDisplay, UiTheme.TextPrimary, TextAlignmentOptions.Center);
-        UiKit.TopStretch(card.Number.rectTransform, 28f, 70f);
-
-        card.Status = UiKit.Text(surface.Rect, "Status", string.Empty, UiTheme.FontLabel, UiTheme.TextSecondary, TextAlignmentOptions.Center);
-        UiKit.TopStretch(card.Status.rectTransform, 104f, 34f);
-
-        card.Lock = UiKit.Glyph(surface.Rect, "Lock", UiSprites.Glyph.Lock, UiTheme.TextMuted);
-        UiKit.TopRight(card.Lock.rectTransform, 12f, 12f, 30f, 30f);
-
-        card.Ring = UiKit.Line(surface.Rect, "Selection", UiTheme.Selection, UiTheme.RadiusM + 5, (int)UiTheme.SelectionWidth);
-        UiKit.Fill(card.Ring.rectTransform, -5f);
-
-        card.Button = surface.Rect.gameObject.AddComponent<Button>();
-        card.Button.targetGraphic = surface.Fill;
-        card.Button.transition = Selectable.Transition.None;
-        card.Button.onClick.AddListener(onClick);
-        return card;
     }
 
     private void BuildDetail(RectTransform root, Vector2 size)
@@ -238,31 +142,35 @@ public class FloorSelectUI : UiScreen
         UiKit.TopStretch(detailStatus.rectTransform, 60f, 90f, 200f, pad);
 
         UiKit.Surface info = UiKit.Panel(panel.Rect, "Info", UiTheme.SurfaceSunken, UiTheme.RadiusM);
-        UiKit.TopStretch(info.Rect, 164f, 176f, pad, pad);
+        UiKit.TopStretch(info.Rect, InfoTop, InfoHeight, pad, pad);
         detailInfo = UiKit.Wrap(UiKit.Text(info.Rect, "Text", string.Empty, UiTheme.FontBody, UiTheme.TextPrimary));
         detailInfo.alignment = TextAlignmentOptions.MidlineLeft;
         detailInfo.lineSpacing = 12f;
         UiKit.Fill(detailInfo.rectTransform, pad, UiTheme.Space3, pad, UiTheme.Space3);
 
         // 출전 파티 — 누구를 데리고 들어가는지 출전 직전에 한 번 더 보여 준다.
-        float partyTop = 164f + 176f + UiTheme.Space5;
+        float partyTop = InfoTop + InfoHeight + UiTheme.Space6;
         TMP_Text partyTitle = UiKit.SectionTitle(panel.Rect, "PartyTitle", "출전 파티");
         UiKit.TopStretch(partyTitle.rectTransform, partyTop, 48f, pad, 260f);
         partyLabel = UiKit.Text(panel.Rect, "PartyLabel", string.Empty, UiTheme.FontLabel, UiTheme.TextSecondary, TextAlignmentOptions.Right);
         UiKit.TopStretch(partyLabel.rectTransform, partyTop, 48f, 260f, pad);
 
+        // 칸 줄은 판 가운데를 기준으로 놓는다 — 화면 비율이 바뀌어 판 폭이 달라져도 가운데에 남는다.
         int capacity = Mathf.Max(1, PartyDeck.Capacity);
-        float step = Mathf.Min(PartySlotSize + UiTheme.Space3, (width - pad * 2f - PartySlotSize) / Mathf.Max(1, capacity - 1));
+        float slotSize = Mathf.Min(PartySlotMax, (width - pad * 2f - (capacity - 1) * PartySlotGap) / capacity);
+        float rowWidth = capacity * slotSize + (capacity - 1) * PartySlotGap;
+        float slotTop = partyTop + 60f;
         for (int i = 0; i < capacity; i++)
         {
-            UiSlot slot = UiSlot.Create(panel.Rect, "Party_" + i, PartySlotSize);
-            UiKit.TopLeft(slot.Rect, pad + i * step, partyTop + 56f, PartySlotSize, PartySlotSize);
+            UiSlot slot = UiSlot.Create(panel.Rect, "Party_" + i, slotSize);
+            float offsetX = -rowWidth * 0.5f + slotSize * 0.5f + i * (slotSize + PartySlotGap);
+            UiKit.TopCenter(slot.Rect, offsetX, slotTop, slotSize, slotSize);
             slot.SetInteractable(false);
             partySlots.Add(slot);
         }
 
         UiButton change = UiButton.Create(panel.Rect, "ChangeParty", "파티 변경", UiButtonStyle.Secondary, UiButtonSize.Small, ChangeParty);
-        UiKit.TopRight(change.Rect, pad, partyTop + 56f + PartySlotSize + UiTheme.Space3, 180f, UiTheme.ButtonSmall);
+        UiKit.TopCenter(change.Rect, 0f, slotTop + slotSize + UiTheme.Space5, ChangePartyWidth, UiTheme.ButtonSmall);
 
         enterButton = UiButton.Create(panel.Rect, "Enter", "출전", UiButtonStyle.Primary, UiButtonSize.Large, EnterSelected);
         UiKit.BottomStretch(enterButton.Rect, pad, UiTheme.ButtonLarge, pad, pad);
@@ -271,12 +179,6 @@ public class FloorSelectUI : UiScreen
     protected override void BuildOverlays() => Refresh();
 
     // ---- 고르기와 출전 ---------------------------------------------------------
-
-    private void TurnPage(int delta)
-    {
-        page = Mathf.Clamp(page + delta, 0, PageCount - 1);
-        Refresh();
-    }
 
     private void SelectFloor(int floor)
     {
@@ -324,46 +226,10 @@ public class FloorSelectUI : UiScreen
 
     private void Refresh()
     {
-        if (cards.Count == 0 || enterButton == null) return;
+        if (tower == null || enterButton == null) return;
 
-        page = Mathf.Clamp(page, 0, Mathf.Max(0, PageCount - 1));
-        RefreshCards();
+        tower.Refresh(selectedFloor);
         RefreshDetail();
-    }
-
-    private void RefreshCards()
-    {
-        for (int i = 0; i < cards.Count; i++)
-        {
-            FloorCard card = cards[i];
-            int floor = FloorAt(i);
-
-            // 마지막 쪽이 덜 찼으면 남는 칸은 감춘다.
-            bool exists = floor <= FloorProgress.LastFloor;
-            card.Button.transform.gameObject.SetActive(exists);
-            if (!exists) continue;
-
-            bool unlocked = FloorProgress.IsUnlocked(floor);
-            bool cleared = floor <= FloorProgress.HighestCleared;
-            bool selected = floor == selectedFloor;
-
-            card.Number.text = floor + "층";
-            card.Number.color = unlocked ? UiTheme.TextPrimary : UiTheme.TextMuted;
-            card.Status.text = !unlocked ? "잠김" : cleared ? "클리어" : "도전";
-            card.Status.color = !unlocked ? UiTheme.TextMuted : cleared ? UiTheme.Success : UiTheme.Primary;
-            card.Lock.enabled = !unlocked;
-
-            card.Fill.color = !unlocked ? UiTheme.SurfaceSunken : selected ? UiTheme.SurfaceHover : UiTheme.SurfaceRaised;
-            // 지금 도전할 층(열렸지만 아직 못 깬 층)은 실행 색 테두리로 — 어디로 가야 할지 보이게.
-            card.Border.color = !unlocked ? UiTheme.Border : cleared ? UiTheme.WithAlpha(UiTheme.Success, 0.6f) : UiTheme.Primary;
-            card.Ring.enabled = selected;
-        }
-
-        int first = FloorAt(0);
-        int last = Mathf.Min(FloorAt(cards.Count - 1), FloorProgress.LastFloor);
-        pageLabel.text = $"{first} ~ {last}층";
-        previousPage.interactable = page > 0;
-        nextPage.interactable = page < PageCount - 1;
     }
 
     private void RefreshDetail()
@@ -375,15 +241,13 @@ public class FloorSelectUI : UiScreen
         detailStatus.text = cleared ? "클리어" : "도전";
         detailStatus.color = cleared ? UiTheme.Success : UiTheme.Primary;
 
-        int stageFirst = FloorProgress.StageFirstFloor(floor);
-        int stageLast = Mathf.Min(stageFirst + FloorProgress.FloorsPerStage - 1, FloorProgress.LastFloor);
-        EquipmentGrade grade = MaterialDrops.BaseGrade(floor);
-        string gradeText = UiTheme.Paint(EquipmentGradeNames.NameOf(grade) + "등급", UiTheme.GradeColor(grade));
+        // 나올 수 있는 재료 등급을 범위로 — "E ~ D등급". 위 등급은 드물게 나오지만 무엇이 나오는지는 바로 보인다.
+        EquipmentGrade low = MaterialDrops.BaseGrade(floor);
+        EquipmentGrade high = MaterialDrops.HighestGrade(floor);
+        string grades = high > low ? $"{PaintGrade(low)} ~ {PaintGrade(high)}등급" : PaintGrade(low) + "등급";
         detailInfo.text =
-            $"전장  {stageFirst} ~ {stageLast}층 구간\n" +
             $"클리어 보상  골드 {UiTheme.Paint(UiKit.Amount(GameEconomy.FloorClearGold(floor)), UiTheme.Primary)}\n" +
-            $"제작 재료  {gradeText} 재료" +
-            (grade < EquipmentGrade.S ? UiTheme.Paint("  (낮은 확률로 한 단계 위)", UiTheme.TextMuted) : string.Empty);
+            $"제작 재료  {grades}";
 
         IReadOnlyList<CharacterSO> members = PartyDeck.Members;
         for (int i = 0; i < partySlots.Count; i++)
@@ -396,4 +260,7 @@ public class FloorSelectUI : UiScreen
         enterButton.SetLabel(floor + "층 출전");
         enterButton.interactable = members.Count > 0;
     }
+
+    private static string PaintGrade(EquipmentGrade grade) =>
+        UiTheme.Paint(EquipmentGradeNames.NameOf(grade), UiTheme.GradeColor(grade));
 }

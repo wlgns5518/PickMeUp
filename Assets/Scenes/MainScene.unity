@@ -2031,8 +2031,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FloorSelectUI
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
-  floorsPerPage: 10
-  pageColumns: 5
   openOnStart: 0
   dungeonSelect: {fileID: 1300978606}
   deckBuild: {fileID: 1912286315}

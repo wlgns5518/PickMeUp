@@ -183,6 +183,17 @@ public class CraftingTests
         Assert.AreEqual(EquipmentGrade.S, MaterialDrops.RollGrade(EquipmentGrade.S, 0f));
     }
 
+    // 층 선택 화면이 "E ~ D등급"처럼 보여 주는 윗끝. 주사위가 확률 안쪽일 때 나오는 등급과 같아야 한다.
+    [TestCase(1, EquipmentGrade.D)]
+    [TestCase(30, EquipmentGrade.C)]
+    [TestCase(90, EquipmentGrade.S)]
+    [TestCase(91, EquipmentGrade.S)]
+    public void 나올_수_있는_가장_좋은_재료는_구간_등급의_한_단계_위다(int floor, EquipmentGrade expected)
+    {
+        Assert.AreEqual(expected, MaterialDrops.HighestGrade(floor));
+        Assert.AreEqual(expected, MaterialDrops.RollGrade(MaterialDrops.BaseGrade(floor), 0f));
+    }
+
     [Test]
     public void 보상_재료는_정한_개수_안에서_구간_등급_또는_한_단계_위로만_나온다()
     {
