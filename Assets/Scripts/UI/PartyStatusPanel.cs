@@ -84,6 +84,10 @@ public class PartyStatusPanel
         root.pivot = new Vector2(0f, 1f);
         root.anchoredPosition = new Vector2(margin.x, -margin.y);
         root.sizeDelta = new Vector2(RowWidth, 0f);
+
+        // 게이지와 감정 글자는 전투 내내 바뀐다. 캔버스를 떼어 두어 HUD의 나머지(결과창·부고·지휘 줄)는 다시 묶이지 않게 한다.
+        // 슬롯을 누르면 카메라가 옮겨 가므로 레이캐스터도 함께 둔다.
+        UiKit.SplitCanvas(root, true);
     }
 
     public static PartyStatusPanel Create(RectTransform parent, TMP_FontAsset font, Vector2 margin)
@@ -146,7 +150,8 @@ public class PartyStatusPanel
         UnitController unit = slot.Unit;
         UnitStats stats = unit.Stats;
 
-        float hpRatio = Mathf.Clamp01(stats.currentHp / Mathf.Max(1f, stats.maxHp));
+        // 눈금으로 끊는다 — 체력·마나가 조금씩 바뀌는 매 프레임마다 게이지를 칠하면 패널 캔버스가 매 프레임 다시 묶인다.
+        float hpRatio = HudFactory.QuantizeGauge(stats.currentHp / Mathf.Max(1f, stats.maxHp));
         bool isDead = unit.IsDead;
 
         if (!slot.HasAppliedState || !Mathf.Approximately(hpRatio, slot.AppliedHpRatio))
@@ -158,7 +163,7 @@ public class PartyStatusPanel
         UnitEmotion emotion = unit.Emotion;
 
         // 쓰러진 뒤에는 마나도 의미가 없으므로 게이지를 비우고 슬롯 전체를 어둡게 만든다.
-        float manaRatio = isDead ? 0f : Mathf.Clamp01(stats.currentMana / Mathf.Max(1f, stats.maxMana));
+        float manaRatio = isDead ? 0f : HudFactory.QuantizeGauge(stats.currentMana / Mathf.Max(1f, stats.maxMana));
         if (!slot.HasAppliedState || !Mathf.Approximately(manaRatio, slot.AppliedManaRatio))
         {
             slot.AppliedManaRatio = manaRatio;

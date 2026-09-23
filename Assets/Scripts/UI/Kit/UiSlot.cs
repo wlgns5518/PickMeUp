@@ -98,9 +98,10 @@ public class UiSlot : MonoBehaviour
         // 위는 투명, 아래로 갈수록 등급 색이 스민다.
         washGradient.Set(new Color(1f, 1f, 1f, 0f), new Color(1f, 1f, 1f, 0.42f));
 
+        // 그림은 늘 이 칸 안쪽으로만 맞춰 넣는다(Fill 여백 + preserveAspect). 그래서 가림막(RectMask2D)을 두지 않는다 —
+        // 칸마다 하나씩 두면 목록의 칸 수만큼 매 프레임 잘라내기 계산이 돈다.
         content = UiKit.Node(Rect, "Content");
         UiKit.Fill(content, 3f);
-        content.gameObject.AddComponent<RectMask2D>();
 
         icon = UiKit.Image(content, "Icon", null, Color.white);
         fallback = UiKit.Text(content, "Fallback", string.Empty, size * 0.32f, UiTheme.TextSecondary, TextAlignmentOptions.Center);

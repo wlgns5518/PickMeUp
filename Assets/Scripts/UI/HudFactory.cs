@@ -166,6 +166,19 @@ public static class HudFactory
         return track;
     }
 
+    // 게이지 눈금 수. 가장 긴 적 체력바(880px)에서도 한 눈금이 2px이 안 돼 눈으로는 차이가 없다.
+    // 마나처럼 매 프레임 조금씩 차오르는 값을 그대로 칠하면 게이지가 든 캔버스가 매 프레임 다시 묶인다 —
+    // 눈금으로 끊어 두면 보이는 길이가 바뀔 때만 칠한다.
+    public const int GaugeSteps = 512;
+
+    // 0보다 크면 적어도 한 눈금은 남긴다 — 1만 남은 체력이 빈 게이지로 보이면 안 된다.
+    public static float QuantizeGauge(float ratio)
+    {
+        ratio = Mathf.Clamp01(ratio);
+        float quantized = Mathf.Round(ratio * GaugeSteps) / GaugeSteps;
+        return ratio > 0f && quantized <= 0f ? 1f / GaugeSteps : quantized;
+    }
+
     public static void SetGauge(Image fill, float ratio)
     {
         ratio = Mathf.Clamp01(ratio);

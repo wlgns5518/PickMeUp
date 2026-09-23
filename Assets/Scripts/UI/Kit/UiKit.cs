@@ -239,7 +239,23 @@ public static class UiKit
         scroll.vertical = true;
         scroll.movementType = ScrollRect.MovementType.Clamped;
         scroll.scrollSensitivity = 40f;
+
+        // 굴리면 내용물 전체가 움직인다. 제 캔버스를 따로 주지 않으면 굴리는 프레임마다 화면 전체(머리줄·옆 칸)가 다시 묶인다.
+        SplitCanvas(content, true);
         return content;
+    }
+
+    /// 자주 바뀌는 부분에 캔버스를 따로 준다. Unity UI는 그래픽 하나가 바뀌어도 그것이 속한 캔버스 전체를 다시 묶으므로,
+    /// 매 프레임 움직이거나 칠이 바뀌는 것(스크롤 내용·게이지·깜빡임)을 떼어 두면 나머지는 가만히 있다.
+    /// 누를 것이 들어 있으면 interactive — 캔버스마다 레이캐스터가 따로 있어야 클릭이 닿는다.
+    /// 정렬은 덮어쓰지 않는다(overrideSorting 끔) — 그래야 부모 안의 제자리 순서대로 그려지고 가림막(Mask·RectMask2D)도 그대로 먹는다.
+    public static Canvas SplitCanvas(RectTransform rect, bool interactive)
+    {
+        var canvas = rect.GetComponent<Canvas>();
+        if (canvas == null) canvas = rect.gameObject.AddComponent<Canvas>();
+        canvas.overrideSorting = false;
+        if (interactive && rect.GetComponent<GraphicRaycaster>() == null) rect.gameObject.AddComponent<GraphicRaycaster>();
+        return canvas;
     }
 
     public static void SetContentHeight(RectTransform content, float height) =>

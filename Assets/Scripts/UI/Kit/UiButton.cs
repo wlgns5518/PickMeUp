@@ -119,6 +119,7 @@ public class UiButton : Button
         costText.text = amount;
         costAffordable = affordable;
         LayoutLabel();
+        LayoutCost();
         Apply();
     }
 
@@ -166,11 +167,20 @@ public class UiButton : Button
         label.fontSize = hasCost ? FontOf(size) * 0.82f : FontOf(size);
     }
 
-    private void LateUpdate()
+    // 아이콘을 액수 글자 왼쪽에 붙이고 둘을 함께 가운데에 둔다.
+    //
+    // 예전에는 버튼마다 LateUpdate에서 매 프레임 글자 폭을 읽어 맞췄다 — 비용이 없는 버튼도 매 프레임 불려
+    // 마을에 떠 있는 버튼 수만큼 스크립트가 돌았다. 글자 폭은 GetPreferredValues로 그리기 전에도 잴 수 있어
+    // 액수가 바뀔 때 한 번만 맞춘다.
+    private void LayoutCost()
     {
-        // 액수 글자 폭은 그려진 뒤에야 안다. 아이콘을 글자 왼쪽에 붙인다.
-        if (costRow == null || !costRow.gameObject.activeSelf || !costIcon.gameObject.activeSelf) return;
-        float textWidth = costText.preferredWidth;
+        if (costRow == null || !costIcon.gameObject.activeSelf)
+        {
+            if (costText != null) costText.rectTransform.anchoredPosition = Vector2.zero;
+            return;
+        }
+
+        float textWidth = costText.GetPreferredValues(costText.text).x;
         float iconSize = costIcon.rectTransform.sizeDelta.x;
         costIcon.rectTransform.anchoredPosition = new Vector2(-(textWidth + iconSize) * 0.5f, 0f);
         costText.rectTransform.anchoredPosition = new Vector2(iconSize * 0.5f + 2f, 0f);

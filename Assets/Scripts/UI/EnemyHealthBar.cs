@@ -31,6 +31,8 @@ public class EnemyHealthBar
         root.pivot = new Vector2(0.5f, 1f);
         root.sizeDelta = new Vector2(Width, Height);
         root.anchoredPosition = new Vector2(0f, -topOffset);
+        // 적이 맞을 때마다 바뀐다. 캔버스를 떼어 HUD의 나머지가 함께 다시 묶이지 않게 한다.
+        UiKit.SplitCanvas(root, false);
 
         // 킷 게이지(트랙 + 붉은 채움). 트랙이 바 전체를 차지한다.
         Image track = HudFactory.CreateGauge(root, "Gauge", HudFactory.GaugeFill.Hp, out fill);
@@ -104,7 +106,7 @@ public class EnemyHealthBar
         current += entityCurrent;
         alive += entityAlive;
 
-        float ratio = Mathf.Clamp01(current / totalMaxHp);
+        float ratio = HudFactory.QuantizeGauge(current / totalMaxHp);
         if (!Mathf.Approximately(ratio, appliedRatio))
         {
             appliedRatio = ratio;

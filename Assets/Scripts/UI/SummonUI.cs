@@ -98,6 +98,21 @@ public class SummonUI : UiScreen
         SetOpen(false);
     }
 
+    // 닫힌 화면은 캔버스까지 끄는데(FacilityWindow), 소환 결과 띠는 화면을 접은 뒤에도 같은 캔버스에 떠 있어야 한다.
+    // 띠가 떠 있는 동안은 캔버스를 켜 둔다.
+    protected override void SetOpen(bool open)
+    {
+        base.SetOpen(open);
+        KeepCanvasForBar();
+    }
+
+    private void KeepCanvasForBar()
+    {
+        if (canvas == null) return;
+        bool bar = resultBar != null && resultBar.gameObject.activeSelf;
+        canvas.enabled = IsOpen || bar;
+    }
+
     // ---- 짓기 ---------------------------------------------------------------
 
     protected override void BuildContent(RectTransform root, Vector2 size)
@@ -400,6 +415,7 @@ public class SummonUI : UiScreen
         resultBar.SetAsLastSibling();
         resultText.text = message;
         resultText.color = color;
+        KeepCanvasForBar();
     }
 
     // 결과를 확인하고 마을로 돌아간다. 카드를 치우는 유일한 통로다.
@@ -408,6 +424,7 @@ public class SummonUI : UiScreen
         if (summoning) return;
         cardSpawner?.ClearCards();
         resultBar.gameObject.SetActive(false);
+        KeepCanvasForBar();
     }
 
     // 카드만 치우고 화면을 다시 연다.
