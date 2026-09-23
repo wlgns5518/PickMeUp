@@ -2034,6 +2034,7 @@ MonoBehaviour:
   floorsPerPage: 10
   pageColumns: 5
   openOnStart: 0
+  dungeonSelect: {fileID: 1300978606}
   deckBuild: {fileID: 1912286315}
 --- !u!4 &247532115
 Transform:
@@ -21878,7 +21879,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: PickMeUp::DungeonSelectUI
   koreanFont: {fileID: 11400000, guid: accbcfe4f905ba245a565a669fdd41cb, type: 2}
-  deckBuild: {fileID: 1912286315}
+  floorSelect: {fileID: 247532114}
   openOnStart: 0
 --- !u!1 &1314986322
 GameObject:
@@ -46281,7 +46282,6 @@ MonoBehaviour:
   roster: {fileID: 11400000, guid: 0d619bff89015f24f9a394e847a2bc66, type: 2}
   deckCapacity: 5
   floorSelect: {fileID: 247532114}
-  dungeonSelect: {fileID: 1300978606}
 --- !u!4 &1912286316
 Transform:
   m_ObjectHideFlags: 0

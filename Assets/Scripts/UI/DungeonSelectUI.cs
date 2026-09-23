@@ -14,21 +14,20 @@ using UnityEngine.UI;
 // 해금 조건은 DungeonCatalog가 들고 있고, 그 조건은 전부 메인 던전 진행도(FloorProgress)를 본다 —
 // 이 화면은 지금 열렸는지 묻고 그리기만 한다.
 //
-// 메인 던전으로 들어가면 지금까지의 흐름 그대로다: 파티 편성(DeckBuildUI) → 층 선택(FloorSelectUI) → 전투.
+// 메인 던전으로 들어가면 지금 짜 둔 파티 그대로 층 선택(FloorSelectUI)으로 간다 — 편성은 마을의 훈련소에서 한다.
 // 요일·탐험 던전은 자리와 해금만 있고 안에 들어갈 내용은 아직 없다 — 열린 뒤에 누르면 준비 중이라고 알린다.
 [DisallowMultipleComponent]
 public class DungeonSelectUI : UiScreen
 {
     [Header("Main Dungeon")]
-    [Tooltip("메인 던전으로 들어갈 때 먼저 여는 파티 편성 화면. 비워두면 씬에서 찾는다.")]
-    [SerializeField] private DeckBuildUI deckBuild;
+    [Tooltip("메인 던전으로 들어갈 때 여는 층 선택 화면. 비워두면 씬에서 찾는다.")]
+    [SerializeField] private FloorSelectUI floorSelect;
 
     [Header("Open State")]
     [Tooltip("시공의 틈을 누르지 않아도 처음부터 열려 있게 하려면 켠다.")]
     [SerializeField] private bool openOnStart;
 
     private const float CardGap = UiTheme.ColumnGap;
-    private const float CardHeight = 560f;
     private const float LockGlyphSize = 96f;
 
     private class DungeonCard
@@ -77,15 +76,17 @@ public class DungeonSelectUI : UiScreen
 
         float cardWidth = (size.x - CardGap * (DungeonCatalog.All.Length - 1)) / DungeonCatalog.All.Length;
         for (int i = 0; i < DungeonCatalog.All.Length; i++)
-            cards.Add(BuildCard(root, DungeonCatalog.All[i], i * (cardWidth + CardGap), cardWidth));
+            cards.Add(BuildCard(root, DungeonCatalog.All[i], i * (cardWidth + CardGap), cardWidth, size.y));
 
     }
 
-    private DungeonCard BuildCard(RectTransform root, DungeonKind kind, float x, float width)
+    // 칸은 내용 칸을 세로로 다 채운다. 적는 말이 몇 줄 안 되므로 가운데 칸의 내용은 위가 아니라 가운데에 둔다 —
+    // 위로 몰아 두면 칸 아래가 통째로 빈 상자로 남는다.
+    private DungeonCard BuildCard(RectTransform root, DungeonKind kind, float x, float width, float height)
     {
         var card = new DungeonCard { Kind = kind };
         card.Surface = UiKit.Panel(root, "Dungeon_" + kind, UiTheme.SurfaceRaised, UiTheme.RadiusL, UiTheme.Border, 24);
-        UiKit.TopLeft(card.Surface.Rect, x, 0f, width, CardHeight);
+        UiKit.TopLeft(card.Surface.Rect, x, 0f, width, height);
         card.Surface.Border.sprite = UiSprites.Outline(UiTheme.RadiusL, 3);
 
         RectTransform panel = card.Surface.Rect;
@@ -101,20 +102,27 @@ public class DungeonSelectUI : UiScreen
         card.Summary.lineSpacing = 6f;
         UiKit.TopStretch(card.Summary.rectTransform, 104f, 72f, pad, pad);
 
-        // 가운데 — 열려 있으면 진행 상황, 잠겨 있으면 자물쇠와 조건.
+        // 가운데 — 열려 있으면 진행 상황, 잠겨 있으면 자물쇠와 조건. 칸은 세로로 다 채우되 이 상자는 내용만큼만
+        // 두고 남는 자리의 가운데에 놓는다. 상자까지 늘리면 칸 안이 빈 상자 하나로 보인다.
+        const float ConditionHeight = 56f;
+        float bodyHeight = UiTheme.Space5 * 2f + LockGlyphSize + UiTheme.Space4 + ConditionHeight;
+        float free = height - 188f - UiTheme.ButtonLarge - pad * 2f;
+
         UiKit.Surface body = UiKit.Panel(panel, "Body", UiTheme.SurfaceSunken, UiTheme.RadiusM);
-        UiKit.TopStretch(body.Rect, 188f, CardHeight - 188f - UiTheme.ButtonLarge - pad * 2f, pad, pad);
+        UiKit.TopStretch(body.Rect, 188f + Mathf.Max(0f, (free - bodyHeight) * 0.5f), bodyHeight, pad, pad);
+
+        float lockTop = UiTheme.Space5;
 
         card.Lock = UiKit.Glyph(body.Rect, "Lock", UiSprites.Glyph.Lock, UiTheme.TextMuted);
-        UiKit.TopCenter(card.Lock.rectTransform, 0f, UiTheme.Space5, LockGlyphSize, LockGlyphSize);
+        UiKit.TopCenter(card.Lock.rectTransform, 0f, lockTop, LockGlyphSize, LockGlyphSize);
 
         card.Condition = UiKit.Wrap(UiKit.Text(body.Rect, "Condition", string.Empty, UiTheme.FontBody, UiTheme.Warning,
             TextAlignmentOptions.Top));
         card.Condition.lineSpacing = 8f;
-        UiKit.TopStretch(card.Condition.rectTransform, UiTheme.Space5 + LockGlyphSize + UiTheme.Space4, 100f, pad, pad);
+        UiKit.TopStretch(card.Condition.rectTransform, lockTop + LockGlyphSize + UiTheme.Space4, ConditionHeight, pad, pad);
 
         card.State = UiKit.Wrap(UiKit.Text(body.Rect, "State", string.Empty, UiTheme.FontBody, UiTheme.TextPrimary));
-        card.State.alignment = TextAlignmentOptions.TopLeft;
+        card.State.alignment = TextAlignmentOptions.Left;
         card.State.lineSpacing = 12f;
         UiKit.Fill(card.State.rectTransform, pad, UiTheme.Space5, pad, UiTheme.Space5);
 
@@ -142,15 +150,16 @@ public class DungeonSelectUI : UiScreen
             return;
         }
 
-        if (deckBuild == null) deckBuild = FindAnyObjectByType<DeckBuildUI>(FindObjectsInactive.Include);
-        if (deckBuild == null)
+        // 편성은 마을 훈련소에서 미리 해 둔다. 여기서는 지금 고른 파티 그대로 층 선택으로 들어간다.
+        if (floorSelect == null) floorSelect = FindAnyObjectByType<FloorSelectUI>(FindObjectsInactive.Include);
+        if (floorSelect == null)
         {
-            toast.Show("파티 편성 화면을 찾지 못했습니다.", UiToastKind.Danger);
+            toast.Show("층 선택 화면을 찾지 못했습니다.", UiToastKind.Danger);
             return;
         }
 
         Hide();
-        deckBuild.Show();
+        floorSelect.Show();
     }
 
     // ---- 갱신 ---------------------------------------------------------------
@@ -176,10 +185,7 @@ public class DungeonSelectUI : UiScreen
 
         if (!unlocked)
         {
-            int floor = DungeonCatalog.UnlockFloor(card.Kind);
-            card.Condition.text =
-                UiTheme.Paint(DungeonCatalog.UnlockText(card.Kind), UiTheme.Warning) + "\n" +
-                UiTheme.Paint($"지금 {FloorProgress.HighestCleared} / {floor}층", UiTheme.TextMuted);
+            card.Condition.text = UiTheme.Paint(DungeonCatalog.UnlockText(card.Kind), UiTheme.Warning);
             card.Enter.SetLabel("잠김");
             card.Enter.SetStyle(UiButtonStyle.Ghost);
             card.Enter.interactable = false;

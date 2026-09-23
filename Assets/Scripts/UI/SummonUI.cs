@@ -483,10 +483,9 @@ public class SummonUI : UiScreen
 
     private static string BannerInfo(SummonKind kind)
     {
+        // 확률은 "소환 확률" 창이 표로 보여 준다. 배너에는 어디까지 나오는지만 적는다.
         int max = SummonTable.MaxStars(kind);
-        string top = UiTheme.Paint(UiKit.Stars(max), UiTheme.StarColor(max));
-        string topRate = SummonTable.PercentText(kind, max);
-        return $"최고 {top} 등장  ·  확률 {topRate}";
+        return $"최고 {UiTheme.Paint(UiKit.Stars(max), UiTheme.StarColor(max))} 등장";
     }
 
     private static string CurrencyName(Currency currency) => currency == Currency.Gem ? "젬" : "골드";

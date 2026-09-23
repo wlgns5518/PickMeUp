@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 
-// 파티 편성 — 이번 전투에 내보낼 파티를 짜고 출전한다. 마을의 시공의 틈(FacilityGate)을 누르면 열린다.
+// 파티 편성 — 내보낼 파티를 짜 둔다. 마을의 훈련소(FacilityGate)를 누르면 열린다.
 //
 //   ┌ [ 1파티 | 2파티 | 3파티 ] ───────────┐   ┌ 보유 영웅 ──────────── 8명 ┐
 //   ┌ 출전 파티 ────────────────── 3 / 5 ┐   │ [ 등급순 | 레벨순 ]         │
@@ -17,7 +17,8 @@ using UnityEngine;
 // 자리로, 자리끼리 끌면 순서가 바뀌고, 자리에서 목록이나 허공으로 끌면 뺀다). 출전 순서가 전장의 배치 순서다.
 //
 // 한 영웅은 한 파티에만 들어간다(PartyDeck). 다른 파티 영웅은 목록에서 흐리게 "n파티"로 보이고, 누르면 이유를 알려 준다.
-// 출전하기를 누르면 이 화면을 닫고 층 선택(FloorSelectUI)으로 넘어간다.
+// 여기서 고른 파티가 그대로 출전 파티다 — 시공의 틈으로 들어가면 이 파티로 곧장 층을 고른다.
+// 출전하기는 지름길이다: 이 화면을 닫고 층 선택(FloorSelectUI)으로 바로 넘어간다.
 [DisallowMultipleComponent]
 public class DeckBuildUI : UiScreen, ICardDragHost
 {
@@ -33,9 +34,8 @@ public class DeckBuildUI : UiScreen, ICardDragHost
     [Tooltip("편성을 마치고 층을 고를 화면. 비워두면 씬에서 찾는다.")]
     [SerializeField] private FloorSelectUI floorSelect;
 
-    [Header("Back")]
-    [Tooltip("뒤로가기로 돌아갈 던전 선택 화면. 비워두면 씬에서 찾는다.")]
-    [SerializeField] private DungeonSelectUI dungeonSelect;
+    // 뒤로가기로 돌아갈 화면. 층 선택에서 "파티 변경"으로 들어왔을 때만 채워지고, 마을에서 열었으면 비어 있다.
+    private UiScreen returnTo;
 
     private const float LeftWidth = 1040f;
     private const float PartySlotSize = 164f;
@@ -61,7 +61,7 @@ public class DeckBuildUI : UiScreen, ICardDragHost
 
     protected override string CanvasName => "DeckBuildCanvas";
     protected override int SortingOrder => 91;
-    protected override string Title => "메인 던전 — 파티 편성";
+    protected override string Title => "파티 편성";
     protected override Currency[] HeaderCurrencies => new Currency[0];
 
     private void Awake()
@@ -101,17 +101,25 @@ public class DeckBuildUI : UiScreen, ICardDragHost
         SetOpen(true);
     }
 
+    /// 앞 화면으로 돌아갈 수 있게 열어 준다. 층 선택의 "파티 변경"이 쓴다.
+    public void ShowFrom(UiScreen from)
+    {
+        returnTo = from;
+        Show();
+    }
+
     public override void Hide()
     {
         SetOpen(false);
     }
 
-    // 뒤로가기는 앞 단계(던전 선택)로. 마을로 곧장 나가면 다른 던전을 고르러 시공의 틈을 다시 눌러야 한다.
+    // 마을(훈련소)에서 열었으면 뒤로가기는 마을로 닫는다. 앞 화면을 두고 왔으면 그리로 돌아간다.
     protected override void OnBack()
     {
         Hide();
-        if (dungeonSelect == null) dungeonSelect = FindAnyObjectByType<DungeonSelectUI>(FindObjectsInactive.Include);
-        if (dungeonSelect != null) dungeonSelect.Show();
+        UiScreen back = returnTo;
+        returnTo = null;
+        if (back != null) back.Show();
     }
 
     private void HandleDataChanged()
@@ -281,6 +289,7 @@ public class DeckBuildUI : UiScreen, ICardDragHost
             return;
         }
 
+        returnTo = null;
         Hide();
         floorSelect.Show();
     }

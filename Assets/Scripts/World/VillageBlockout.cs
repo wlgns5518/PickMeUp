@@ -303,7 +303,7 @@ public class VillageBlockout : MonoBehaviour
             Make("소환소",     Kind.Summoning,  60f,  78f, 18f, "새 동료를 불러낸다."),                                                  //  2시
             Make("비행선착장", Kind.Airdock,   150f,  78f, 18f, "비행선이 드나드는 자리."),                                              //  5시
             // 반원이라 곧은 변이 성벽에 닿도록 벽 앞(117.5)에 세운다. 둥근 쪽만 마을로 뻗는다.
-            Make("훈련소",     Kind.Training,  180f, 117.5f, 30f, "동료를 훈련시켜 능력을 올린다."),                                     //  6시
+            Make("훈련소",     Kind.Training,  180f, 117.5f, 30f, "출전할 파티를 짠다. 여기서 짜 둔 파티로 시공의 틈에 들어간다."),      //  6시
             Make("숙소",       Kind.Housing,   210f,  72f, 22f, "동료들이 쉬며 스트레스를 회복한다."),                                   //  7시
             Make("합성소",     Kind.Synthesis, 300f,  72f, 22f, "재료를 합쳐 새 물건을 만든다."),                                        // 10시
             // 합성소의 오른쪽 아래.

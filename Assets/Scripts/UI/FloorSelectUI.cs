@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-// 층 선택 — 파티 편성에서 "출전하기"를 누르면 열린다. 도전할 층을 고르고, 보상과 파티를 확인한 뒤 출전한다.
+// 층 선택 — 시공의 틈에서 메인 던전에 들어가면 열린다. 도전할 층을 고르고, 보상과 파티를 확인한 뒤 출전한다.
 //
 //   ┌ ‹ 층 선택 ──────────────────────────────────────────────┐
 //   │ [‹]  11 ~ 20층  [›]                 ┌ 선택한 층 ─────────┐│
@@ -14,7 +14,7 @@ using UnityEngine.UI;
 //   │                                      │ [ 12층 출전 ]       ││
 //
 // 층은 자동으로 넘어가지 않는다. 여기서 직접 고른 뒤 전투 씬으로 들어가고, 전투가 끝나면 마을로 돌아온다.
-// 흐름은 시공의 틈 → 파티 편성 → 출전하기 → 여기. 뒤로가기는 마을이 아니라 파티 편성으로 돌아간다.
+// 흐름은 시공의 틈 → 메인 던전 → 여기. 편성은 마을 훈련소에서 미리 해 두고, 여기서 바꾸려면 "파티 변경"을 누른다.
 //
 // 고르는 것(층 칸)과 실행(출전)을 나눴다. 층을 누르면 오른쪽에 그 층의 보상과 출전 파티가 보이고, 출전 버튼을
 // 눌러야 들어간다 — 층 칸을 누르는 순간 씬이 넘어가면 무엇을 얻는 층인지 볼 틈이 없다.
@@ -32,7 +32,11 @@ public class FloorSelectUI : UiScreen
     [SerializeField] private bool openOnStart;
 
     [Header("Back")]
-    [Tooltip("뒤로가기로 돌아갈 파티 편성 화면. 비워두면 씬에서 찾는다.")]
+    [Tooltip("뒤로가기로 돌아갈 던전 선택 화면. 비워두면 씬에서 찾는다.")]
+    [SerializeField] private DungeonSelectUI dungeonSelect;
+
+    [Header("Party")]
+    [Tooltip("\"파티 변경\"으로 여는 파티 편성 화면. 비워두면 씬에서 찾는다.")]
     [SerializeField] private DeckBuildUI deckBuild;
 
     private const float LeftWidth = 1040f;
@@ -105,12 +109,26 @@ public class FloorSelectUI : UiScreen
         SetOpen(false);
     }
 
-    // 뒤로가기는 앞 단계(파티 편성)로.
+    // 뒤로가기는 앞 단계(던전 선택)로.
     protected override void OnBack()
     {
         Hide();
+        if (dungeonSelect == null) dungeonSelect = FindAnyObjectByType<DungeonSelectUI>(FindObjectsInactive.Include);
+        if (dungeonSelect != null) dungeonSelect.Show();
+    }
+
+    // 여기서 파티를 다시 짜고 싶을 때. 편성을 마치고 뒤로가기를 누르면 이 화면으로 돌아온다.
+    private void ChangeParty()
+    {
         if (deckBuild == null) deckBuild = FindAnyObjectByType<DeckBuildUI>(FindObjectsInactive.Include);
-        if (deckBuild != null) deckBuild.Show();
+        if (deckBuild == null)
+        {
+            toast.Show("파티 편성 화면을 찾지 못했습니다.", UiToastKind.Danger);
+            return;
+        }
+
+        Hide();
+        deckBuild.ShowFrom(this);
     }
 
     private void HandleDataChanged()
@@ -243,7 +261,7 @@ public class FloorSelectUI : UiScreen
             partySlots.Add(slot);
         }
 
-        UiButton change = UiButton.Create(panel.Rect, "ChangeParty", "파티 변경", UiButtonStyle.Secondary, UiButtonSize.Small, OnBack);
+        UiButton change = UiButton.Create(panel.Rect, "ChangeParty", "파티 변경", UiButtonStyle.Secondary, UiButtonSize.Small, ChangeParty);
         UiKit.TopRight(change.Rect, pad, partyTop + 56f + PartySlotSize + UiTheme.Space3, 180f, UiTheme.ButtonSmall);
 
         enterButton = UiButton.Create(panel.Rect, "Enter", "출전", UiButtonStyle.Primary, UiButtonSize.Large, EnterSelected);
