@@ -1,15 +1,16 @@
-using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
-// 마을 화면 왼쪽 아래에 늘 떠 있는 출전 파티 칸.
+// 마을 화면 왼쪽 아래에 늘 떠 있는 동그란 파티 편성 버튼.
 //
-//   ┌ 1파티 ──────────────── [ 편성 ] ┐
-//   │ [칸][칸][칸][칸][칸]             │
-//   └──────────────────────────────────┘
+//     ╭────╮3/5
+//    │ 사람 │
+//    │ 편성 │
+//     ╰────╯
 //
-// 시공의 틈으로 들어가면 여기 보이는 파티가 그대로 출전한다 — 떠나기 전에 누구를 데려가는지
-// 마을에서 바로 보이게 하려는 것이다. 칸이든 버튼이든 누르면 편성 화면(DeckBuildUI)이 열린다.
+// 누르면 편성 화면(DeckBuildUI)이 열린다. 시공의 틈으로 들어가면 여기서 짠 파티가 그대로 출전하므로
+// 몇 명을 데려가는지만 배지로 붙여 둔다 — 누구인지는 편성 화면이 보여 준다.
 //
 // 상단바(TopBarHud)와 같은 층(90)에 그린다. 시설 화면(91~99)은 화면을 통째로 덮으므로 그 위에 겹치지 않는다.
 [DisallowMultipleComponent]
@@ -26,16 +27,14 @@ public class PartyBarHud : MonoBehaviour
     private const string CanvasName = "PartyBarCanvas";
     private const int SortingOrder = 90;
 
-    private const float EdgeMargin = 24f;
-    private const float Padding = UiTheme.Space5;
-    private const float SlotSize = UiTheme.SlotSmall;
-    private const float SlotGap = UiTheme.Space3;
-    private const float HeaderHeight = 52f;
-    private const float EditWidth = 140f;
+    private const float EdgeMargin = 32f;
+    private const float Diameter = 136f;
+    private const int ShadowBlur = 14;
+    private const float BadgeWidth = 72f;
+    private const float BadgeHeight = 36f;
 
     private RectTransform canvasRect;
-    private TMP_Text partyName;
-    private readonly List<UiSlot> slots = new List<UiSlot>();
+    private TMP_Text count;
 
     private void Awake()
     {
@@ -65,42 +64,34 @@ public class PartyBarHud : MonoBehaviour
 
     private void Build()
     {
-        int capacity = Mathf.Max(1, PartyDeck.Capacity);
-        float width = Padding * 2f + capacity * SlotSize + (capacity - 1) * SlotGap;
-        float height = Padding * 2f + HeaderHeight + SlotSize;
+        int radius = Mathf.RoundToInt(Diameter * 0.5f);
 
-        UiKit.Surface card = UiKit.Panel(canvasRect, "PartyBar", UiTheme.Surface, UiTheme.RadiusL, UiTheme.Border, 16);
-        UiKit.BottomLeft(card.Rect, EdgeMargin, EdgeMargin, width, height);
-        card.Fill.raycastTarget = true;
+        // 마을 풍경 위에 떠 있는 버튼이라 그림자로 바닥에서 띄운다. 버튼보다 먼저 깔아야 뒤에 그려진다.
+        Image shadow = UiKit.Image(canvasRect, "PartyButtonShadow", UiSprites.Shadow(radius, ShadowBlur), UiTheme.Shadow, false);
+        shadow.type = Image.Type.Sliced;
+        UiKit.BottomLeft(shadow.rectTransform, EdgeMargin - ShadowBlur, EdgeMargin - ShadowBlur * 1.25f,
+            Diameter + ShadowBlur * 2f, Diameter + ShadowBlur * 2f);
 
-        partyName = UiKit.Text(card.Rect, "PartyName", string.Empty, UiTheme.FontHeading, UiTheme.TextPrimary);
-        UiKit.TopLeft(partyName.rectTransform, Padding, Padding, width - Padding * 2f - EditWidth, 40f);
+        UiButton button = UiButton.CreateIcon(canvasRect, "PartyButton", UiSprites.Icon(UiSprites.Glyph.Party), true,
+            Diameter, UiButtonStyle.Primary, OpenDeck);
+        UiKit.BottomLeft(button.Rect, EdgeMargin, EdgeMargin, Diameter, Diameter);
 
-        UiButton edit = UiButton.Create(card.Rect, "Edit", "편성", UiButtonStyle.Primary, UiButtonSize.Small, OpenDeck);
-        UiKit.TopRight(edit.Rect, Padding, Padding, EditWidth, UiTheme.ButtonSmall);
+        // 기호는 위쪽에, 라벨은 그 아래에.
+        UiKit.Fill(button.Icon.rectTransform, Diameter * 0.28f, Diameter * 0.14f, Diameter * 0.28f, Diameter * 0.42f);
+        button.SetLabel("편성");
+        UiKit.Fill(button.Label.rectTransform, 0f, Diameter * 0.58f, 0f, Diameter * 0.14f);
 
-        float top = Padding + HeaderHeight;
-        for (int i = 0; i < capacity; i++)
-        {
-            UiSlot slot = UiSlot.Create(card.Rect, "Party_" + i, SlotSize);
-            UiKit.TopLeft(slot.Rect, Padding + i * (SlotSize + SlotGap), top, SlotSize, SlotSize);
-            slot.Clicked += OpenDeck;
-            slots.Add(slot);
-        }
+        // 데려가는 인원. 버튼 오른쪽 위 어깨에 걸친다.
+        UiKit.Surface badge = UiKit.Panel(button.Rect, "Count", UiTheme.SurfaceSunken,
+            Mathf.RoundToInt(BadgeHeight * 0.5f) - 2, UiTheme.BorderStrong);
+        UiKit.TopRight(badge.Rect, -BadgeWidth * 0.35f, -6f, BadgeWidth, BadgeHeight);
+        count = UiKit.Text(badge.Rect, "Label", string.Empty, UiTheme.FontCaption, UiTheme.TextPrimary, TextAlignmentOptions.Center);
     }
 
     private void Refresh()
     {
-        if (partyName == null) return;
-
-        partyName.text = $"{PartyDeck.ActiveIndex + 1}파티  {UiTheme.Paint($"{PartyDeck.Count} / {PartyDeck.Capacity}", UiTheme.TextSecondary)}";
-
-        IReadOnlyList<CharacterSO> members = PartyDeck.Members;
-        for (int i = 0; i < slots.Count; i++)
-        {
-            if (i < members.Count) slots[i].SetContent(UiSlotContents.Hero(members[i]));
-            else slots[i].SetEmpty(string.Empty);
-        }
+        if (count == null) return;
+        count.text = $"{PartyDeck.Count}/{PartyDeck.Capacity}";
     }
 
     private void OpenDeck()

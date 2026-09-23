@@ -37,6 +37,8 @@ public class UiButton : Button
 
     public RectTransform Rect => (RectTransform)transform;
     public TMP_Text Label => label;
+    /// CreateIcon으로 만든 버튼의 그림. 글자 버튼이면 null.
+    public Image Icon => icon;
 
     public static float HeightOf(UiButtonSize size) =>
         size == UiButtonSize.Large ? UiTheme.ButtonLarge : size == UiButtonSize.Medium ? UiTheme.ButtonMedium : UiTheme.ButtonSmall;

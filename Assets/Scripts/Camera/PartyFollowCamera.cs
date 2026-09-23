@@ -5,7 +5,8 @@ using UnityEngine;
 //
 // 중앙값을 따라가면 아군이 흩어질수록 카메라가 아무도 없는 빈 땅을 비추게 되고,
 // 정작 보고 싶은 캐릭터는 화면 끝에 걸린다. 전투 시작 시에는 첫 번째 아군을 잡고,
-// 왼쪽 파티 UI를 누르면 그 캐릭터로 시점을 옮긴다.
+// 왼쪽 파티 UI를 누르면 그 캐릭터로 시점을 옮긴다. 보고 있던 아군이 쓰러지면
+// 잠깐 그 자리를 비춘 뒤 가장 가까이 있는 살아 있는 아군에게 넘어간다.
 public class PartyFollowCamera : MonoBehaviour
 {
     [Header("Follow")]
@@ -16,6 +17,10 @@ public class PartyFollowCamera : MonoBehaviour
     [Header("Look At")]
     [SerializeField] private Vector3 lookRotationEuler = new Vector3(36.1318054f, 269.175232f, 0f);
     [SerializeField] private float rotationSpeed = 5f;
+
+    [Header("Refocus")]
+    [Tooltip("보고 있던 아군이 쓰러진 뒤 다른 아군으로 넘어가기까지 기다리는 시간(초). 쓰러지는 모습은 보여 준다.")]
+    [SerializeField] private float refocusDelayAfterDeath = 1f;
 
     private Vector3 followVelocity;
     private Vector3 lastKnownPosition;
@@ -32,6 +37,11 @@ public class PartyFollowCamera : MonoBehaviour
     private bool hasSmoothedPose;
 
     private UnitController focusTarget;
+
+    // 잡았을 때 살아 있던 대상만 쓰러지면 넘어간다. 쓰러진 동료의 슬롯을 일부러 눌러 본 경우엔 그대로 둔다.
+    private bool focusedWhileAlive;
+    // 보고 있던 아군이 쓰러진 것을 처음 본 시각. 쓰러지지 않았으면 음수.
+    private float focusDownTime = -1f;
 
     // 지금 카메라가 잡고 있는 아군. UI가 어느 슬롯을 강조할지 판단할 때도 쓴다.
     public UnitController FocusTarget => focusTarget;
@@ -81,15 +91,24 @@ public class PartyFollowCamera : MonoBehaviour
     {
         if (unit == null) return;
 
-        focusTarget = unit;
+        SetFocusTarget(unit);
         anchoredPosition = unit.transform.position;
         lastKnownPosition = anchoredPosition;
         hasAnchor = true;
         hasPosition = true;
     }
 
+    private void SetFocusTarget(UnitController unit)
+    {
+        focusTarget = unit;
+        focusedWhileAlive = !unit.IsDead;
+        focusDownTime = -1f;
+    }
+
     private void LateUpdate()
     {
+        FollowSurvivorIfFocusDown();
+
         if (TryGetFocusPosition(out Vector3 position))
         {
             lastKnownPosition = position;
@@ -101,7 +120,7 @@ public class PartyFollowCamera : MonoBehaviour
         }
         else
         {
-            // 보고 있던 캐릭터가 쓰러져도 시점을 빼앗지 않는다. 마지막 자리를 그대로 비춘다.
+            // 대상이 사라졌고 넘겨받을 아군도 없다(전멸). 마지막 자리를 그대로 비춘다.
             position = lastKnownPosition;
         }
 
@@ -164,9 +183,43 @@ public class PartyFollowCamera : MonoBehaviour
             UnitController ally = allies[i];
             if (ally == null || ally.IsDead || !ally.isActiveAndEnabled) continue;
 
-            focusTarget = ally;
+            SetFocusTarget(ally);
             return true;
         }
         return false;
+    }
+
+    // 보고 있던 아군이 쓰러지면 refocusDelayAfterDeath만큼 그 자리를 비추다가 가장 가까운 생존자로 넘어간다.
+    // 명단 순서가 아니라 거리로 고르는 것은 화면이 가장 덜 흘러가게 하려는 것이다.
+    // 살아 있는 아군이 없으면(전멸) 넘어가지 않고 마지막 자리에 머문다.
+    private void FollowSurvivorIfFocusDown()
+    {
+        if (focusTarget == null || !focusedWhileAlive || !focusTarget.IsDead) return;
+
+        if (focusDownTime < 0f) focusDownTime = Time.time;
+        if (Time.time - focusDownTime < refocusDelayAfterDeath) return;
+
+        UnitController survivor = FindNearestLivingAlly(focusTarget.transform.position);
+        if (survivor != null) Focus(survivor);
+    }
+
+    private static UnitController FindNearestLivingAlly(Vector3 from)
+    {
+        UnitController nearest = null;
+        float nearestSqr = float.MaxValue;
+
+        IReadOnlyList<UnitController> allies = UnitRegistry.Allies;
+        for (int i = 0; i < allies.Count; i++)
+        {
+            UnitController ally = allies[i];
+            if (ally == null || ally.IsDead || !ally.isActiveAndEnabled) continue;
+
+            float sqr = (ally.transform.position - from).sqrMagnitude;
+            if (sqr >= nearestSqr) continue;
+
+            nearest = ally;
+            nearestSqr = sqr;
+        }
+        return nearest;
     }
 }

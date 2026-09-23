@@ -14,7 +14,7 @@ public static class UiSprites
 
     private static readonly Dictionary<string, Sprite> Cache = new Dictionary<string, Sprite>();
 
-    public enum Glyph { ChevronLeft, ChevronRight, ChevronDown, Plus, Check, Close, Lock, Info }
+    public enum Glyph { ChevronLeft, ChevronRight, ChevronDown, Plus, Check, Close, Lock, Info, Party }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetCache()
@@ -108,6 +108,8 @@ public static class UiSprites
                 return Mathf.Max(Segment(u, v, 0.5f, 0.2f, 0.5f, 0.56f, T, size), Dot(u, v, 0.5f, 0.76f, T * 0.75f, size));
             case Glyph.Lock:
                 return LockCoverage(u, v, size);
+            case Glyph.Party:
+                return PartyCoverage(u, v, size);
             default:
                 return 0f;
         }
@@ -134,6 +136,30 @@ public static class UiSprites
 
         return Mathf.Max(bodyCov, ringCov);
     }
+
+    // 사람 셋: 가운데 한 명이 앞에 서고 양옆 둘은 그 뒤에 조금 작게. 앞사람 둘레를 비워 겹친 자리를 가른다.
+    private static float PartyCoverage(float u, float v, int size)
+    {
+        const float Floor = 0.16f; // 몸통 아래는 평평하게 자른다.
+        float front = Mathf.Min(CircleSdf(u, v, 0.5f, 0.66f, 0.14f),
+            Mathf.Max(CircleSdf(u, v, 0.5f, Floor, 0.3f), Floor - v));
+
+        float side = float.MaxValue;
+        for (int i = 0; i < 2; i++)
+        {
+            float x = i == 0 ? 0.21f : 0.79f;
+            side = Mathf.Min(side, Mathf.Min(CircleSdf(u, v, x, 0.55f, 0.1f),
+                Mathf.Max(CircleSdf(u, v, x, Floor, 0.2f), Floor - v)));
+        }
+
+        const float Gap = 0.05f;
+        float frontCov = Mathf.Clamp01(0.5f - front * size);
+        float sideCov = Mathf.Clamp01(0.5f - side * size) * Mathf.Clamp01((front - Gap) * size + 0.5f);
+        return Mathf.Max(frontCov, sideCov);
+    }
+
+    private static float CircleSdf(float u, float v, float cx, float cy, float radius) =>
+        Mathf.Sqrt((u - cx) * (u - cx) + (v - cy) * (v - cy)) - radius;
 
     // 꺾인 선 하나(두 선분).
     private static float Stroke(float u, float v, float t, float ax, float ay, float bx, float by, float cx, float cy, int size) =>

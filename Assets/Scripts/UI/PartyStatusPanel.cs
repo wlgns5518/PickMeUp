@@ -16,16 +16,22 @@ using UnityEngine.UI;
 // 난전에서 바가 서로 겹쳐 아무것도 못 읽는 문제도 같이 사라진다.
 public class PartyStatusPanel
 {
-    private const float RowHeight = 84f;
-    private const float RowSpacing = 6f;
+    // 5명이 다 들어와도 화면 위쪽 2/3 안에 끝난다(1080 기준 약 720px). 아래 가운데는 지휘 명령 줄 자리다.
+    private const float RowHeight = 132f;
+    private const float RowSpacing = 8f;
     private const float RowPadding = 6f;
-    private const float PortraitSize = 72f;
-    private const float GaugeLeft = 88f;
-    private const float GaugeWidth = 214f;
+    private const float PortraitSize = 120f;
+    private const float PortraitInset = 11f;
+    // 초상화를 칸의 몇 배로 키워 위쪽만 보일지, 그림 맨 위 여백을 얼마나 잘라 낼지(그림 높이 비율).
+    private const float PortraitZoom = 2f;
+    private const float PortraitTopTrim = 0.04f;
+    private const float GaugeLeft = RowPadding + PortraitSize + 14f;
+    private const float GaugeWidth = 280f;
     private const float RowWidth = GaugeLeft + GaugeWidth + 14f;
     // 킷 게이지 스프라이트는 위아래로 글로우 여백이 있어 보이는 막대는 칸 높이의 3/4쯤이다.
-    private const float HpHeight = 20f;
-    private const float ManaHeight = 12f;
+    private const float HpHeight = 30f;
+    private const float ManaHeight = 18f;
+    private const float EmotionFontSize = 28f;
 
     private static readonly StringBuilder LabelBuilder = new StringBuilder(24);
 
@@ -278,21 +284,30 @@ public class PartyStatusPanel
         slot.PortraitFrameColor = slot.PortraitFrame.color;
         HudFactory.SetTopLeft(slot.PortraitFrame.rectTransform, new Vector2(PortraitSize, PortraitSize), new Vector2(RowPadding, -RowPadding));
 
-        const float portraitInset = 7f;
-        slot.Portrait = HudFactory.CreateImage(slot.Root, "Portrait", BattleHudPalette.AliveTint);
-        HudFactory.SetTopLeft(slot.Portrait.rectTransform,
-            new Vector2(PortraitSize - portraitInset * 2f, PortraitSize - portraitInset * 2f),
-            new Vector2(RowPadding + portraitInset, -(RowPadding + portraitInset)));
+        // 초상화는 무릎까지 오는 그림이라 칸에 통째로 넣으면 얼굴이 손톱만 해진다.
+        // 머리~가슴만 칸에 차도록 키우고 나머지는 칸 밖으로 잘라 낸다.
+        float inner = PortraitSize - PortraitInset * 2f;
+        RectTransform portraitWindow = HudFactory.CreateGroup(slot.Root, "PortraitWindow");
+        HudFactory.SetTopLeft(portraitWindow, new Vector2(inner, inner), new Vector2(RowPadding + PortraitInset, -(RowPadding + PortraitInset)));
+        portraitWindow.gameObject.AddComponent<RectMask2D>();
+
+        slot.Portrait = HudFactory.CreateImage(portraitWindow, "Portrait", BattleHudPalette.AliveTint);
+        RectTransform portraitRect = slot.Portrait.rectTransform;
+        portraitRect.anchorMin = portraitRect.anchorMax = new Vector2(0.5f, 1f);
+        portraitRect.pivot = new Vector2(0.5f, 1f);
+        portraitRect.sizeDelta = new Vector2(inner * PortraitZoom, inner * PortraitZoom);
+        // 그림 위쪽 빈 여백만큼 끌어올려 머리를 칸 위 가장자리에 붙인다.
+        portraitRect.anchoredPosition = new Vector2(0f, inner * PortraitZoom * PortraitTopTrim);
 
         Image hpTrack = HudFactory.CreateGauge(slot.Root, "Hp", HudFactory.GaugeFill.Hp, out slot.HpFill);
-        HudFactory.SetTopLeft(hpTrack.rectTransform, new Vector2(GaugeWidth, HpHeight), new Vector2(GaugeLeft, -10f));
+        HudFactory.SetTopLeft(hpTrack.rectTransform, new Vector2(GaugeWidth, HpHeight), new Vector2(GaugeLeft, -18f));
 
         Image manaTrack = HudFactory.CreateGauge(slot.Root, "Mana", HudFactory.GaugeFill.Mana, out slot.ManaFill);
-        HudFactory.SetTopLeft(manaTrack.rectTransform, new Vector2(GaugeWidth, ManaHeight), new Vector2(GaugeLeft, -32f));
+        HudFactory.SetTopLeft(manaTrack.rectTransform, new Vector2(GaugeWidth, ManaHeight), new Vector2(GaugeLeft, -52f));
 
-        slot.EmotionLabel = HudFactory.CreateText(slot.Root, "EmotionLabel", font, 20f, BattleHudPalette.Fear);
+        slot.EmotionLabel = HudFactory.CreateText(slot.Root, "EmotionLabel", font, EmotionFontSize, BattleHudPalette.Fear);
         slot.EmotionLabel.alignment = TextAlignmentOptions.TopLeft;
-        HudFactory.SetTopLeft(slot.EmotionLabel.rectTransform, new Vector2(GaugeWidth, 28f), new Vector2(GaugeLeft + 4f, -48f));
+        HudFactory.SetTopLeft(slot.EmotionLabel.rectTransform, new Vector2(GaugeWidth, 40f), new Vector2(GaugeLeft + 4f, -76f));
         slot.EmotionLabel.text = "";
 
         return slot;
