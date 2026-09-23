@@ -7,9 +7,10 @@ using UnityEngine;
 // 발밑 55m 안쪽만 비춘다 — 하늘과 먼 산은 거의 화면에 들어오지 않는다. 그래서 전투 중 분위기를 실제로
 // 만드는 것은 바닥 질감(Floor·Patch)과 풀(Cover), 빛과 안개의 색, 화면 색(Grade), 날씨다.
 // 지형(Landform)과 소품은 화면 위쪽 가장자리를 채우고, 캐릭터가 전장 끝으로 밀려났을 때 드러난다.
+//
+// 맵 이름은 여기 없다 — 층 선택 화면도 같은 이름을 쓰므로 런타임 표(FloorStages)에 둔다.
 public sealed class BattleMapTheme
 {
-    public string Title;
     public int Seed;
 
     // ── 지형 ──

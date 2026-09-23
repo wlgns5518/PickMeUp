@@ -19,7 +19,7 @@ public static class BattleMapThemes
         {
             case 6: return new BattleMapTheme
             {
-                Title = "붉은 암석 협곡", Seed = 6,
+                Seed = 6,
                 Landform = MapLandform.Canyon, Relief = 42f, Roughness = 0.6f,
                 Floor = P(Sand, 1.05f, 0.82f, 0.62f), Patch = P(RockB, 0.95f, 0.7f, 0.52f), PatchCoverage = 0.3f, PatchScale = 1.3f,
                 Slope = P(RockA, 0.85f, 0.52f, 0.36f), High = P(Sand, 1f, 0.78f, 0.58f), HighFrom = 30f,
@@ -36,7 +36,7 @@ public static class BattleMapThemes
 
             case 11: return new BattleMapTheme
             {
-                Title = "안개 낀 침엽수 숲", Seed = 11,
+                Seed = 11,
                 Landform = MapLandform.Hills, Relief = 30f, Roughness = 0.5f,
                 Floor = P(ForestFloor, 1f, 0.97f, 0.88f), Patch = P(LushGrass, 0.85f, 0.95f, 0.75f), PatchCoverage = 0.4f,
                 Slope = P(RockA, 0.75f, 0.8f, 0.75f), High = P(ForestFloor, 0.85f, 0.85f, 0.8f),
@@ -53,7 +53,7 @@ public static class BattleMapThemes
 
             case 16: return new BattleMapTheme
             {
-                Title = "작열하는 모래 언덕", Seed = 16,
+                Seed = 16,
                 Landform = MapLandform.Dunes, Relief = 24f, Roughness = 0.3f,
                 Floor = P(Sand, 1.12f, 0.97f, 0.75f), Patch = P(RockB, 1f, 0.82f, 0.62f), PatchCoverage = 0.15f, PatchScale = 0.7f,
                 Slope = P(Sand, 0.95f, 0.78f, 0.58f), High = P(Sand, 1.1f, 0.95f, 0.75f),
@@ -70,7 +70,7 @@ public static class BattleMapThemes
 
             case 21: return new BattleMapTheme
             {
-                Title = "눈 덮인 산 분지", Seed = 21,
+                Seed = 21,
                 Landform = MapLandform.Mountains, Relief = 120f, Roughness = 0.5f,
                 Floor = P(Snow, 0.95f, 0.97f, 1f), Patch = P(RockB, 0.62f, 0.66f, 0.72f), PatchCoverage = 0.18f, PatchScale = 0.8f,
                 Slope = P(RockA, 0.6f, 0.63f, 0.68f), High = P(Snow, 1f, 1f, 1.02f), HighFrom = 35f,
@@ -86,7 +86,7 @@ public static class BattleMapThemes
 
             case 26: return new BattleMapTheme
             {
-                Title = "썩은 늪", Seed = 26,
+                Seed = 26,
                 Landform = MapLandform.Swamp, Relief = 20f, Roughness = 0.4f,
                 // 고블린이 초록이라 바닥까지 초록이면 무리가 묻힌다(플레이 테스트). 바닥은 진흙 갈색, 풀만 초록으로 둔다.
                 Floor = P(ForestFloor, 0.55f, 0.47f, 0.34f), Patch = P(LushGrass, 0.45f, 0.5f, 0.34f), PatchCoverage = 0.35f, PatchScale = 1.2f,
@@ -105,7 +105,7 @@ public static class BattleMapThemes
 
             case 31: return new BattleMapTheme
             {
-                Title = "불타는 분화구", Seed = 31,
+                Seed = 31,
                 Landform = MapLandform.Crater, Relief = 50f, Roughness = 0.7f,
                 Floor = P(RockB, 0.32f, 0.28f, 0.27f), Patch = P(Stones, 0.5f, 0.25f, 0.18f), PatchCoverage = 0.3f,
                 Slope = P(RockA, 0.25f, 0.22f, 0.22f), High = P(Sand, 0.28f, 0.27f, 0.27f), HighFrom = 30f,
@@ -121,7 +121,7 @@ public static class BattleMapThemes
 
             case 36: return new BattleMapTheme
             {
-                Title = "노을 진 메사 고원", Seed = 36,
+                Seed = 36,
                 Landform = MapLandform.Mesas, Relief = 60f, Roughness = 0.5f,
                 Floor = P(Sand, 1f, 0.72f, 0.55f), Patch = P(DriedGrass, 0.95f, 0.75f, 0.55f), PatchCoverage = 0.3f, PatchScale = 1.5f,
                 Slope = P(RockB, 0.95f, 0.58f, 0.42f), High = P(RockB, 0.9f, 0.6f, 0.45f), HighFrom = 25f,
@@ -137,7 +137,7 @@ public static class BattleMapThemes
 
             case 41: return new BattleMapTheme
             {
-                Title = "단풍 든 구릉", Seed = 41,
+                Seed = 41,
                 Landform = MapLandform.Hills, Relief = 35f, Roughness = 0.5f,
                 Floor = P(Grass, 1.15f, 0.88f, 0.45f), Patch = P(ForestFloor, 1f, 0.5f, 0.28f), PatchCoverage = 0.4f,
                 Slope = P(RockA, 0.8f, 0.72f, 0.6f), High = P(DriedGrass, 1f, 0.8f, 0.5f),
@@ -154,7 +154,7 @@ public static class BattleMapThemes
 
             case 46: return new BattleMapTheme
             {
-                Title = "고요한 호숫가", Seed = 46,
+                Seed = 46,
                 Landform = MapLandform.Lakeside, Relief = 45f, Roughness = 0.5f,
                 Floor = P(Grass, 0.95f, 1f, 0.9f), Patch = P(Stones, 0.9f, 0.9f, 0.88f), PatchCoverage = 0.25f,
                 Slope = P(RockA, 0.75f, 0.78f, 0.8f), High = P(Sand, 0.85f, 0.8f, 0.7f), HighFrom = -0.8f, HighBelow = true,
@@ -171,7 +171,7 @@ public static class BattleMapThemes
 
             case 51: return new BattleMapTheme
             {
-                Title = "잿빛 고사목 황무지", Seed = 51,
+                Seed = 51,
                 Landform = MapLandform.Hills, Relief = 25f, Roughness = 0.9f,
                 Floor = P(Stones, 0.58f, 0.58f, 0.58f), Patch = P(RockB, 0.5f, 0.5f, 0.52f), PatchCoverage = 0.35f,
                 Slope = P(RockB, 0.5f, 0.5f, 0.5f), High = P(Stones, 0.55f, 0.55f, 0.55f),
@@ -188,7 +188,7 @@ public static class BattleMapThemes
 
             case 56: return new BattleMapTheme
             {
-                Title = "얼어붙은 빙원", Seed = 56,
+                Seed = 56,
                 Landform = MapLandform.Glacier, Relief = 70f, Roughness = 0.4f,
                 Floor = P(Snow, 0.85f, 0.93f, 1.05f), Patch = P(RockB, 0.55f, 0.68f, 0.8f), PatchCoverage = 0.25f, PatchScale = 1.5f,
                 Slope = P(Snow, 0.62f, 0.78f, 0.95f), High = P(Snow, 0.95f, 1f, 1.08f), HighFrom = 30f,
@@ -203,7 +203,7 @@ public static class BattleMapThemes
 
             case 61: return new BattleMapTheme
             {
-                Title = "달빛 숲", Seed = 61,
+                Seed = 61,
                 Landform = MapLandform.Hills, Relief = 30f, Roughness = 0.5f,
                 Floor = P(ForestFloor, 0.7f, 0.75f, 0.85f), Patch = P(LushGrass, 0.55f, 0.65f, 0.7f), PatchCoverage = 0.35f,
                 Slope = P(RockA, 0.6f, 0.65f, 0.75f), High = P(ForestFloor, 0.7f, 0.75f, 0.85f),
@@ -220,7 +220,7 @@ public static class BattleMapThemes
 
             case 66: return new BattleMapTheme
             {
-                Title = "모래바람 붉은 황야", Seed = 66,
+                Seed = 66,
                 Landform = MapLandform.Canyon, Relief = 24f, Roughness = 0.9f,
                 Floor = P(Sand, 0.95f, 0.6f, 0.45f), Patch = P(RockB, 0.85f, 0.5f, 0.38f), PatchCoverage = 0.4f, PatchScale = 0.8f,
                 Slope = P(RockA, 0.85f, 0.48f, 0.35f), High = P(Sand, 0.9f, 0.55f, 0.4f), HighFrom = 18f,
@@ -237,7 +237,7 @@ public static class BattleMapThemes
 
             case 71: return new BattleMapTheme
             {
-                Title = "구름 위의 능선", Seed = 71,
+                Seed = 71,
                 Landform = MapLandform.Cliffside, Relief = 170f, Depth = 140f, Roughness = 0.6f,
                 Floor = P(RockB, 0.8f, 0.8f, 0.82f), Patch = P(Snow, 1f, 1f, 1.02f), PatchCoverage = 0.3f, PatchScale = 1.2f,
                 Slope = P(RockA, 0.72f, 0.72f, 0.75f), High = P(Snow, 1f, 1f, 1.02f), HighFrom = 10f,
@@ -253,7 +253,7 @@ public static class BattleMapThemes
 
             case 76: return new BattleMapTheme
             {
-                Title = "폭풍우 치는 고원", Seed = 76,
+                Seed = 76,
                 Landform = MapLandform.Mountains, Relief = 60f, Roughness = 0.8f,
                 // 늪과 같은 이유로 바닥은 젖은 잿빛 돌밭, 풀은 마른 풀만.
                 Floor = P(Stones, 0.55f, 0.56f, 0.58f), Patch = P(LushGrass, 0.42f, 0.48f, 0.44f), PatchCoverage = 0.3f,
@@ -271,7 +271,7 @@ public static class BattleMapThemes
 
             case 81: return new BattleMapTheme
             {
-                Title = "보랏빛 황혼 사구", Seed = 81,
+                Seed = 81,
                 Landform = MapLandform.Dunes, Relief = 20f, Roughness = 0.5f,
                 Floor = P(Sand, 0.6f, 0.55f, 0.66f), Patch = P(RockB, 0.45f, 0.42f, 0.54f), PatchCoverage = 0.3f,
                 Slope = P(Sand, 0.4f, 0.37f, 0.47f), High = P(Sand, 0.45f, 0.42f, 0.5f),
@@ -288,7 +288,7 @@ public static class BattleMapThemes
 
             case 86: return new BattleMapTheme
             {
-                Title = "핏빛 달의 칼데라", Seed = 86,
+                Seed = 86,
                 Landform = MapLandform.Crater, Relief = 75f, Roughness = 0.9f,
                 Floor = P(RockB, 0.32f, 0.28f, 0.28f), Patch = P(Stones, 0.45f, 0.16f, 0.13f), PatchCoverage = 0.35f,
                 Slope = P(RockA, 0.2f, 0.17f, 0.17f), High = P(RockA, 0.25f, 0.15f, 0.14f), HighFrom = 45f,
@@ -305,7 +305,7 @@ public static class BattleMapThemes
 
             case 91: return new BattleMapTheme
             {
-                Title = "별빛 벼랑", Seed = 91,
+                Seed = 91,
                 Landform = MapLandform.Cliffside, Relief = 0f, Depth = 260f, Roughness = 0.8f,
                 Floor = P(RockA, 0.5f, 0.52f, 0.62f), Patch = P(Stones, 0.45f, 0.48f, 0.6f), PatchCoverage = 0.35f,
                 Slope = P(RockB, 0.3f, 0.32f, 0.4f), High = P(RockA, 0.4f, 0.42f, 0.5f),
@@ -321,7 +321,7 @@ public static class BattleMapThemes
 
             case 96: return new BattleMapTheme
             {
-                Title = "탑의 정상", Seed = 96,
+                Seed = 96,
                 Landform = MapLandform.Cliffside, Relief = 120f, Depth = 180f, Roughness = 0.4f,
                 Floor = P(Stones, 1f, 0.95f, 0.85f), Patch = P(Sand, 1.05f, 0.98f, 0.85f), PatchCoverage = 0.3f,
                 Slope = P(RockA, 0.9f, 0.86f, 0.8f), High = P(Snow, 1f, 1f, 1f), HighFrom = 20f,

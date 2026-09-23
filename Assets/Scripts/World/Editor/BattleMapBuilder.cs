@@ -112,7 +112,7 @@ public static class BattleMapBuilder
         string sceneName = FloorProgress.BattleSceneName(first);
         string scenePath = ScenePath(first);
         string folder = $"{SceneFolder}/{sceneName}";
-        EditorUtility.DisplayProgressBar("전투 맵 만들기", $"{sceneName} · {theme.Title}", first / (float)FloorProgress.LastFloor);
+        EditorUtility.DisplayProgressBar("전투 맵 만들기", $"{sceneName} · {FloorStages.TitleOf(first)}", first / (float)FloorProgress.LastFloor);
 
         // 원본 씬이 열려 있으면 복사본이 아니라 원본을 고치게 되므로 먼저 닫는다.
         EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -148,7 +148,7 @@ public static class BattleMapBuilder
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
         AssetDatabase.SaveAssets();
-        Debug.Log($"[BattleMapBuilder] {sceneName} · {theme.Title} 을(를) 만들었습니다.");
+        Debug.Log($"[BattleMapBuilder] {sceneName} · {FloorStages.TitleOf(first)} 을(를) 만들었습니다.");
     }
 
     private static string ScenePath(int floor) => $"{SceneFolder}/{FloorProgress.BattleSceneName(floor)}.unity";
