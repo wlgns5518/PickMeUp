@@ -43,6 +43,18 @@ public class UiIconLibrary : ScriptableObject
     public Sprite bannerNormal;
     public Sprite bannerPremium;
 
+    [Header("Floor Tower")]
+    [Tooltip("탑 벽 돌 무늬. 위아래·좌우로 이어 붙여도 이음새가 없다(512x256, Repeat).")]
+    public Sprite towerWall;
+    [Tooltip("층마다 둘씩 박히는 아치 창. 불 켜진 그림이라 잠긴 층은 어둡게 눌러 쓴다.")]
+    public Sprite towerWindow;
+    [Tooltip("100층 위에 얹는 지붕. 아래 변이 탑 꼭대기에 닿는다.")]
+    public Sprite towerRoof;
+    [Tooltip("1층 아래 탑 입구의 문과 계단.")]
+    public Sprite towerDoor;
+    [Tooltip("탑 옆 하늘을 지나가는 구름.")]
+    public Sprite cloud;
+
     private static UiIconLibrary cached;
     private static bool searched;
 
