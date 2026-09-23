@@ -11,26 +11,22 @@ public readonly struct SkillDefinition
     public readonly string Name;
     public readonly string Description;
 
-    // 이 스킬이 나오려면 재료 카드가 몇 성이어야 하는지. 높을수록 귀하다.
-    public readonly int Tier;
-
     // 배울 수 있는 직업. 비어 있으면 누구나 배운다.
     public readonly JobType[] Jobs;
 
     // 조건이 맞으면 저절로 열리는 스킬의 조건. null이면 합성으로만 얻는다.
     //
-    // 조건이 붙은 스킬은 합성 후보에서 아예 빠진다(WeightOf 참조).
+    // 조건이 붙은 스킬은 합성 후보에서 아예 빠진다(IsCandidate 참조).
     // 조건을 걸어 둔 스킬이 합성으로도 굴러 나오면 조건이 있으나 마나가 되기 때문이다.
     // 조건을 적는 법은 SkillUnlock 참조.
     public readonly SkillUnlockCondition Unlock;
 
-    public SkillDefinition(string id, string name, string description, int tier,
+    public SkillDefinition(string id, string name, string description,
         JobType[] jobs = null, SkillUnlockCondition unlock = null)
     {
         Id = id;
         Name = name;
         Description = description;
-        Tier = tier;
         Jobs = jobs;
         Unlock = unlock;
     }
@@ -57,10 +53,11 @@ public readonly struct SkillDefinition
 // 조건은 스킬을 새로 추가할 때 그 줄에 함께 적는다.
 //
 // JobProfile과 같은 이유로 ScriptableObject가 아니라 코드 표다 — 목록이 코드에서만 참조되고,
-// 에셋으로 흩어 두면 어느 스킬이 어느 등급에서 나오는지 한눈에 볼 수 없다.
+// 에셋으로 흩어 두면 어떤 스킬이 있는지 한눈에 볼 수 없다.
 //
-// 등급(Tier)은 "이 스킬을 뽑으려면 재료가 몇 성이어야 하는가"다. 재료가 좋을수록 후보가 넓어지고,
-// 넓어진 후보 안에서도 높은 등급일수록 덜 나온다. 확률 계산은 Roll 참조.
+// 스킬은 성급으로 나누지 않는다. 표에 줄을 더하면 그만큼 후보가 늘 뿐이고, 재료가 몇 성이든
+// 나올 수 있는 스킬은 같다 — 가르는 것은 직업뿐이다(Jobs). 그래서 스킬을 새로 적을 때
+// 등급을 고민할 필요가 없고, 표는 계속 길어져도 된다.
 public static class SkillCatalog
 {
     // 한 캐릭터가 배울 수 있는 스킬 수. 넘으면 합성이 거절된다 —
@@ -76,55 +73,52 @@ public static class SkillCatalog
     private static readonly SkillDefinition[] All =
     {
         // 누구나 ------------------------------------------------------------
-        new SkillDefinition("power_strike",  "강타",        "힘을 실어 내리친다. 한 방이 묵직해진다.", 1),
-        new SkillDefinition("iron_will",     "굳은 의지",   "겁에 쉽게 흔들리지 않는다.", 1),
-        new SkillDefinition("quick_step",    "잰걸음",      "발이 가벼워져 먼저 자리를 잡는다.", 1),
-        new SkillDefinition("counter",       "반격 자세",   "막아낸 직후 곧바로 되받아친다.", 2),
-        new SkillDefinition("execute",       "처형",        "빈사에 몰린 적에게 치명적인 일격을 넣는다.", 3),
-        new SkillDefinition("berserk",       "광폭화",      "피를 볼수록 공격이 매서워진다.", 4),
-        new SkillDefinition("unyielding",    "불굴",        "쓰러지기 직전 한 번은 버텨낸다.", 5),
-        new SkillDefinition("heros_blow",    "영웅의 일격", "전장을 가르는 필살의 한 방.", 6),
+        new SkillDefinition("power_strike",  "강타",        "힘을 실어 내리친다. 한 방이 묵직해진다."),
+        new SkillDefinition("iron_will",     "굳은 의지",   "겁에 쉽게 흔들리지 않는다."),
+        new SkillDefinition("quick_step",    "잰걸음",      "발이 가벼워져 먼저 자리를 잡는다."),
+        new SkillDefinition("counter",       "반격 자세",   "막아낸 직후 곧바로 되받아친다."),
+        new SkillDefinition("execute",       "처형",        "빈사에 몰린 적에게 치명적인 일격을 넣는다."),
+        new SkillDefinition("berserk",       "광폭화",      "피를 볼수록 공격이 매서워진다."),
+        new SkillDefinition("unyielding",    "불굴",        "쓰러지기 직전 한 번은 버텨낸다."),
+        new SkillDefinition("heros_blow",    "영웅의 일격", "전장을 가르는 필살의 한 방."),
 
         // 근접 계열 ----------------------------------------------------------
-        new SkillDefinition("double_slash",  "연속 베기",   "한 호흡에 두 번 벤다.", 2, MeleeJobs),
-        new SkillDefinition("whirlwind",     "회전 베기",   "몸을 돌려 주위를 한꺼번에 쓸어낸다.", 3, MeleeJobs),
+        new SkillDefinition("double_slash",  "연속 베기",   "한 호흡에 두 번 벤다.", MeleeJobs),
+        new SkillDefinition("whirlwind",     "회전 베기",   "몸을 돌려 주위를 한꺼번에 쓸어낸다.", MeleeJobs),
 
         // 직업 전용 ----------------------------------------------------------
         // 마법사가 쓰는 마법 자체는 여기 없다. 그건 배우는 것이 아니라 속성이 주는 것이라
         // SpellCatalog가 따로 들고 있다 — 화염 마법사는 화염구를 "배우지" 않고 처음부터 쓴다.
         // 여기 남는 것은 그 마법을 어떻게 다루는가에 붙는 숙련이다.
-        new SkillDefinition("swift_chant",   "속성",        "영창이 짧아진다. 무방비로 서 있는 시간이 줄어든다.", 2, new[] { JobType.Mage }),
-        new SkillDefinition("mana_economy",  "마력 절약",   "같은 마력으로 마법을 한 번 더 짜낸다.", 3, new[] { JobType.Mage }),
-        new SkillDefinition("wide_matrix",   "확장 술식",   "펼치는 마법의 범위가 넓어진다.", 5, new[] { JobType.Mage }),
+        new SkillDefinition("swift_chant",   "속성",        "영창이 짧아진다. 무방비로 서 있는 시간이 줄어든다.", new[] { JobType.Mage }),
+        new SkillDefinition("mana_economy",  "마력 절약",   "같은 마력으로 마법을 한 번 더 짜낸다.", new[] { JobType.Mage }),
+        new SkillDefinition("wide_matrix",   "확장 술식",   "펼치는 마법의 범위가 넓어진다.", new[] { JobType.Mage }),
 
-        new SkillDefinition("piercing_shot", "관통 사격",   "한 발로 여럿을 꿰뚫는다.", 2, new[] { JobType.Archer }),
-        new SkillDefinition("multi_shot",    "다중 사격",   "화살 여러 대를 한 번에 메긴다.", 3, new[] { JobType.Archer }),
+        new SkillDefinition("piercing_shot", "관통 사격",   "한 발로 여럿을 꿰뚫는다.", new[] { JobType.Archer }),
+        new SkillDefinition("multi_shot",    "다중 사격",   "화살 여러 대를 한 번에 메긴다.", new[] { JobType.Archer }),
 
-        new SkillDefinition("vital_strike",  "급소 찌르기", "약한 곳을 정확히 노린다.", 2, new[] { JobType.Assassin }),
-        new SkillDefinition("shadow_step",   "그림자 도약", "그림자를 밟고 등 뒤로 돌아간다.", 4, new[] { JobType.Assassin }),
+        new SkillDefinition("vital_strike",  "급소 찌르기", "약한 곳을 정확히 노린다.", new[] { JobType.Assassin }),
+        new SkillDefinition("shadow_step",   "그림자 도약", "그림자를 밟고 등 뒤로 돌아간다.", new[] { JobType.Assassin }),
 
-        new SkillDefinition("taunt",         "도발",        "적의 시선을 자신에게 끌어온다.", 2, new[] { JobType.Tank }),
-        new SkillDefinition("iron_wall",     "철벽",        "자리를 지키며 피해를 크게 덜어낸다.", 3, new[] { JobType.Tank }),
+        new SkillDefinition("taunt",         "도발",        "적의 시선을 자신에게 끌어온다.", new[] { JobType.Tank }),
+        new SkillDefinition("iron_wall",     "철벽",        "자리를 지키며 피해를 크게 덜어낸다.", new[] { JobType.Tank }),
 
-        new SkillDefinition("parry_riposte", "받아넘기기", "상대 검을 흘려낸 그 자리에서 되받아친다.", 2, new[] { JobType.Melee }),
-        new SkillDefinition("sword_aura",    "검기",        "칼끝에 마력을 실어 장갑째 베어낸다.", 4, new[] { JobType.Melee }),
+        new SkillDefinition("parry_riposte", "받아넘기기", "상대 검을 흘려낸 그 자리에서 되받아친다.", new[] { JobType.Melee }),
+        new SkillDefinition("sword_aura",    "검기",        "칼끝에 마력을 실어 장갑째 베어낸다.", new[] { JobType.Melee }),
 
-        new SkillDefinition("leg_sweep",     "다리 걸기",   "정강이를 찔러 적의 발을 묶는다.", 2, new[] { JobType.Lancer }),
-        new SkillDefinition("brace",         "창벽",        "창을 세워 달려드는 적을 멈춰 세운다.", 3, new[] { JobType.Lancer }),
-        new SkillDefinition("impale",        "꿰뚫기",      "한 번에 깊게 찔러 부위를 망가뜨린다.", 4, new[] { JobType.Lancer }),
+        new SkillDefinition("leg_sweep",     "다리 걸기",   "정강이를 찔러 적의 발을 묶는다.", new[] { JobType.Lancer }),
+        new SkillDefinition("brace",         "창벽",        "창을 세워 달려드는 적을 멈춰 세운다.", new[] { JobType.Lancer }),
+        new SkillDefinition("impale",        "꿰뚫기",      "한 번에 깊게 찔러 부위를 망가뜨린다.", new[] { JobType.Lancer }),
 
-        new SkillDefinition("healing_hand",  "치유의 손길", "다친 동료의 상처를 아물게 한다.", 2, new[] { JobType.Support }),
-        new SkillDefinition("blessing",      "축복",        "동료의 몸놀림을 한동안 끌어올린다.", 3, new[] { JobType.Support }),
-        new SkillDefinition("last_prayer",   "마지막 기도", "쓰러진 동료를 한 번 일으켜 세운다.", 4, new[] { JobType.Support }),
+        new SkillDefinition("healing_hand",  "치유의 손길", "다친 동료의 상처를 아물게 한다.", new[] { JobType.Support }),
+        new SkillDefinition("blessing",      "축복",        "동료의 몸놀림을 한동안 끌어올린다.", new[] { JobType.Support }),
+        new SkillDefinition("last_prayer",   "마지막 기도", "쓰러진 동료를 한 번 일으켜 세운다.", new[] { JobType.Support }),
 
         // 생산 계열 ----------------------------------------------------------
-        new SkillDefinition("deft_hands",    "손재주",      "도구를 다루는 솜씨가 늘어 작업이 빨라진다.", 1, CraftJobs),
-        new SkillDefinition("masters_eye",   "명장의 눈",   "재료의 좋고 나쁨을 한눈에 알아본다.", 2, CraftJobs),
-        new SkillDefinition("masterpiece",   "역작",        "이따금 자기 실력을 뛰어넘는 물건을 만들어 낸다.", 4, CraftJobs),
+        new SkillDefinition("deft_hands",    "손재주",      "도구를 다루는 솜씨가 늘어 작업이 빨라진다.", CraftJobs),
+        new SkillDefinition("masters_eye",   "명장의 눈",   "재료의 좋고 나쁨을 한눈에 알아본다.", CraftJobs),
+        new SkillDefinition("masterpiece",   "역작",        "이따금 자기 실력을 뛰어넘는 물건을 만들어 낸다.", CraftJobs),
     };
-
-    // 표에 있는 가장 높은 등급. 재료 등급을 여기까지만 쳐준다(7성 재료도 6등급이 상한).
-    public static readonly int MaxTier = FindMaxTier();
 
     // 표 전체. SkillUnlocks가 정산 때마다 조건부 스킬을 훑을 때 쓴다.
     // 배열을 그대로 넘기면 밖에서 원소를 갈아끼울 수 있으므로 읽기 전용으로만 내준다.
@@ -147,63 +141,48 @@ public static class SkillCatalog
         return found.HasValue ? found.Value.Name : id;
     }
 
-    /// 재료 카드로 주카드가 배울 스킬 하나를 고른다. 배울 게 없으면 null.
+    /// 주카드가 배울 스킬 하나를 고른다. 배울 게 없으면 null.
     ///
-    /// 후보는 "재료 등급 이하 + 주카드 직업이 배울 수 있음 + 아직 안 배움"이고,
-    /// 그 안에서 등급이 낮을수록 자주 나온다(가중치 = 재료등급 - 스킬등급 + 1).
-    /// 그래서 6성 재료라야 영웅의 일격이 후보에 들어가고, 들어가도 가장 드물게 나온다.
-    public static string Roll(CharacterSO main, int materialStars)
+    /// 후보는 "주카드 직업이 배울 수 있음 + 아직 안 배움"이고, 그 안에서는 전부 같은 확률이다.
+    /// 재료가 몇 성인지는 보지 않는다 — 성급으로 스킬을 가르지 않기 때문이다.
+    public static string Roll(CharacterSO main)
     {
         if (main == null) return null;
 
-        int maxTier = Mathf.Clamp(materialStars, 1, MaxTier);
-
-        int total = 0;
-        for (int i = 0; i < All.Length; i++)
-            total += WeightOf(All[i], main, maxTier);
-
+        int total = CountCandidates(main);
         if (total <= 0) return null;
 
         int roll = Random.Range(0, total);
-        int acc = 0;
         for (int i = 0; i < All.Length; i++)
         {
-            acc += WeightOf(All[i], main, maxTier);
-            if (roll < acc) return All[i].Id;
+            if (!IsCandidate(All[i], main)) continue;
+            if (roll == 0) return All[i].Id;
+            roll--;
         }
 
         return null;
     }
 
-    /// 이 재료로 주카드가 배울 수 있는 스킬이 하나라도 있는지. 합성 버튼을 잠글지 판단할 때 쓴다.
-    public static bool HasCandidate(CharacterSO main, int materialStars)
+    /// 이 영웅이 더 배울 수 있는 스킬이 하나라도 있는지. 합성 버튼을 잠글지 판단할 때 쓴다.
+    public static bool HasCandidate(CharacterSO main) => CountCandidates(main) > 0;
+
+    private static int CountCandidates(CharacterSO main)
     {
-        if (main == null) return false;
+        if (main == null) return 0;
 
-        int maxTier = Mathf.Clamp(materialStars, 1, MaxTier);
+        int count = 0;
         for (int i = 0; i < All.Length; i++)
-            if (WeightOf(All[i], main, maxTier) > 0) return true;
+            if (IsCandidate(All[i], main)) count++;
 
-        return false;
+        return count;
     }
 
-    private static int WeightOf(SkillDefinition skill, CharacterSO main, int maxTier)
+    private static bool IsCandidate(SkillDefinition skill, CharacterSO main)
     {
         // 조건 해금 스킬은 합성으로 나오지 않는다. 조건을 채워서 여는 것이 그 스킬의 값어치다.
-        if (skill.IsConditional) return 0;
-        if (skill.Tier > maxTier) return 0;
-        if (!skill.CanLearn(main.job)) return 0;
-        if (main.HasSkill(skill.Id)) return 0;
+        if (skill.IsConditional) return false;
+        if (!skill.CanLearn(main.job)) return false;
 
-        return maxTier - skill.Tier + 1;
-    }
-
-    private static int FindMaxTier()
-    {
-        int max = 1;
-        for (int i = 0; i < All.Length; i++)
-            if (All[i].Tier > max) max = All[i].Tier;
-
-        return max;
+        return !main.HasSkill(skill.Id);
     }
 }

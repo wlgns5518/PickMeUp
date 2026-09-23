@@ -55,6 +55,7 @@ public static class GameEconomy
     public static long EnhanceGold(EquipmentGrade grade, int level) =>
         (100L + 50L * (int)grade) * (Mathf.Clamp(level, 0, EquipmentEnhancement.MaxLevel) + 1);
 
-    // 캐릭터 합성 한 번. 재료 영웅의 등급이 기준이다 — 좋은 재료일수록 좋은 스킬이 나온다.
-    public static long CharacterSynthesisGold(int materialStars) => 300L * Mathf.Max(1, materialStars);
+    // 캐릭터 합성 한 번. 재료 등급과 무관하게 같은 값이다 — 스킬은 성급으로 나누지 않으므로
+    // 높은 등급을 태운다고 더 좋은 스킬이 나오지 않는다(SkillCatalog). 값까지 등급을 따라가면 손해만 남는다.
+    public const long CharacterSynthesisGold = 300;
 }

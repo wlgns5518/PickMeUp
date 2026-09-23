@@ -93,10 +93,10 @@ public class SkillUnlockTests
     public void 합성_후보에는_조건_스킬이_들어가지_않는다()
     {
         // 지금은 표 전체가 합성용이라 후보가 잡혀야 한다. 나중에 조건 스킬을 추가했을 때
-        // 그것들이 Roll로 새어 나오면 이 검사가 아니라 WeightOf의 IsConditional이 막는다.
+        // 그것들이 Roll로 새어 나오면 이 검사가 아니라 IsCandidate의 IsConditional이 막는다.
         for (int i = 0; i < 50; i++)
         {
-            string id = SkillCatalog.Roll(character, 6);
+            string id = SkillCatalog.Roll(character);
             if (string.IsNullOrEmpty(id)) continue;
 
             SkillDefinition? found = SkillCatalog.Find(id);

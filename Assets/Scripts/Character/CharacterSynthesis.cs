@@ -2,14 +2,15 @@
 //
 // 이 게임의 영웅은 한 명 한 명이 고유한 개체라 같은 영웅이 두 번 나오지 않는다. 그래서 흔한 "중복 카드
 // 합치기"가 아니라, 다른 영웅 한 명을 재료로 바쳐 베이스 영웅을 강하게 만드는 방식이다. 베이스의 레벨과
-// 스탯은 그대로이고 스킬만 하나 늘어난다. 어떤 스킬이 나올지는 재료의 등급이 정한다(SkillCatalog.Roll).
+// 스탯은 그대로이고 스킬만 하나 늘어난다. 어떤 스킬이 나올지는 베이스의 직업과 이미 배운 스킬만 본다 —
+// 재료가 몇 성인지는 보지 않는다(SkillCatalog.Roll).
 //
 // 재료 영웅은 보유 명단에서 사라진다. 들고 있던 제작 장비는 창고로 돌아간다(OwnedRoster.Remove).
 // 예전에는 이 규칙이 합성소 창 안에 있었다. 창이 새로 지어져도 규칙은 그대로여야 해서 따로 뺐다.
 public static class CharacterSynthesis
 {
     public static long Cost(CharacterSO material) =>
-        material == null ? 0 : GameEconomy.CharacterSynthesisGold(material.starCount);
+        material == null ? 0 : GameEconomy.CharacterSynthesisGold;
 
     // 골드를 보기 전의 조건. 안 되면 화면에 그대로 띄울 이유를 돌려준다.
     public static bool CanSynthesize(CharacterSO main, CharacterSO material, out string reason)
@@ -35,9 +36,9 @@ public static class CharacterSynthesis
             reason = $"스킬은 최대 {SkillCatalog.MaxSkillsPerCharacter}개까지 배울 수 있습니다.";
             return false;
         }
-        if (!SkillCatalog.HasCandidate(main, material.starCount))
+        if (!SkillCatalog.HasCandidate(main))
         {
-            reason = "이 재료로 배울 수 있는 스킬이 없습니다. 등급이 더 높은 재료가 필요합니다.";
+            reason = "이 영웅이 더 배울 스킬이 없습니다.";
             return false;
         }
         return true;
@@ -49,10 +50,10 @@ public static class CharacterSynthesis
         skillId = null;
         if (!CanSynthesize(main, material, out reason)) return false;
 
-        string rolled = SkillCatalog.Roll(main, material.starCount);
+        string rolled = SkillCatalog.Roll(main);
         if (string.IsNullOrEmpty(rolled))
         {
-            reason = "이 재료로 배울 수 있는 스킬이 없습니다.";
+            reason = "이 영웅이 더 배울 스킬이 없습니다.";
             return false;
         }
 

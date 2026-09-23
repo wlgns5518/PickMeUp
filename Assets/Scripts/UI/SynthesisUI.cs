@@ -248,7 +248,7 @@ public class SynthesisUI : UiScreen
         bool ok = CharacterSynthesis.CanSynthesize(main, material, out string reason);
         string stats = ok
             ? $"스킬 {skills} → {UiTheme.Paint((skills + 1).ToString(), UiTheme.Success)} / {max}\n" +
-              $"{UiKit.Stars(1)} ~ {UiTheme.Paint(UiKit.Stars(material.starCount), UiTheme.StarColor(material.starCount))} 스킬 중 무작위"
+              "아직 없는 스킬 중 무작위"
             : $"스킬 {skills} / {max}";
 
         string note = ok ? $"{HeroLabel.Name(material)} 소멸" : reason;
