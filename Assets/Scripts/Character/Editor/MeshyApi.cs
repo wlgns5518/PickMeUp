@@ -38,6 +38,12 @@ public static class MeshyApi
     public static Task<string> CreateImage(string body) =>
         CreateTask(MeshyBodyRecipe.SheetEndpoint, body);
 
+    /// 그림 한 장에서 메시를 뽑는다(마을 건물 파츠 등). 주문서는 부르는 쪽이 들고 온다.
+    public const string ImageTo3DEndpoint = "image-to-3d";
+
+    public static Task<string> CreateModelFromImage(string body) =>
+        CreateTask(ImageTo3DEndpoint, body);
+
     // ── 기다리기 ─────────────────────────────────────────────────────────
 
     /// 태스크가 끝날 때까지 폴링한다. onProgress로 진행률(0~1)과 상태를 흘려보낸다.
@@ -107,29 +113,52 @@ public static class MeshyApi
         return client;
     }
 
+    // 한꺼번에 여러 개를 주문하면(마을 파츠 스무 개) 429(Rate limit exceeded)가 돌아온다.
+    // 폴링에서 429가 나서 포기하면 이미 크레딧을 낸 태스크를 버리게 되므로, 429만은 기다렸다가 다시 한다.
+    private const int RateLimitRetries = 8;
+
     private static async Task<string> Post(string url, string body)
     {
-        using (HttpClient client = Client())
-        using (var content = new StringContent(body, Encoding.UTF8, "application/json"))
-        using (HttpResponseMessage response = await client.PostAsync(url, content))
+        for (int attempt = 0; ; attempt++)
         {
-            string text = await response.Content.ReadAsStringAsync();
-            if (!response.IsSuccessStatusCode)
+            using (HttpClient client = Client())
+            using (var content = new StringContent(body, Encoding.UTF8, "application/json"))
+            using (HttpResponseMessage response = await client.PostAsync(url, content))
+            {
+                string text = await response.Content.ReadAsStringAsync();
+                if (response.IsSuccessStatusCode) return text;
+                if (IsRateLimited(response) && attempt < RateLimitRetries) { await Backoff(attempt); continue; }
                 throw new Exception($"Meshy POST {url} 실패 ({(int)response.StatusCode}): {text}");
-            return text;
+            }
         }
     }
 
     private static async Task<string> Get(string url)
     {
-        using (HttpClient client = Client())
-        using (HttpResponseMessage response = await client.GetAsync(url))
+        for (int attempt = 0; ; attempt++)
         {
-            string text = await response.Content.ReadAsStringAsync();
-            if (!response.IsSuccessStatusCode)
+            using (HttpClient client = Client())
+            using (HttpResponseMessage response = await client.GetAsync(url))
+            {
+                string text = await response.Content.ReadAsStringAsync();
+                if (response.IsSuccessStatusCode) return text;
+                if (IsRateLimited(response) && attempt < RateLimitRetries) { await Backoff(attempt); continue; }
                 throw new Exception($"Meshy GET {url} 실패 ({(int)response.StatusCode}): {text}");
-            return text;
+            }
         }
+    }
+
+    private static bool IsRateLimited(HttpResponseMessage response) => (int)response.StatusCode == 429;
+
+    // 2, 4, 8 … 초에 조금씩 흩뿌린다. 동시에 막힌 요청들이 같은 순간에 다시 몰리지 않게.
+    private static readonly System.Random Jitter = new System.Random();
+
+    private static Task Backoff(int attempt)
+    {
+        double spread;
+        lock (Jitter) spread = Jitter.NextDouble() * 1.5;
+        double seconds = Math.Min(60, Math.Pow(2, attempt + 1)) + spread;
+        return Task.Delay(TimeSpan.FromSeconds(seconds));
     }
 
     /// 결과 파일을 그대로 디스크에 떨어뜨린다. 서명이 붙은 임시 URL이라 인증 헤더는 붙이지 않는다.

@@ -4,8 +4,11 @@ using UnityEngine;
 // 성벽 안 마을의 임시 배치.
 //
 // 참고 그림의 열두 각 성벽 안에 광장과 시설들이 놓인 그 배치를 그대로 세운다.
-// 지금은 전부 큐브/실린더/스피어 덩어리다. 에셋이 나오면 구역마다 prefab 칸에 넣기만 하면
-// 그 자리에 프리팹이 대신 놓이므로, 배치를 다시 잡거나 이 스크립트를 지울 필요가 없다.
+// 구역마다 prefab 칸에 에셋을 넣으면 그 자리에 프리팹이 대신 놓이고, 비우면 아래의 임시 도형
+// (큐브/실린더/스피어 덩어리)으로 돌아간다. 배치를 다시 잡거나 이 스크립트를 지울 필요가 없다.
+// 시설 여덟 곳은 Meshy 파츠로 조립한 모듈 건물(FacilityBuilding, VillagePrefabAssembler)이 들어가 있고,
+// 광장만 임시 도형이다. 빈 땅은 거리(Kind.Street) 구역이 채운다 — Gaia 3DForge 집·농장 묶음과 공용 키트로
+// 조립한 것이라 임시 도형이 없고, 프리팹 칸이 비면 아무것도 서지 않는다.
 //
 // 만들어진 오브젝트를 씬에 저장하지 않는 이유는 FloatingIsland/PolygonWall과 같다 —
 // 씬 파일에는 구역 목록의 숫자 몇 줄만 남아 병합 충돌이 나지 않고, 각도나 거리를 고치면 바로 반영된다.
@@ -26,7 +29,8 @@ public class VillageBlockout : MonoBehaviour
         Training,   // 훈련소
         Housing,    // 숙소
         Workshop,   // 공방시설(장식용 뼈대) — 도형만 쓰고 싶을 때는 지금도 이 kind를 쓴다.
-        EquipmentWorkshop // 장비제작소 — 공방시설 자리를 그대로 쓰되 기능(자동/수동 제작)이 붙는다.
+        EquipmentWorkshop, // 장비제작소 — 대장간 한 채. 눌러서 장비를 만든다(자동/수동 제작).
+        Street      // 거리 — 하는 일 없이 마을을 채우는 집·수레·장작 묶음. 임시 도형이 없어 프리팹이 있어야 보인다.
     }
 
     [System.Serializable]
@@ -56,8 +60,13 @@ public class VillageBlockout : MonoBehaviour
         [Tooltip("켰을 때 세울 도형. 예: 소환소인데 연금시설 건물을 쓰는 경우.")]
         public Kind building;
 
-        [Tooltip("에셋이 준비되면 여기에 프리팹을 넣는다. 넣으면 임시 도형 대신 이 프리팹이 놓인다.")]
+        [Tooltip("에셋이 준비되면 여기에 프리팹을 넣는다. 넣으면 임시 도형 대신 이 프리팹이 놓인다. " +
+                 "비우면 다시 임시 도형으로 돌아간다.")]
         public GameObject prefab;
+
+        [Tooltip("건물 레벨. 프리팹에 FacilityBuilding이 있으면 이 레벨의 파츠로 세운다. " +
+                 "레벨을 저장하는 곳이 생기면 그 값으로 덮어쓴다.")]
+        [Range(1, FacilityBuilding.MaxLevel)] public int level = 1;
 
         [Tooltip("잠깐 빼고 보고 싶을 때 끈다.")]
         public bool build = true;
@@ -80,6 +89,48 @@ public class VillageBlockout : MonoBehaviour
     [SerializeField] private float groundYaw = 15f;
     [Tooltip("지면보다 얼마나 띄울지. 지형과 높이가 똑같으면 두 면이 겹쳐 깜빡이고 지형이 뚫고 올라온다.")]
     [SerializeField, Min(0f)] private float groundLift = 0.15f;
+
+    // 마을 바닥 위에 까는 길 한 줄. 점을 부드러운 곡선으로 잇는다.
+    [System.Serializable]
+    public class Road
+    {
+        public string label = "길";
+        [Tooltip("마을 한가운데 기준 좌표(x=동, y=북, 미터). 구역에 닿는 끝은 건물 기단 밑으로 조금 들어가게 찍으면 이음매가 가려진다.")]
+        public List<Vector2> points = new List<Vector2>();
+        [Min(1f)] public float width = 6f;
+    }
+
+    // 건물 묶음을 앉히는 잔디 부지. 마을 축(동서·남북)에 맞춘 네모다.
+    [System.Serializable]
+    public class Lot
+    {
+        public string label = "부지";
+        [Tooltip("마을 한가운데 기준 가운데(x=동, y=북, 미터).")]
+        public Vector2 center;
+        public Vector2 size = new Vector2(20f, 20f);
+    }
+
+    [Header("길")]
+    [SerializeField] private bool buildRoads = true;
+    [SerializeField] private List<Road> roads = new List<Road>();
+    [Tooltip("길 윗면 재질. 비우면 흙색 단색으로 깐다.")]
+    [SerializeField] private Material roadMaterial;
+    [Tooltip("길 가장자리 연석 재질. 비우면 연석을 깔지 않는다.")]
+    [SerializeField] private Material roadEdgeMaterial;
+    [Tooltip("연석이 길 양옆으로 나오는 폭(미터).")]
+    [SerializeField, Min(0f)] private float roadEdge = 0.6f;
+    [Tooltip("길·부지 무늬 한 장이 덮는 길이(미터).")]
+    [SerializeField, Min(0.5f)] private float roadTile = 4f;
+
+    [Header("부지")]
+    [SerializeField] private List<Lot> lots = new List<Lot>();
+    [SerializeField] private Material lotMaterial;
+    [Tooltip("비우면 바닥을 GroundColor 단색으로 칠한다.")]
+    [SerializeField] private Material groundMaterial;
+    [Tooltip("부지에 심을 나무·덤불. 같은 것을 여러 번 넣으면 그만큼 자주 나온다. 비우면 지형에 등록된 나무 중 12m 이하를 쓴다.")]
+    [SerializeField] private GameObject[] lotTreePrefabs;
+    [Tooltip("부지 100㎡마다 심으려는 수. 건물·길·다른 나무에 걸리는 자리는 버리므로 실제로는 이보다 적다.")]
+    [SerializeField, Min(0f)] private float lotTreeDensity = 2f;
 
     [Header("나무")]
     [Tooltip("구역과 구역 사이 빈 자리에 나무를 심는다. 훈련소 둘레 숲은 이 값과 상관없이 늘 심는다.")]
@@ -123,6 +174,13 @@ public class VillageBlockout : MonoBehaviour
     private static readonly Color Leaf       = new Color(0.28f, 0.42f, 0.24f);
     private static readonly Color LeafDark   = new Color(0.21f, 0.34f, 0.20f);
     private static readonly Color Turf       = new Color(0.34f, 0.44f, 0.28f);   // 나무 밑 잔디
+
+    // 마을 바닥과 광장. 시설이 Meshy 파츠(어두운 돌·나무·쇠)로 바뀌어 밝은 베이지 바닥에서 따로 놀았다.
+    // 거점 분위기에 맞춰 어두운 포석 색으로 낮춘다.
+    private static readonly Color GroundColor = new Color(0.33f, 0.32f, 0.30f);
+    private static readonly Color PlazaBase   = new Color(0.29f, 0.29f, 0.28f);
+    private static readonly Color PlazaInner  = new Color(0.24f, 0.24f, 0.24f);
+    private static readonly Color PlazaRing   = new Color(0.42f, 0.41f, 0.38f);
 
     private readonly Dictionary<Color, Material> materials = new Dictionary<Color, Material>();
     private readonly Dictionary<Color, Material> glowMaterials = new Dictionary<Color, Material>();
@@ -205,7 +263,12 @@ public class VillageBlockout : MonoBehaviour
             }
         }
 
-        if (buildTrees) BuildTrees();
+        if (buildRoads) BuildRoads();
+        if (buildTrees)
+        {
+            BuildTrees();
+            BuildLotTrees();
+        }
 
         CombineForRendering();
     }
@@ -272,9 +335,13 @@ public class VillageBlockout : MonoBehaviour
             district.bearing = Round(Mathf.Repeat(Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, 360f));
             district.distance = Round(new Vector2(local.x, local.z).magnitude);
             district.facing = Round(Mathf.DeltaAngle(district.bearing + 180f, child.localEulerAngles.y));
-            // 프리팹을 넣은 구역은 루트를 늘리지 않으므로 스케일에서 크기를 되읽을 수 없다.
             // 세울 때 쓴 것과 같은 기준 크기로 되읽어야 한다(도형을 바꿔 쓴 구역이 있다).
-            if (district.prefab == null)
+            // 프리팹은 FacilityBuilding이 들고 있는 기준 반지름으로 늘렸으므로 그걸로 되읽는다.
+            // FacilityBuilding이 없는 프리팹은 루트를 늘리지 않아 스케일에서 크기를 되읽을 수 없다.
+            FacilityBuilding building = district.prefab != null ? district.prefab.GetComponent<FacilityBuilding>() : null;
+            if (building != null)
+                district.size = Mathf.Max(2f, Round(child.localScale.x * building.DesignRadius));
+            else if (district.prefab == null)
                 district.size = Mathf.Max(2f, Round(child.localScale.x * DesignSize(district.useOtherBuilding ? district.building : district.kind)));
         }
 
@@ -360,6 +427,15 @@ public class VillageBlockout : MonoBehaviour
             instance.name = district.prefab.name;
             instance.transform.localPosition = Vector3.zero;
             instance.transform.localRotation = Quaternion.identity;
+
+            // 모듈 건물이면 구역 크기 손잡이가 그대로 듣게 기준 반지름과의 비로 늘리고, 레벨에 맞는 파츠만 켠다.
+            FacilityBuilding building = instance.GetComponent<FacilityBuilding>();
+            if (building != null)
+            {
+                root.localScale = Vector3.one * (district.size / building.DesignRadius);
+                building.SetLevel(Mathf.Max(1, district.level));
+            }
+
             MarkTree(instance);
             return;
         }
@@ -415,8 +491,202 @@ public class VillageBlockout : MonoBehaviour
         Transform root = NewChild(transform, "바닥", Vector3.zero, groundYaw);
 
         Vector3 center = new Vector3(0f, GroundY(Vector3.zero) - transform.position.y + groundLift, 0f);
-        MeshPiece(root, "마을 바닥", center,
-            ArcSlab("VillageGround", groundSides, groundRadius, groundThickness, 0f, 360f), PathColor, true);
+        GameObject ground = MeshPiece(root, "마을 바닥", center,
+            ArcSlab("VillageGround", groundSides, groundRadius, groundThickness, 0f, 360f), GroundColor, true);
+        if (groundMaterial != null) ground.GetComponent<MeshRenderer>().sharedMaterial = groundMaterial;
+    }
+
+    // ---- 길·부지 -------------------------------------------------------------
+
+    private static readonly Color RoadColor = new Color(0.46f, 0.40f, 0.33f);   // 재질이 없을 때의 흙색
+    private static readonly Color LotColor = new Color(0.25f, 0.31f, 0.22f);
+
+    // 바닥 위에 까는 네 겹. 아래 겹의 가장자리만 위 겹 밖으로 삐져나와 윤곽선이 된다.
+    //   부지 연석 +2cm → 부지 잔디 +4cm → 길 연석 +7cm → 길 돌 포장 +10cm
+    // 모든 길의 연석이 모든 길의 포장보다 아래라, 길이 여러 줄 겹치는 갈림목에서도 연석은 합쳐진 길의 바깥 둘레에만 보인다.
+    // 같은 겹끼리 겹친 곳이 깜빡이지 않는 이유: 무늬를 길 방향이 아니라 마을 좌표(x, z)로 입혀서, 겹친 두 면이 어느 쪽이
+    // 그려지든 같은 점이 같은 색이다. 겹 사이를 2~3cm 띄운 것은 기본 카메라에서 200m 거리의 깊이 분해능(약 1cm) 때문.
+    // 가장 높은 겹도 광장 바닥(약 16cm)과 구역 기단보다 낮아서, 길 끝이 그 밑으로 들어가 가려진다.
+    private const float LotEdgeLift = 0.02f, LotLift = 0.04f, RoadEdgeLift = 0.07f, RoadLift = 0.10f;
+    private const float LotEdge = 0.5f;
+
+    private void BuildRoads()
+    {
+        bool anyRoad = roads != null && roads.Count > 0;
+        bool anyLot = lots != null && lots.Count > 0;
+        if (!anyRoad && !anyLot) return;
+
+        Transform root = NewChild(transform, "길", Vector3.zero, 0f);
+        float baseY = GroundY(Vector3.zero) - transform.position.y + (buildGround ? groundLift : 0f);
+
+        if (anyLot)
+        {
+            foreach (Lot lot in lots)
+            {
+                if (lot == null) continue;
+                string name = string.IsNullOrEmpty(lot.label) ? "부지" : lot.label;
+                if (roadEdgeMaterial != null)
+                    Flat(root, name + " 연석", baseY + LotEdgeLift, RectMesh(lot.center, lot.size + Vector2.one * (LotEdge * 2f), name), roadEdgeMaterial);
+                Flat(root, name, baseY + LotLift, RectMesh(lot.center, lot.size, name), lotMaterial != null ? lotMaterial : Mat(LotColor));
+            }
+        }
+
+        if (!anyRoad) return;
+        foreach (Road road in roads)
+        {
+            if (road == null || road.points == null || road.points.Count < 2) continue;
+            string name = string.IsNullOrEmpty(road.label) ? "길" : road.label;
+            if (roadEdgeMaterial != null && roadEdge > 0f)
+                Flat(root, name + " 연석", baseY + RoadEdgeLift, StripMesh(road.points, road.width + roadEdge * 2f, name), roadEdgeMaterial);
+            Flat(root, name, baseY + RoadLift, StripMesh(road.points, road.width, name), roadMaterial != null ? roadMaterial : Mat(RoadColor));
+        }
+    }
+
+    private void Flat(Transform parent, string name, float y, Mesh mesh, Material material)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = new Vector3(0f, y, 0f);
+        Mark(go);
+        go.AddComponent<MeshFilter>().sharedMesh = mesh;
+        var renderer = go.AddComponent<MeshRenderer>();
+        renderer.sharedMaterial = material;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+    }
+
+    // 꺾은선을 곧게 잇는 띠. 참고 그림처럼 곧은 길과 각진 모퉁이를 그대로 살리고, 모퉁이는 폭이 좁아지지 않게
+    // 두 변의 오른쪽 방향을 반씩 섞은 쪽(마이터)으로 벌린다.
+    private Mesh StripMesh(List<Vector2> input, float width, string name)
+    {
+        var points = new List<Vector2>();
+        foreach (Vector2 p in input)
+            if (points.Count == 0 || (p - points[points.Count - 1]).sqrMagnitude > 0.0001f) points.Add(p);
+
+        var vertices = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var triangles = new List<int>();
+        int n = points.Count;
+        for (int k = 0; k < n; k++)
+        {
+            Vector2 p = points[k];
+            Vector2 dIn = k > 0 ? (p - points[k - 1]).normalized : (points[Mathf.Min(1, n - 1)] - p).normalized;
+            Vector2 dOut = k < n - 1 ? (points[k + 1] - p).normalized : dIn;
+            var rIn = new Vector2(dIn.y, -dIn.x);
+            var rOut = new Vector2(dOut.y, -dOut.x);
+            Vector2 miter = rIn + rOut;
+            miter = miter.sqrMagnitude > 0.0001f ? miter.normalized : rOut;
+            float half = width * 0.5f / Mathf.Max(0.35f, Vector2.Dot(miter, rOut));
+
+            Vector2 a = p - miter * half, b = p + miter * half;
+            vertices.Add(new Vector3(a.x, 0f, a.y));
+            vertices.Add(new Vector3(b.x, 0f, b.y));
+            uvs.Add(a / roadTile);
+            uvs.Add(b / roadTile);
+
+            if (k == 0) continue;
+            int l0 = (k - 1) * 2, r0 = l0 + 1, l1 = k * 2, r1 = l1 + 1;
+            // 위에서 봤을 때 시계 방향이어야 윗면이 보인다.
+            triangles.Add(l0); triangles.Add(l1); triangles.Add(r0);
+            triangles.Add(r0); triangles.Add(l1); triangles.Add(r1);
+        }
+        return FlatMesh("Road " + name, vertices, uvs, triangles);
+    }
+
+    private Mesh RectMesh(Vector2 center, Vector2 size, string name)
+    {
+        Vector2 h = size * 0.5f;
+        var corners = new[] { center + new Vector2(-h.x, -h.y), center + new Vector2(-h.x, h.y),
+                              center + new Vector2(h.x, h.y), center + new Vector2(h.x, -h.y) };
+        var vertices = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        foreach (Vector2 c in corners)
+        {
+            vertices.Add(new Vector3(c.x, 0f, c.y));
+            uvs.Add(c / roadTile);
+        }
+        return FlatMesh("Lot " + name, vertices, uvs, new List<int> { 0, 1, 2, 0, 2, 3 });
+    }
+
+    private Mesh FlatMesh(string name, List<Vector3> vertices, List<Vector2> uvs, List<int> triangles)
+    {
+        var mesh = new Mesh { name = name, hideFlags = HideFlags.DontSave };
+        meshes.Add(mesh);
+        mesh.SetVertices(vertices);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(triangles, 0);
+        mesh.RecalculateNormals();
+        mesh.RecalculateTangents();   // 재질의 노멀맵용
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    // 길 위(가장자리에서 margin 안쪽 포함)인지. 나무를 심을 때 길을 비운다.
+    private bool NearRoad(Vector3 spot, float margin)
+    {
+        if (!buildRoads || roads == null) return false;
+        foreach (Road road in roads)
+        {
+            if (road == null || road.points == null) continue;
+            for (int i = 0; i < road.points.Count - 1; i++)
+            {
+                Vector2 a = road.points[i], b = road.points[i + 1];
+                if (DistanceToSegment(spot, new Vector3(a.x, 0f, a.y), new Vector3(b.x, 0f, b.y)) < road.width * 0.5f + margin) return true;
+            }
+        }
+        return false;
+    }
+
+    // 지금 시설·거리 배치에 맞춘 길. 구역을 옮겼다면 인스펙터에서 점을 고치면 된다.
+    //   남북 큰길: 광장 ↔ 대장간 ↔ 훈련소 입구     동서 길: 서쪽 거리 ↔ 대장간 ↔ 동쪽 거리
+    //   갈래길: 합성소·소환소 정문, 무기창고, 숙소, 비행선착장 탑, 북동·북서 성벽길
+    [ContextMenu("기본 길 불러오기")]
+    public void LoadDefaultRoads()
+    {
+#if UNITY_EDITOR
+        UnityEditor.Undo.RecordObject(this, "기본 길 불러오기");
+#endif
+        roads = new List<Road>
+        {
+            // 남북 큰길과 동서 길은 대장간 마당에서 네 갈래로 뻗는다.
+            MakeRoad("남북 큰길 북", 10f, new Vector2(0f, 11f), new Vector2(0f, 84f)),
+            MakeRoad("남북 큰길 남", 10f, new Vector2(0f, -11f), new Vector2(0f, -88f)),
+            MakeRoad("동쪽 길", 8f, new Vector2(15f, 0f), new Vector2(62f, 0f)),
+            MakeRoad("서쪽 길", 8f, new Vector2(-15f, 0f), new Vector2(-53f, 0f)),
+            // 갈래길은 45도로 비껴 나갔다가 곧게 들어간다(참고 그림의 사선 길).
+            MakeRoad("소환소 길", 7f, new Vector2(0f, 40f), new Vector2(18f, 58f), new Vector2(57f, 58f)),
+            MakeRoad("합성소 길", 7f, new Vector2(0f, 40f), new Vector2(-18f, 58f), new Vector2(-53f, 58f)),
+            MakeRoad("무기창고 길", 6f, new Vector2(-35f, 31f), new Vector2(-35f, 58f)),
+            MakeRoad("숙소 길", 7f, new Vector2(0f, -30f), new Vector2(-60f, -30f), new Vector2(-67f, -37f)),
+            MakeRoad("선착장 길", 7f, new Vector2(0f, -45f), new Vector2(22f, -45f), new Vector2(36f, -59f), new Vector2(52f, -59f)),
+            MakeRoad("북동 성벽길", 6f, new Vector2(20f, 98f), new Vector2(30f, 88f), new Vector2(40f, 88f)),
+            MakeRoad("북서 성벽길", 6f, new Vector2(-20f, 98f), new Vector2(-30f, 88f), new Vector2(-40f, 88f)),
+        };
+#if UNITY_EDITOR
+        UnityEditor.EditorUtility.SetDirty(this);
+#endif
+        Rebuild();
+    }
+
+    /// 입구 길 잇기(에디터 도구 VillageEntrancePaths)가 큰길과 부지를 읽는다.
+    public IReadOnlyList<Road> Roads => roads;
+    public IReadOnlyList<Lot> Lots => lots;
+
+#if UNITY_EDITOR
+    /// 길 목록(과 부지 목록)을 통째로 갈아 끼우고 다시 세운다. 되돌리기(Ctrl+Z)가 된다.
+    public void EditorSetRoads(List<Road> list, List<Lot> lotList = null)
+    {
+        UnityEditor.Undo.RecordObject(this, "길 바꾸기");
+        roads = list;
+        if (lotList != null) lots = lotList;
+        UnityEditor.EditorUtility.SetDirty(this);
+        if (gameObject.scene.IsValid()) UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(gameObject.scene);
+        Rebuild();
+    }
+#endif
+
+    private static Road MakeRoad(string label, float width, params Vector2[] points)
+    {
+        return new Road { label = label, width = width, points = new List<Vector2>(points) };
     }
 
     // 메시 하나를 그대로 붙인 조각. 도형으로 못 만드는 다각형/반원 바닥에 쓴다.
@@ -510,6 +780,7 @@ public class VillageBlockout : MonoBehaviour
         mesh.SetUVs(0, uvs);
         mesh.SetTriangles(triangles, 0);
         mesh.RecalculateNormals();
+        mesh.RecalculateTangents();   // 바닥 재질(groundMaterial)의 노멀맵용
         mesh.RecalculateBounds();
         return mesh;
     }
@@ -627,6 +898,7 @@ public class VillageBlockout : MonoBehaviour
     {
         // 한가운데 트인 자리와 시공의 틈까지 걸어 들어가는 길목은 비워 둔다.
         if (spot.sqrMagnitude < treeCenterClear * treeCenterClear) return true;
+        if (NearRoad(spot, treeMargin)) return true;
 
         District rift = Find(Kind.Rift);
         if (rift != null && DistanceToSegment(spot, Vector3.zero, Dir(rift.bearing) * rift.distance) < riftApproachWidth) return true;
@@ -707,6 +979,134 @@ public class VillageBlockout : MonoBehaviour
         Bounds bounds = renderers[0].bounds;
         foreach (Renderer renderer in renderers) bounds.Encapsulate(renderer.bounds);
         return bounds.size.y;
+    }
+
+    // ---- 부지 나무 -----------------------------------------------------------
+
+    // 부지(잔디 블록)마다 나무·덤불을 심는다 — 참고 그림에서 집 묶음을 둘러싼 녹지.
+    // 건물(윗 레벨에 생길 파츠 포함)과 포장 길은 비우고, 나무끼리는 수관이 크게 겹치지 않게 띄운다.
+    // 부지마다 씨앗이 정해져 있어 언제 다시 세워도 같은 자리에 선다(부지를 옮기거나 길이 바뀌면 달라진다).
+    // 훈련소 숲과 따로 "부지 나무" 아래에 둔다 — 입구 길 도구(VillageEntrancePaths)는 이 나무들을 장애물로 치지 않는다.
+    // 길이 바뀌면 여기가 길을 피해 다시 심으므로, 나무 때문에 길이 돌아갈 까닭이 없다.
+    private void BuildLotTrees()
+    {
+        if (lots == null || lots.Count == 0 || lotTreeDensity <= 0f) return;
+
+        var prefabs = new List<GameObject>();
+        if (lotTreePrefabs != null)
+            foreach (GameObject prefab in lotTreePrefabs) if (prefab != null) prefabs.Add(prefab);
+        if (prefabs.Count == 0)
+            foreach (GameObject prefab in ResolveTreePrefabs()) if (PrefabHeight(prefab) <= 12f) prefabs.Add(prefab);
+        if (prefabs.Count == 0) return;
+
+        var radii = new float[prefabs.Count];
+        for (int i = 0; i < prefabs.Count; i++) radii[i] = PrefabRadius(prefabs[i]);
+
+        List<Rect> buildings = BuildingFootprints();
+        Transform root = NewChild(transform, "부지 나무", Vector3.zero, 0f);
+        // 부지 잔디 위에 밑동을 살짝 묻는다.
+        float y = GroundY(Vector3.zero) - transform.position.y + (buildGround ? groundLift : 0f) + LotLift - 0.05f;
+
+        for (int l = 0; l < lots.Count; l++)
+        {
+            Lot lot = lots[l];
+            if (lot == null) continue;
+
+            var random = new System.Random(treeSeed + (l + 1) * 7919);
+            int wanted = Mathf.RoundToInt(lot.size.x * lot.size.y / 100f * lotTreeDensity);
+            var placed = new List<Vector3>();
+            var placedRadius = new List<float>();
+
+            for (int attempt = 0; attempt < wanted * 8 && placed.Count < wanted; attempt++)
+            {
+                int kind = random.Next(prefabs.Count);
+                float scale = 1f + (float)random.NextDouble() * 0.5f;   // 위에서 수관이 보이게 원본보다 조금 크게
+                float radius = radii[kind] * scale;
+                // 부지 가장자리 연석까지는 올라서지 않게 1m 안쪽.
+                var spot = new Vector3(
+                    lot.center.x + ((float)random.NextDouble() - 0.5f) * Mathf.Max(0f, lot.size.x - 2f),
+                    0f,
+                    lot.center.y + ((float)random.NextDouble() - 0.5f) * Mathf.Max(0f, lot.size.y - 2f));
+                float yaw = (float)random.NextDouble() * 360f;
+
+                // 밑동이 길 위에 서지 않고 수관이 길을 반 넘게 덮지 않게.
+                if (NearRoad(spot, radius * 0.4f + 0.5f)) continue;
+                if (InsideAny(buildings, spot, radius * 0.5f + 0.6f)) continue;
+
+                bool crowded = false;
+                for (int i = 0; i < placed.Count && !crowded; i++)
+                    crowded = (placed[i] - spot).sqrMagnitude < Sqr((placedRadius[i] + radius) * 0.65f);
+                if (crowded) continue;
+
+                placed.Add(spot);
+                placedRadius.Add(radius);
+
+                GameObject instance = Instantiate(prefabs[kind], root);
+                instance.name = prefabs[kind].name;
+                instance.transform.localPosition = new Vector3(spot.x, y, spot.z);
+                instance.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
+                instance.transform.localScale = prefabs[kind].transform.localScale * scale;
+                MarkTree(instance);
+            }
+        }
+    }
+
+    private static float Sqr(float v) => v * v;
+
+    // 수관 반지름(미터). 프리팹 에셋의 렌더러 범위는 빌드에서 비어 올 수 있어 메시 범위로 잰다.
+    private static float PrefabRadius(GameObject prefab)
+    {
+        float radius = 0.5f;
+        foreach (MeshFilter filter in prefab.GetComponentsInChildren<MeshFilter>(true))
+        {
+            if (filter.sharedMesh == null) continue;
+            Bounds b = filter.sharedMesh.bounds;
+            Vector3 s = filter.transform.lossyScale;
+            float r = Mathf.Max((Mathf.Abs(b.center.x) + b.extents.x) * Mathf.Abs(s.x),
+                                (Mathf.Abs(b.center.z) + b.extents.z) * Mathf.Abs(s.z));
+            radius = Mathf.Max(radius, r);
+        }
+        return radius;
+    }
+
+    // 구역에 선 것들의 바닥 네모(마을 좌표 x,z). 바닥에서 0.5m도 안 솟은 판(훈련장 흙·광장 무늬)은 뺀다.
+    // 꺼져 있는 윗 레벨 파츠도 넣는다 — 나중에 탑이 나무를 뚫고 올라오지 않게.
+    private List<Rect> BuildingFootprints()
+    {
+        var rects = new List<Rect>();
+        float groundTop = GroundY(Vector3.zero) - transform.position.y + (buildGround ? groundLift : 0f);
+        Matrix4x4 toVillage = transform.worldToLocalMatrix;
+        foreach (Transform district in transform)
+        {
+            if (district.GetComponent<VillageFacility>() == null) continue;
+            foreach (MeshFilter filter in district.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (filter.sharedMesh == null) continue;
+                Bounds b = filter.sharedMesh.bounds;
+                Matrix4x4 m = toVillage * filter.transform.localToWorldMatrix;
+                var min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+                var max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+                for (int c = 0; c < 8; c++)
+                {
+                    Vector3 p = m.MultiplyPoint3x4(new Vector3((c & 1) == 0 ? b.min.x : b.max.x,
+                                                               (c & 2) == 0 ? b.min.y : b.max.y,
+                                                               (c & 4) == 0 ? b.min.z : b.max.z));
+                    min = Vector3.Min(min, p);
+                    max = Vector3.Max(max, p);
+                }
+                if (max.y - groundTop < 0.5f) continue;
+                rects.Add(Rect.MinMaxRect(min.x, min.z, max.x, max.z));
+            }
+        }
+        return rects;
+    }
+
+    private static bool InsideAny(List<Rect> rects, Vector3 spot, float margin)
+    {
+        foreach (Rect r in rects)
+            if (spot.x > r.xMin - margin && spot.x < r.xMax + margin && spot.z > r.yMin - margin && spot.z < r.yMax + margin)
+                return true;
+        return false;
     }
 
     private District Find(Kind kind)
@@ -1108,14 +1508,14 @@ public class VillageBlockout : MonoBehaviour
     // 광장 — 마을 한가운데. 길이 여기서 갈라진다.
     private void BuildPlaza(Transform root)
     {
-        Cyl(root, "바닥", new Vector3(0f, 0.1f, 0f), 60f, 0.2f, ZoneColor(Kind.Plaza), false);
-        Cyl(root, "안쪽 원", new Vector3(0f, 0.24f, 0f), 40f, 0.12f, StoneDark, false);
+        Cyl(root, "바닥", new Vector3(0f, 0.1f, 0f), 60f, 0.2f, PlazaBase, false);
+        Cyl(root, "안쪽 원", new Vector3(0f, 0.24f, 0f), 40f, 0.12f, PlazaInner, false);
 
         // 광장 무늬는 겹친 원으로만 만든다.
         // 가운데로 뻗는 살을 두면 길이 광장으로 모여드는 것처럼 보인다.
-        Cyl(root, "무늬 바깥", new Vector3(0f, 0.33f, 0f), 26f, 0.14f, StoneLight, false);
-        Cyl(root, "무늬 안", new Vector3(0f, 0.42f, 0f), 21f, 0.14f, ZoneColor(Kind.Plaza), false);
-        Cyl(root, "가운데 무늬", new Vector3(0f, 0.51f, 0f), 9f, 0.12f, StoneLight, false);
+        Cyl(root, "무늬 바깥", new Vector3(0f, 0.33f, 0f), 26f, 0.14f, PlazaRing, false);
+        Cyl(root, "무늬 안", new Vector3(0f, 0.42f, 0f), 21f, 0.14f, PlazaBase, false);
+        Cyl(root, "가운데 무늬", new Vector3(0f, 0.51f, 0f), 9f, 0.12f, PlazaRing, false);
 
         // 기념비와 가로등은 두지 않는다. 시공의 틈 바로 앞이라 시야를 막는다.
         // 바닥 무늬와 화단만 남긴다.
@@ -1123,7 +1523,7 @@ public class VillageBlockout : MonoBehaviour
         {
             float bearing = 45f + i * 90f;
             Box(root, "화단", Dir(bearing) * 17f + new Vector3(0f, 0.5f, 0f),
-                new Vector3(7f, 1f, 2.4f), StoneDark, bearing + 90f);
+                new Vector3(7f, 1f, 2.4f), PlazaInner, bearing + 90f);
         }
     }
 

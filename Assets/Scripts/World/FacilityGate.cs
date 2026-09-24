@@ -62,8 +62,10 @@ public class FacilityGate : MonoBehaviour, IPointerClickHandler, IPointerEnterHa
         if (window == null)
             Debug.LogWarning($"[FacilityGate] {kind}에 해당하는 창을 찾지 못해 눌러도 아무 일도 일어나지 않습니다.", this);
 
+        // 꺼져 있는 것까지 담는다. 모듈 건물(FacilityBuilding)은 윗 레벨 파츠를 꺼 둔 채로 들고 있다가
+        // 레벨이 오르면 켜는데, 여기서 빼 두면 새로 켜진 지붕·탑만 마우스를 올려도 밝아지지 않는다.
         if (highlightTargets == null || highlightTargets.Length == 0)
-            highlightTargets = GetComponentsInChildren<Renderer>();
+            highlightTargets = GetComponentsInChildren<Renderer>(true);
 
         highlight = new HoverHighlight(highlightTargets, hoverBrightness);
 

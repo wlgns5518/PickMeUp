@@ -3,6 +3,7 @@
     "rootNamespace": "",
     "references": [
         "PickMeUp",
+        "PickMeUp.Editor.Character",
         "Unity.AI.Navigation",
         "Unity.RenderPipelines.Core.Runtime",
         "Unity.RenderPipelines.Universal.Runtime"

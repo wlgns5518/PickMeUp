@@ -41,7 +41,21 @@ public class PolygonWall : MonoBehaviour
     [Header("충돌")]
     [SerializeField] private bool generateCollider = true;
 
+    [Header("모듈 에셋")]
+    [Tooltip("변마다 되풀이해 세울 성벽 한 칸(발밑 가운데가 원점, 정면 +Z가 마을 안쪽을 본다). " +
+             "넣으면 상자 벽은 그리지 않고 충돌용으로만 남는다. 비우면 다시 상자 벽이 보인다.")]
+    [SerializeField] private GameObject segmentPrefab;
+    [Tooltip("모서리마다 세울 탑.")]
+    [SerializeField] private GameObject cornerPrefab;
+    [Tooltip("한 변을 몇 칸으로 나눠 세울지. 칸이 길면 돌 무늬가 옆으로 늘어난다.")]
+    [SerializeField, Min(1)] private int segmentsPerSide = 3;
+    [Tooltip("칸과 탑을 땅에 묻는 깊이. 벽 밖 지면이 낮은 곳에서 밑동이 뜨지 않게 한다.")]
+    [SerializeField, Min(0f)] private float moduleSink = 4f;
+    [Tooltip("모서리 탑이 벽 위로 더 솟는 높이.")]
+    [SerializeField, Min(0f)] private float cornerRise = 5f;
+
     private Mesh mesh;
+    private Transform modules;
 
     private void OnEnable()
     {
@@ -49,13 +63,32 @@ public class PolygonWall : MonoBehaviour
         UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= ReleaseMesh;
         UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += ReleaseMesh;
 #endif
-        Rebuild();
+        RebuildMesh();
+#if UNITY_EDITOR
+        // 씬을 여는 도중에 자식(모듈 칸)을 만들면 유니티가 싫어한다. 에디터 틱을 한 번 받아서 세운다.
+        if (!Application.isPlaying)
+        {
+            UnityEditor.EditorApplication.update -= BuildModulesOnce;
+            UnityEditor.EditorApplication.update += BuildModulesOnce;
+            return;
+        }
+#endif
+        BuildModules();
     }
+
+#if UNITY_EDITOR
+    private void BuildModulesOnce()
+    {
+        UnityEditor.EditorApplication.update -= BuildModulesOnce;
+        if (this != null && isActiveAndEnabled) BuildModules();
+    }
+#endif
 
 #if UNITY_EDITOR
     private void OnDisable()
     {
         UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= ReleaseMesh;
+        UnityEditor.EditorApplication.update -= BuildModulesOnce;
     }
 #endif
 
@@ -76,11 +109,24 @@ public class PolygonWall : MonoBehaviour
 
     private void OnValidate()
     {
-        if (isActiveAndEnabled) Rebuild();
+        if (!isActiveAndEnabled) return;
+#if UNITY_EDITOR
+        // OnValidate 안에서는 오브젝트를 만들거나 지울 수 없다(모듈 칸). 한 틱 미룬다.
+        UnityEditor.EditorApplication.delayCall += () =>
+        {
+            if (this != null && isActiveAndEnabled) Rebuild();
+        };
+#endif
     }
 
     [ContextMenu("성벽 다시 만들기")]
     public void Rebuild()
+    {
+        RebuildMesh();
+        BuildModules();
+    }
+
+    private void RebuildMesh()
     {
         if (mesh == null)
         {
@@ -105,6 +151,91 @@ public class PolygonWall : MonoBehaviour
         {
             collider.sharedMesh = null;
         }
+    }
+
+    // 성벽 한 칸과 모서리 탑을 변을 따라 세운다. 상자 벽 메시는 그대로 두고(충돌·지면 아래 밑동) 그리기만 끈다.
+    // 세운 것은 씬에 저장하지 않는다 — VillageBlockout과 같은 이유로, 값이 바뀌면 다시 세운다.
+    private void BuildModules()
+    {
+        if (modules != null) Kill(modules.gameObject);
+        modules = null;
+        // 리로드 뒤에는 필드가 비어 있어 이름으로 옛 묶음을 찾아 치운다.
+        Transform stale = transform.Find(ModulesName);
+        if (stale != null) Kill(stale.gameObject);
+
+        bool useModules = segmentPrefab != null;
+        GetComponent<MeshRenderer>().enabled = !useModules;
+        if (!useModules) return;
+
+        var root = new GameObject(ModulesName);
+        root.hideFlags = Application.isPlaying ? HideFlags.None : HideFlags.DontSaveInEditor;
+        root.transform.SetParent(transform, false);
+        modules = root.transform;
+
+        int count = Mathf.Max(3, sides);
+        Bounds segment = MeshBounds(segmentPrefab);
+        Bounds corner = cornerPrefab != null ? MeshBounds(cornerPrefab) : default;
+
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 from = CornerAt(i, count);
+            Vector3 to = CornerAt(i + 1, count);
+            Vector3 along = to - from;
+            Vector3 inward = -((from + to) * 0.5f).normalized;
+            Quaternion facing = Quaternion.LookRotation(inward, Vector3.up);   // 칸의 정면(+Z)이 마을 안쪽
+
+            if (i != gateSide)
+            {
+                float length = along.magnitude / segmentsPerSide;
+                // 이음매가 벌어지지 않게 칸끼리 조금 겹친다.
+                var scale = new Vector3(length * 1.03f / segment.size.x,
+                                        (height + moduleSink) / segment.size.y,
+                                        thickness / segment.size.z);
+                for (int k = 0; k < segmentsPerSide; k++)
+                {
+                    Vector3 spot = from + along * ((k + 0.5f) / segmentsPerSide);
+                    Place(segmentPrefab, spot + Vector3.down * moduleSink, facing, scale);
+                }
+            }
+
+            if (cornerPrefab != null)
+            {
+                float width = (thickness + pillarExtra) * 1.3f;
+                var scale = new Vector3(width / corner.size.x,
+                                        (height + cornerRise + moduleSink) / corner.size.y,
+                                        width / corner.size.z);
+                // 기둥처럼 모서리에서 바깥을 본다.
+                Place(cornerPrefab, from + Vector3.down * moduleSink, Quaternion.LookRotation(from.normalized, Vector3.up), scale);
+            }
+        }
+
+        // 같은 메시 예순 개라 플레이 중에는 한 번 묶는다(VillageBlockout.CombineForRendering과 같은 이유).
+        if (Application.isPlaying) StaticBatchingUtility.Combine(root);
+    }
+
+    private const string ModulesName = "Modules";
+
+    private void Place(GameObject prefab, Vector3 localPosition, Quaternion localRotation, Vector3 scale)
+    {
+        GameObject piece = Instantiate(prefab, modules);
+        piece.name = prefab.name;
+        piece.transform.localPosition = localPosition;
+        piece.transform.localRotation = localRotation;
+        piece.transform.localScale = scale;
+        if (!Application.isPlaying)
+            foreach (Transform t in piece.GetComponentsInChildren<Transform>(true)) t.gameObject.hideFlags = HideFlags.DontSaveInEditor;
+    }
+
+    private static Bounds MeshBounds(GameObject prefab)
+    {
+        var filter = prefab.GetComponentInChildren<MeshFilter>();
+        return filter != null && filter.sharedMesh != null ? filter.sharedMesh.bounds : new Bounds(Vector3.up * 0.5f, Vector3.one);
+    }
+
+    private static void Kill(Object target)
+    {
+        if (Application.isPlaying) Destroy(target);
+        else DestroyImmediate(target);
     }
 
     private void Generate(Mesh target)
