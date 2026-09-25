@@ -1168,9 +1168,9 @@ MonoBehaviour:
   wallMaterial: {fileID: 2100000, guid: 3dba0c9010cffcb4285f9928929e28aa, type: 2}
   pillarMaterial: {fileID: 2100000, guid: 8a135830c211c8140a29ce8c718e9067, type: 2}
   generateCollider: 1
-  segmentPrefab: {fileID: 8065477626710609771, guid: a49d0db0c419c6348b0c281a1d31883c,
+  segmentPrefab: {fileID: 456414066383447404, guid: 5537c2a8d3fb38e478eb972b937bc37c,
     type: 3}
-  cornerPrefab: {fileID: 8969575336839403469, guid: 5897f402a63d83a4e8fb104228918922,
+  cornerPrefab: {fileID: 7023048657203391679, guid: 4673f144b52712f4b8882c5b7873b089,
     type: 3}
   segmentsPerSide: 3
   moduleSink: 4
@@ -24651,19 +24651,6 @@ MonoBehaviour:
       type: 3}
     level: 1
     build: 1
-  - label: "\uC219\uC18C"
-    kind: 8
-    role: "\uB3D9\uB8CC\uB4E4\uC774 \uC26C\uBA70 \uC2A4\uD2B8\uB808\uC2A4\uB97C \uD68C\uBCF5\uD55C\uB2E4."
-    bearing: 237.1
-    distance: 101.2
-    size: 22
-    facing: 2.9
-    useOtherBuilding: 0
-    building: 8
-    prefab: {fileID: 6051409089628216277, guid: d51cc467f15c2ca408779ab9562817db,
-      type: 3}
-    level: 1
-    build: 1
   - label: "\uBB34\uAE30\uCC3D\uACE0"
     kind: 3
     role: "\uBB34\uAE30\uC640 \uC7A5\uBE44\uB97C \uB123\uC5B4 \uB450\uACE0 \uAEBC\uB0B4
@@ -24714,31 +24701,6 @@ MonoBehaviour:
     building: 2
     prefab: {fileID: 3376315852721867981, guid: a4f5dabf0b4bce541818bc5b788cd826,
       type: 3}
-    level: 1
-    build: 1
-  - label: "\uBD81\uB3D9 \uC131\uBCBD\uAE38"
-    kind: 11
-    role: 
-    bearing: 24
-    distance: 101
-    size: 15
-    facing: 0
-    useOtherBuilding: 0
-    building: 2
-    prefab: {fileID: 4918011202364274734, guid: 985113fb8ebb90d418fdaa53f6b743c7,
-      type: 3}
-    level: 1
-    build: 1
-  - label: "\uBD81\uC11C \uC131\uBCBD\uAE38"
-    kind: 11
-    role: 
-    bearing: 336
-    distance: 101
-    size: 15
-    facing: 0
-    useOtherBuilding: 0
-    building: 2
-    prefab: {fileID: 298715419903778269, guid: 7f4c6799c84665e43bb3b648b1ffc2a5, type: 3}
     level: 1
     build: 1
   - label: "\uB0A8\uC11C \uAC70\uB9AC"
@@ -24819,29 +24781,17 @@ MonoBehaviour:
       type: 3}
     level: 1
     build: 1
-  - label: "\uBD81\uB3D9 \uB4B7\uACE8\uBAA9"
+  - label: "\uC11C\uB0A8 \uB9C8\uC744"
     kind: 11
     role: 
-    bearing: 18
-    distance: 76
-    size: 10
-    facing: 0
+    bearing: 237.1
+    distance: 101.2
+    size: 22
+    facing: 2.9
     useOtherBuilding: 0
     building: 2
-    prefab: {fileID: 2283777385562079886, guid: 5281564cd367711488309a9c9d1a25b7,
+    prefab: {fileID: 8195536311811904782, guid: f886a92836d9c8845b2e9222f6c673d0,
       type: 3}
-    level: 1
-    build: 1
-  - label: "\uBD81\uC11C \uB4B7\uACE8\uBAA9"
-    kind: 11
-    role: 
-    bearing: 342
-    distance: 76
-    size: 9
-    facing: 0
-    useOtherBuilding: 0
-    building: 2
-    prefab: {fileID: 573091246911721441, guid: c6a881ae3fdb5ee48b6ad63cab0a6a03, type: 3}
     level: 1
     build: 1
   buildGround: 1
@@ -24889,7 +24839,7 @@ MonoBehaviour:
     - {x: -35, y: 31}
     - {x: -35, y: 58}
     width: 6
-  - label: "\uC219\uC18C \uAE38"
+  - label: "\uC11C\uB0A8 \uB9C8\uC744 \uAE38"
     points:
     - {x: 0, y: -30}
     - {x: -60, y: -30}
@@ -24902,23 +24852,17 @@ MonoBehaviour:
     - {x: 36, y: -59}
     - {x: 52, y: -59}
     width: 7
-  - label: "\uBD81\uB3D9 \uC131\uBCBD\uAE38"
+  - label: "\uC785\uAD6C \xB7 \uC7A5\uBE44\uC81C\uC791\uC18C"
     points:
-    - {x: 20, y: 98}
-    - {x: 30, y: 88}
-    - {x: 40, y: 88}
-    width: 6
-  - label: "\uBD81\uC11C \uC131\uBCBD\uAE38"
-    points:
-    - {x: -20, y: 98}
-    - {x: -30, y: 88}
-    - {x: -40, y: 88}
+    - {x: 2.2499988, y: -14.120552}
+    - {x: 2.2499986, y: -16.120552}
+    - {x: 3.3252647, y: -17.752573}
     width: 6
   - label: "\uC785\uAD6C \xB7 \uC7A5\uBE44\uC81C\uC791\uC18C"
     points:
-    - {x: -4.0000014, y: -14.120552}
-    - {x: -4.0000014, y: -16.120552}
-    - {x: -2.3051202, y: -17.406786}
+    - {x: -2.2500012, y: -14.120552}
+    - {x: -2.2500014, y: -16.120552}
+    - {x: -3.325258, y: -17.752577}
     width: 6
   - label: "\uC785\uAD6C \xB7 \uC18C\uD658\uC18C"
     points:
@@ -24932,86 +24876,6 @@ MonoBehaviour:
     - {x: 51.49275, y: -58.70258}
     - {x: 51.55366, y: -57.00096}
     width: 6
-  - label: "\uC785\uAD6C \xB7 \uC219\uC18C 1"
-    points:
-    - {x: -97.86659, y: -46.249535}
-    - {x: -96.134544, y: -45.249535}
-    - {x: -100.5, y: -40.88408}
-    - {x: -100.5, y: -36.5}
-    - {x: -91.5, y: -27.5}
-    - {x: -78.5, y: -27.5}
-    - {x: -70.5, y: -35.5}
-    - {x: -68, y: -35.5}
-    width: 4
-  - label: "\uC785\uAD6C \xB7 \uC219\uC18C 2"
-    points:
-    - {x: -88.34032, y: -40.749535}
-    - {x: -86.60827, y: -39.749535}
-    - {x: -86.60827, y: -38.39173}
-    - {x: -89.5, y: -35.5}
-    - {x: -89.5, y: -30.5}
-    - {x: -86.5, y: -27.5}
-    - {x: -78.5, y: -27.5}
-    - {x: -70.5, y: -35.5}
-    - {x: -68, y: -35.5}
-    width: 4
-  - label: "\uC785\uAD6C \xB7 \uC219\uC18C 3"
-    points:
-    - {x: -78.81404, y: -35.249535}
-    - {x: -77.08199, y: -34.249535}
-    - {x: -70.750465, y: -34.249535}
-    - {x: -68.43934, y: -36.56066}
-    width: 4
-  - label: "\uC785\uAD6C \xB7 \uC219\uC18C 4"
-    points:
-    - {x: -90.86659, y: -58.373894}
-    - {x: -89.134544, y: -57.373894}
-    - {x: -86.00844, y: -60.5}
-    - {x: -75.5, y: -60.5}
-    - {x: -66.5, y: -47.5}
-    - {x: -66.5, y: -38}
-    width: 4
-  - label: "\uC785\uAD6C \xB7 \uC219\uC18C 5"
-    points:
-    - {x: -71.81404, y: -47.373894}
-    - {x: -70.08199, y: -46.373894}
-    - {x: -68.5, y: -44.5}
-    - {x: -68.5, y: -38}
-    width: 4
-  - label: "\uC785\uAD6C \xB7 \uC219\uC18C 6"
-    points:
-    - {x: -83.86659, y: -70.498245}
-    - {x: -82.134544, y: -69.498245}
-    - {x: -81.5, y: -70.13279}
-    - {x: -81.5, y: -72.5}
-    - {x: -77.5, y: -76.5}
-    - {x: -67.5, y: -76.5}
-    - {x: -58.5, y: -67.5}
-    - {x: -58.5, y: -58.5}
-    - {x: -59.5, y: -57.5}
-    - {x: -59.5, y: -56.5}
-    - {x: -62.5, y: -53.5}
-    - {x: -62.5, y: -49.5}
-    - {x: -65.5, y: -46.5}
-    - {x: -65.5, y: -38}
-    width: 4
-  - label: "\uC785\uAD6C \xB7 \uC219\uC18C 7"
-    points:
-    - {x: -74.34032, y: -64.998245}
-    - {x: -72.60827, y: -63.998245}
-    - {x: -74.5, y: -62.106514}
-    - {x: -74.5, y: -57.5}
-    - {x: -66.5, y: -47.5}
-    - {x: -66.5, y: -38}
-    width: 4
-  - label: "\uC785\uAD6C \xB7 \uC219\uC18C 8"
-    points:
-    - {x: -64.81404, y: -59.498245}
-    - {x: -63.08199, y: -58.498245}
-    - {x: -62.5, y: -49.5}
-    - {x: -65.5, y: -46.5}
-    - {x: -65.5, y: -38}
-    width: 4
   - label: "\uC785\uAD6C \xB7 \uBB34\uAE30\uCC3D\uACE0"
     points:
     - {x: -35.00697, y: 33.7221}
@@ -25096,7 +24960,7 @@ MonoBehaviour:
     - {x: -74.5, y: 7.5}
     - {x: -59.5, y: 7.5}
     - {x: -55.5, y: 3.5}
-    - {x: -55.5, y: 1}
+    - {x: -53, y: 3.5}
     width: 4
   - label: "\uC785\uAD6C \xB7 \uC11C\uCABD \uAC70\uB9AC House02A"
     points:
@@ -25108,7 +24972,7 @@ MonoBehaviour:
     - {x: -68.5, y: 7.5}
     - {x: -59.5, y: 7.5}
     - {x: -55.5, y: 3.5}
-    - {x: -55.5, y: 1}
+    - {x: -53, y: 3.5}
     width: 4
   - label: "\uC785\uAD6C \xB7 \uC11C\uCABD \uAC70\uB9AC Forge01A"
     points:
@@ -25118,7 +24982,7 @@ MonoBehaviour:
     - {x: -68.5, y: 7.5}
     - {x: -59.5, y: 7.5}
     - {x: -55.5, y: 3.5}
-    - {x: -55.5, y: 1}
+    - {x: -53, y: 3.5}
     width: 4
   - label: "\uC785\uAD6C \xB7 \uC11C\uCABD \uAC70\uB9AC House02A"
     points:
@@ -25129,25 +24993,7 @@ MonoBehaviour:
     - {x: -74.5, y: 7.5}
     - {x: -59.5, y: 7.5}
     - {x: -55.5, y: 3.5}
-    - {x: -55.5, y: 1}
-    width: 4
-  - label: "\uC785\uAD6C \xB7 \uBD81\uB3D9 \uC131\uBCBD\uAE38 House03A"
-    points:
-    - {x: 40.944946, y: 99.634865}
-    - {x: 39.117855, y: 100.44834}
-    - {x: 38.44834, y: 100.44834}
-    - {x: 36.5, y: 98.5}
-    - {x: 29.5, y: 98.5}
-    - {x: 25.43934, y: 94.43934}
-    width: 4
-  - label: "\uC785\uAD6C \xB7 \uBD81\uC11C \uC131\uBCBD\uAE38 House04A"
-    points:
-    - {x: -49.22902, y: 95.97443}
-    - {x: -51.05611, y: 95.16095}
-    - {x: -51.05611, y: 94.05611}
-    - {x: -48.5, y: 91.5}
-    - {x: -42.5, y: 91.5}
-    - {x: -40.43934, y: 89.43934}
+    - {x: -53, y: 3.5}
     width: 4
   - label: "\uC785\uAD6C \xB7 \uB0A8\uC11C \uAC70\uB9AC House03A"
     points:
@@ -25208,38 +25054,75 @@ MonoBehaviour:
     - {x: -67.5, y: 40.5}
     - {x: -36, y: 40.5}
     width: 4
-  - label: "\uC785\uAD6C \xB7 \uBD81\uB3D9 \uB4B7\uACE8\uBAA9 House03B"
+  - label: "\uC785\uAD6C \xB7 \uC11C\uB0A8 \uB9C8\uC744 House01A"
     points:
-    - {x: 19.230335, y: 75.75381}
-    - {x: 17.328222, y: 76.37184}
-    - {x: 3.0000749, y: 76.514984}
+    - {x: -95.91597, y: -54.025314}
+    - {x: -94.91597, y: -55.757366}
+    - {x: -93.17334, y: -57.5}
+    - {x: -88.5, y: -57.5}
+    - {x: -85.5, y: -54.5}
+    - {x: -81.5, y: -54.5}
+    - {x: -78.5, y: -51.5}
+    - {x: -76.5, y: -51.5}
+    - {x: -68.5, y: -43.5}
+    - {x: -68.5, y: -38}
     width: 4
-  - label: "\uC785\uAD6C \xB7 \uBD81\uC11C \uB4B7\uACE8\uBAA9 House04B"
+  - label: "\uC785\uAD6C \xB7 \uC11C\uB0A8 \uB9C8\uC744 House04A"
     points:
-    - {x: -19.237343, y: 75.7754}
-    - {x: -17.33523, y: 76.39343}
-    - {x: -3.0000517, y: 76.51245}
+    - {x: -91.455124, y: -66.335266}
+    - {x: -92.455124, y: -64.60322}
+    - {x: -91.5, y: -63.648094}
+    - {x: -91.5, y: -60.5}
+    - {x: -85.5, y: -54.5}
+    - {x: -81.5, y: -54.5}
+    - {x: -78.5, y: -51.5}
+    - {x: -76.5, y: -51.5}
+    - {x: -68.5, y: -43.5}
+    - {x: -68.5, y: -38}
+    width: 4
+  - label: "\uC785\uAD6C \xB7 \uC11C\uB0A8 \uB9C8\uC744 House03A"
+    points:
+    - {x: -85.952095, y: -46.93316}
+    - {x: -84.952095, y: -48.66521}
+    - {x: -82.5, y: -51.5}
+    - {x: -76.5, y: -51.5}
+    - {x: -68.5, y: -43.5}
+    - {x: -68.5, y: -38}
+    width: 4
+  - label: "\uC785\uAD6C \xB7 \uC11C\uB0A8 \uB9C8\uC744 House02A"
+    points:
+    - {x: -81.3745, y: -59.78759}
+    - {x: -82.3745, y: -58.05554}
+    - {x: -82.5, y: -54.5}
+    - {x: -68.5, y: -43.5}
+    - {x: -68.5, y: -38}
+    width: 4
+  - label: "\uC785\uAD6C \xB7 \uC11C\uB0A8 \uB9C8\uC744 House02B"
+    points:
+    - {x: -76.32724, y: -45.938137}
+    - {x: -75.32724, y: -47.67019}
+    - {x: -72.67019, y: -47.67019}
+    - {x: -68.5, y: -43.5}
+    - {x: -68.5, y: -38}
+    width: 4
+  - label: "\uC785\uAD6C \xB7 \uC11C\uB0A8 \uB9C8\uC744 House03C"
+    points:
+    - {x: -72.82724, y: -52.000317}
+    - {x: -73.82724, y: -50.268265}
+    - {x: -68.5, y: -44.5}
+    - {x: -68.5, y: -38}
     width: 4
   roadMaterial: {fileID: 2100000, guid: f059031bcfa49d548aa17474b30172e0, type: 2}
   roadEdgeMaterial: {fileID: 2100000, guid: 2604c965ebc95104c854cee3b3ca6bc8, type: 2}
   roadEdge: 0.6
   roadTile: 4
   lots:
-  - label: "\uBD80\uC9C0 \xB7 \uC219\uC18C"
-    center: {x: -84.84204, y: -55.190063}
-    size: {x: 51.2084, y: 54.37526}
   - label: "\uBD80\uC9C0 \xB7 \uB3D9\uCABD \uAC70\uB9AC"
     center: {x: 75.807495, y: -0.000002861023}
     size: {x: 37.487083, y: 45.073135}
   - label: "\uBD80\uC9C0 \xB7 \uC11C\uCABD \uAC70\uB9AC"
     center: {x: -83.35087, y: 0.0000019073486}
     size: {x: 57.56355, y: 46.179554}
-  - label: "\uBD80\uC9C0 \xB7 \uBD81\uB3D9 \uC131\uBCBD\uAE38"
-    center: {x: 42.902687, y: 100.63364}
-    size: {x: 25.739609, y: 19.515656}
-  - label: "\uBD80\uC9C0 \xB7 \uBD81\uC11C \uC131\uBCBD\uAE38"
-    center: {x: -42.171227, y: 101.13548}
-    size: {x: 26.837969, y: 21.21949}
   - label: "\uBD80\uC9C0 \xB7 \uB0A8\uC11C \uAC70\uB9AC"
     center: {x: -37.982555, y: -62.22852}
     size: {x: 32.216576, y: 31.84954}
@@ -25258,12 +25141,9 @@ MonoBehaviour:
   - label: "\uBD80\uC9C0 \xB7 \uC11C\uCABD \uC131\uBCBD\uAE38"
     center: {x: -102.51972, y: 39.13859}
     size: {x: 18.32219, y: 26.35379}
-  - label: "\uBD80\uC9C0 \xB7 \uBD81\uB3D9 \uB4B7\uACE8\uBAA9"
-    center: {x: 24.099888, y: 74.1716}
-    size: {x: 17.569025, y: 14.796349}
-  - label: "\uBD80\uC9C0 \xB7 \uBD81\uC11C \uB4B7\uACE8\uBAA9"
-    center: {x: -24.106892, y: 74.19318}
-    size: {x: 17.569021, y: 14.796349}
+  - label: "\uBD80\uC9C0 \xB7 \uC11C\uB0A8 \uB9C8\uC744"
+    center: {x: -85.31186, y: -54.782524}
+    size: {x: 48.717064, y: 50.02678}
   lotMaterial: {fileID: 2100000, guid: b3d1688c32605114c8642e938a7a5ee0, type: 2}
   groundMaterial: {fileID: 2100000, guid: 9564d6a288886184bae8a08ee1bc28f8, type: 2}
   lotTreePrefabs:

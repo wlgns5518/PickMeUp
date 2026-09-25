@@ -640,7 +640,7 @@ public static class VillagePartBaker
         material.SetFloat("_Metallic", 0f);
         // 돌·나무·녹슨 철이라 거의 반사하지 않는다. 0이면 빛을 받는 면이 밋밋하게 죽는다.
         material.SetFloat("_Smoothness", 0.12f);
-        // 같은 파츠를 여러 번 세우는 곳(집 여덟 채, 공방 아홉 채)이 많다.
+        // 같은 파츠를 여러 번 세우는 곳(합성소 기둥 여덟 개, 성벽 칸 수십 개)이 많다.
         material.enableInstancing = true;
 
         if (part.glow > 0f)

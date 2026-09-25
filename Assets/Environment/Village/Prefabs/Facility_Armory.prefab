@@ -731,6 +731,11 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 4224983328250918856, guid: 73f2676553575ec4cbfb1ab3e0aa85d1,
+        type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 4a4f9a4930c9fb34287c0c3363a619b8, type: 2}
     - target: {fileID: 8032058892173700809, guid: 73f2676553575ec4cbfb1ab3e0aa85d1,
         type: 3}
       propertyPath: m_LocalScale.x
@@ -821,6 +826,11 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 34780352702108835}
     m_Modifications:
+    - target: {fileID: 141794056572413053, guid: 1f8d8a8cb3587ef4193872159ce970eb,
+        type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 3a5ea9ec9fb823e4596d2bcff5a9ba60, type: 2}
     - target: {fileID: 1534567498419956676, guid: 1f8d8a8cb3587ef4193872159ce970eb,
         type: 3}
       propertyPath: m_Name
@@ -1211,6 +1221,11 @@ PrefabInstance:
       propertyPath: m_Name
       value: kit_stairs
       objectReference: {fileID: 0}
+    - target: {fileID: 1287765814977256721, guid: 8a04aead588ed324487d329d3fc86111,
+        type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 29875fb4625f4ab4ea30db55392b6f15, type: 2}
     - target: {fileID: 4636673075359893019, guid: 8a04aead588ed324487d329d3fc86111,
         type: 3}
       propertyPath: m_LocalScale.x
@@ -1311,6 +1326,11 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 4224983328250918856, guid: 73f2676553575ec4cbfb1ab3e0aa85d1,
+        type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 4a4f9a4930c9fb34287c0c3363a619b8, type: 2}
     - target: {fileID: 8032058892173700809, guid: 73f2676553575ec4cbfb1ab3e0aa85d1,
         type: 3}
       propertyPath: m_LocalScale.x
@@ -1576,6 +1596,11 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 4224983328250918856, guid: 73f2676553575ec4cbfb1ab3e0aa85d1,
+        type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 4a4f9a4930c9fb34287c0c3363a619b8, type: 2}
     - target: {fileID: 8032058892173700809, guid: 73f2676553575ec4cbfb1ab3e0aa85d1,
         type: 3}
       propertyPath: m_LocalScale.x
@@ -1666,6 +1691,11 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 7860627877620883783}
     m_Modifications:
+    - target: {fileID: 301358480284821068, guid: 18e8d63a2c18b7146b86406a0597aa3b,
+        type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 730363490d39da84fb95b7a7da1c64f2, type: 2}
     - target: {fileID: 3932026783196777876, guid: 18e8d63a2c18b7146b86406a0597aa3b,
         type: 3}
       propertyPath: m_LocalScale.x
@@ -1876,6 +1906,11 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 4224983328250918856, guid: 73f2676553575ec4cbfb1ab3e0aa85d1,
+        type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 4a4f9a4930c9fb34287c0c3363a619b8, type: 2}
     - target: {fileID: 8032058892173700809, guid: 73f2676553575ec4cbfb1ab3e0aa85d1,
         type: 3}
       propertyPath: m_LocalScale.x
@@ -2236,6 +2271,11 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 4891355213087752738, guid: c1e5fa6113566054287f915c4cce6ede,
+        type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: a4f609cda068a4c49b72d07a03d5bd9c, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -2286,6 +2326,11 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 4552224671346916389}
     m_Modifications:
+    - target: {fileID: 1986204269714761284, guid: e43fe65e0a647bb44ad0eefaa2cb07a7,
+        type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: ac6dc7679d1281740931284feb5c4c1f, type: 2}
     - target: {fileID: 4623938129993221164, guid: e43fe65e0a647bb44ad0eefaa2cb07a7,
         type: 3}
       propertyPath: m_Name
@@ -2491,6 +2536,11 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 9129688064627107500}
     m_Modifications:
+    - target: {fileID: 513529958614895866, guid: d27441fea2d914f4abadecc7e2aae991,
+        type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 8f4de37e71f9d3941bab6abf77c950ad, type: 2}
     - target: {fileID: 3188336841760233472, guid: d27441fea2d914f4abadecc7e2aae991,
         type: 3}
       propertyPath: m_LocalScale.x
@@ -2621,6 +2671,11 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 7044555177892154423, guid: bcaa0ce59d7ec1e49bb24ad7fc260043,
+        type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: d95e3ceca0269514d8302357cb6dc398, type: 2}
     - target: {fileID: 7913957415776202716, guid: bcaa0ce59d7ec1e49bb24ad7fc260043,
         type: 3}
       propertyPath: m_LocalScale.x
@@ -2736,6 +2791,11 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 4552224671346916389}
     m_Modifications:
+    - target: {fileID: 1986204269714761284, guid: e43fe65e0a647bb44ad0eefaa2cb07a7,
+        type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: ac6dc7679d1281740931284feb5c4c1f, type: 2}
     - target: {fileID: 4623938129993221164, guid: e43fe65e0a647bb44ad0eefaa2cb07a7,
         type: 3}
       propertyPath: m_Name

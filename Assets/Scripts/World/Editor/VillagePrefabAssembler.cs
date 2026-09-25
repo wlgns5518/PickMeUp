@@ -61,13 +61,13 @@ public static class VillagePrefabAssembler
         new Recipe(VillageBlockout.Kind.Armory,            "Facility_Armory",    9.6f, BuildArmory),
         new Recipe(VillageBlockout.Kind.EquipmentWorkshop, "Facility_Workshop",  20f,  BuildWorkshop),
         new Recipe(VillageBlockout.Kind.Training,          "Facility_Training",  30f,  BuildTraining),
-        new Recipe(VillageBlockout.Kind.Housing,           "Facility_Housing",   22f,  BuildHousing),
         new Recipe(VillageBlockout.Kind.Airdock,           "Facility_Airdock",   18f,  BuildAirdock),
     };
 
     // 하는 일 없이 빈 땅을 채우는 거리(VillageBlockout.Kind.Street). 시설과 달리 구역이 씬에 없을 수 있어서
     // 처음 걸 때 쓸 자리(방위·거리·크기·방향)를 같이 들고 있다. 한 번 들어간 뒤에는 씬의 값이 우선이다 —
     // 씬에서 옮기고 "지금 놓인 자리로 값 맞추기"를 하면 그대로 남는다.
+    // 시공의 틈 둘레(북동·북서 성벽길, 북동·북서 뒷골목)에는 집을 두지 않는다(2026-09-25 사용자) — 틈 앞은 비워 둔다.
     private readonly struct Street
     {
         public readonly string file, label;
@@ -85,16 +85,13 @@ public static class VillagePrefabAssembler
     {
         new Street("Street_East",      "동쪽 거리",   90f,  76f,  24f, 0f, BuildEastStreet),
         new Street("Street_West",      "서쪽 거리",  270f,  80f,  30f, 0f, BuildWestStreet),
-        new Street("Street_NorthEast", "북동 성벽길",  24f, 101f,  15f, 0f, BuildNorthEastStreet),
-        new Street("Street_NorthWest", "북서 성벽길", 336f, 101f,  15f, 0f, BuildNorthWestStreet),
         new Street("Street_SouthWest", "남서 거리",  212f,  70f,  22f, 0f, BuildSouthWestStreet),
         new Street("Street_Yard",      "짐마당",      62f,  45f,  12f, 0f, BuildYard),
-        new Street("Street_SouthFarm", "남쪽 농장",  241.9f, 34f, 17f, -61.9f, b => BuildFarm(b, "Small Farm 1")),   // 서쪽 길과 숙소 길 사이
+        new Street("Street_SouthFarm", "남쪽 농장",  241.9f, 34f, 17f, -61.9f, b => BuildFarm(b, "Small Farm 1")),   // 서쪽 길과 서남 마을 길 사이
         new Street("Street_SouthEastFarm", "남동 농장", 125f, 55f, 16f, 0f, b => BuildFarm(b, "Small Farm 6")),
         new Street("Street_EastWall",  "동쪽 성벽길",  70f, 104f,  12f, 0f, BuildEastWallStreet),
         new Street("Street_WestWall",  "서쪽 성벽길", 290f, 104f,  12f, 0f, BuildWestWallStreet),
-        new Street("Street_NorthEastAlley", "북동 뒷골목",  18f, 76f, 10f, 0f, BuildNorthEastAlley),   // 소환소 길 위쪽
-        new Street("Street_NorthWestAlley", "북서 뒷골목", 342f, 76f,  9f, 0f, BuildNorthWestAlley),   // 합성소 길 위쪽
+        new Street("Street_SouthWestVillage", "서남 마을", 237.1f, 101.2f, 22f, 2.9f, BuildSouthWestVillage),   // 숙소를 걷어 낸 자리
     };
 
     public static string PrefabPath(string file) => $"{PrefabRoot}/{file}.prefab";
@@ -187,14 +184,14 @@ public static class VillagePrefabAssembler
         else village.Rebuild();
         UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(village.gameObject.scene);
 
-        // 성벽도 같은 방식이다: 칸을 넣으면 모듈로, 비우면 상자 벽으로.
+        // 성벽도 같은 방식이다: 칸을 넣으면 모듈로, 비우면 상자 벽으로. 원작 색을 입힌 파츠 사본을 건다(VillageWallPalette).
         var wall = UnityEngine.Object.FindAnyObjectByType<PolygonWall>();
         if (wall == null) return;
         var wallSo = new SerializedObject(wall);
         wallSo.FindProperty("segmentPrefab").objectReferenceValue =
-            hook ? AssetDatabase.LoadAssetAtPath<GameObject>(VillagePartBaker.PrefabPath("wall_segment")) : null;
+            hook ? VillageWallPalette.WallPrefab("wall_segment", "Wall_Segment") : null;
         wallSo.FindProperty("cornerPrefab").objectReferenceValue =
-            hook ? AssetDatabase.LoadAssetAtPath<GameObject>(VillagePartBaker.PrefabPath("wall_tower")) : null;
+            hook ? VillageWallPalette.WallPrefab("wall_tower", "Wall_Tower") : null;
         wallSo.ApplyModifiedProperties();
         wall.Rebuild();
     }
@@ -219,6 +216,7 @@ public static class VillagePrefabAssembler
         {
             build(builder);
             GameObject root = builder.Finish(radius);
+            VillageGaiaSkin.Apply(root, file);
             PrefabUtility.SaveAsPrefabAsset(root, PrefabPath(file));
             Debug.Log($"[VillagePrefabAssembler] {file} 조립 — 파츠 {builder.Count}개.");
         }
@@ -372,7 +370,7 @@ public static class VillagePrefabAssembler
         b.PointLight(new Vector3(0f, top * 0.5f, archZ + 3f), new Color(0.55f, 0.75f, 1f), 24f, 3f, Lv3);
     }
 
-    // ---- 네모난 집: 무기창고·공방 줄·숙소 -----------------------------------------------
+    // ---- 네모난 집: 무기창고 -----------------------------------------------------------
 
     // 집 한 채. 본체 위에 지붕, 앞에 문. 3레벨에서 윗층을 올리는 집이면 지붕이 한 층 위로 옮겨 간다.
     private static Placed House(Builder b, Vector3 spot, float yaw, float width, float height, float depth,
@@ -420,45 +418,53 @@ public static class VillagePrefabAssembler
             b.Uniform("kit_tower", 17f / b.Shape("kit_tower").Height), Lv3, true);
     }
 
-    // 장비제작소 — 마을 한가운데의 대장간 한 채. 정면(+Z)이 마을 남쪽(기본 카메라)을 본다.
-    // 본채는 Gaia 3DForge 대장간 건물이고, 앞마당에 Meshy 대장간(화덕·모루·굴뚝)을 붙여 밖에서도 대장간으로 읽히게 한다.
-    // 눌러서 장비를 만드는 것은 구역 루트의 FacilityGate(EquipmentWorkshop → EquipmentWorkshopUI)가 받는다.
-    // 본채(메시 콜라이더)와 화덕(상자 콜라이더) 어느 쪽을 눌러도 열린다.
+    // 장비제작소 — 마을 한가운데의 대장간. 정면(+Z)이 마을 남쪽(기본 카메라)을 본다.
+    // 본채는 Meshy 대장간(화덕·모루·굴뚝을 덮은 지붕) 한 채를 마당 한가운데에 크게 세운 것이다. 2026-09-25 사용자가 씬에서
+    // Gaia 대장간 건물을 걷어 내고 옆에 있던 화덕을 가운데로 옮긴 뒤 "이걸 본채로 쓰고 키워 달라"고 했다.
+    // 계단도 사용자가 두 줄을 나란히 붙여 정면 가운데를 넓게 열어 두었다.
+    // 눌러서 장비를 만드는 것은 구역 루트의 FacilityGate(EquipmentWorkshop → EquipmentWorkshopUI)가 받는다 — 본채의 상자 콜라이더.
+    private const float ForgeHeight = 14f;
+
     private static void BuildWorkshop(Builder b)
     {
         Placed yard = b.Put(Slot.Foundation, "kit_plinth", Vector3.zero, 0f, b.Fit("kit_plinth", 32f, 0.7f, 24f), All, true);
         float floor = yard.Top - 0.05f;
 
-        // 본채. 문이 있는 박공 끝(+X)을 옆으로 두고 긴 벽이 정면을 본다. 밑의 돌기단(3m)은 땅에 묻힌다.
-        // 마을 한가운데라 원본(16m)보다 키워 둘레 집들보다 한 덩치 크게 읽히게 한다.
-        b.PutAsset(Slot.MainBody, Gaia.Forge, new Vector3(1.5f, floor, -4f), 0f, All, 1.25f);
-        b.Put(Slot.SideModule, "forge", new Vector3(-11f, floor, 6.5f), 0f, b.Uniform("forge", 10f / b.Shape("forge").Height), All, true);
-        b.PointLight(new Vector3(-11f, floor + 2f, 8f), new Color(1f, 0.55f, 0.25f), 12f, 2.5f, Lv3);
+        Placed forge = b.Put(Slot.MainBody, "forge", new Vector3(0f, floor, -0.5f), 0f,
+            b.Uniform("forge", ForgeHeight / b.Shape("forge").Height), All, true);
+        float front = forge.transform.localPosition.z + forge.Depth * 0.5f;   // 화덕 앞면
 
-        Placed stairs = b.Put(Slot.Stairs, "kit_stairs", Vector3.zero, 0f, b.Fit("kit_stairs", 4.5f, floor, float.NaN), All);
-        b.Move(stairs, new Vector3(4f, 0f, yard.Reach(0f, 0f, 0.7f, 1f) + stairs.Depth * 0.5f - 0.15f));
+        // 계단 두 줄(각 4.5m)을 붙여 9m 폭으로.
+        foreach (float x in new[] { -2.25f, 2.25f })
+        {
+            Placed stairs = b.Put(Slot.Stairs, "kit_stairs", Vector3.zero, 0f, b.Fit("kit_stairs", 4.5f, floor, float.NaN), All);
+            b.Move(stairs, new Vector3(x, 0f, yard.Reach(0f, 0f, 0.7f, 1f) + stairs.Depth * 0.5f - 0.15f));
+        }
 
-        // 1레벨: 무기걸이·짐·장작·수레·등불.
-        b.Put(Slot.Decoration, "weapon_rack", new Vector3(3f, floor, 6f), 0f, b.Uniform("weapon_rack", 1.1f), All);
-        b.Put(Slot.Decoration, "weapon_rack", new Vector3(7.5f, floor, 6.5f), -15f, b.Uniform("weapon_rack", 1.1f), All);
-        b.Put(Slot.Decoration, "kit_crates", new Vector3(13f, floor, 5f), 20f, b.Uniform("kit_crates", 1f), All);
+        // 1레벨: 화덕 앞 양옆 무기걸이, 짐·장작·수레·등불. 계단에서 화덕 앞까지(x ±4.5)는 비워 둔다.
+        foreach (float s in new[] { -1f, 1f })
+        {
+            b.Put(Slot.Decoration, "weapon_rack", new Vector3(s * 6.5f, floor, front + 2.5f), s * 15f, b.Uniform("weapon_rack", 1.1f), All);
+            b.Put(Slot.Lighting, "kit_lantern", new Vector3(s * 14f, floor, 10.5f), 0f, b.Uniform("kit_lantern", 1f), All);
+        }
+        b.Put(Slot.Decoration, "kit_crates", new Vector3(11.5f, floor, 5f), 20f, b.Uniform("kit_crates", 1f), All);
         b.PutAsset(Slot.Decoration, Gaia.Prop("Wood09"), new Vector3(-14.5f, floor, -1f), 90f, All);
         b.PutAsset(Slot.Decoration, Gaia.Prop("Wood08"), new Vector3(-14f, floor, -3.5f), 15f, All);
         b.PutAsset(Slot.Decoration, Gaia.Prop("Wagon07"), new Vector3(18.5f, 0f, 2f), 10f, All);
+
+        // 2레벨: 계단 양옆 깃발, 마당 앞 화로, 본채 옆 헛간(재료 창고).
         foreach (float s in new[] { -1f, 1f })
-            b.Put(Slot.Lighting, "kit_lantern", new Vector3(s * 14f, floor, 10.5f), 0f, b.Uniform("kit_lantern", 1f), All);
-
-        // 2레벨: 깃발·화로, 본채 옆 헛간(재료 창고).
-        b.Put(Slot.Decoration, "kit_banner", new Vector3(1.5f, floor, 10.8f), 0f, b.Uniform("kit_banner", 0.9f), From2);
-        b.Put(Slot.Decoration, "kit_banner", new Vector3(6.5f, floor, 10.8f), 0f, b.Uniform("kit_banner", 0.9f), From2);
-        b.Put(Slot.Lighting, "kit_brazier", new Vector3(-4.5f, floor, 9.5f), 0f, b.Uniform("kit_brazier", 1f), From2);
-        b.Put(Slot.Lighting, "kit_brazier", new Vector3(13f, floor, 8.5f), 0f, b.Uniform("kit_brazier", 1f), From2);
+        {
+            b.Put(Slot.Decoration, "kit_banner", new Vector3(s * 7f, floor, 10.8f), 0f, b.Uniform("kit_banner", 0.9f), From2);
+            b.Put(Slot.Lighting, "kit_brazier", new Vector3(s * 10.5f, floor, 8.5f), 0f, b.Uniform("kit_brazier", 1f), From2);
+        }
         b.PutAsset(Slot.UpgradeModule, Gaia.Prop("Stable02B"), new Vector3(-13.5f, floor, -8f), 90f, From2);
-        b.Put(Slot.Decoration, "kit_crates", new Vector3(-9.5f, floor, -0.5f), 200f, b.Uniform("kit_crates", 0.9f), From2);
+        b.Put(Slot.Decoration, "kit_crates", new Vector3(-10.5f, floor, -1f), 200f, b.Uniform("kit_crates", 0.9f), From2);
 
-        // 3레벨: 마당 밖 오른쪽 뒤 망루와 점광원. 본채(키운 뒤 x≤14)에 겹치지 않게 마당 가장자리 바깥에 세운다.
+        // 3레벨: 마당 밖 오른쪽 뒤 망루, 화덕 불빛과 화로 불빛.
         b.Put(Slot.SideModule, "kit_tower", new Vector3(18.5f, 0f, -8f), 200f, b.Uniform("kit_tower", 18f / b.Shape("kit_tower").Height), Lv3, true);
-        b.PointLight(new Vector3(13f, floor + 2.2f, 8.5f), new Color(1f, 0.6f, 0.3f), 10f, 2f, Lv3);
+        b.PointLight(new Vector3(0f, floor + 2.5f, front + 1.5f), new Color(1f, 0.55f, 0.25f), 14f, 2.5f, Lv3);
+        b.PointLight(new Vector3(10.5f, floor + 2.2f, 8.5f), new Color(1f, 0.6f, 0.3f), 10f, 2f, Lv3);
     }
 
     // ---- 거리: 하는 일 없이 빈 땅을 채운다 --------------------------------------------
@@ -485,31 +491,7 @@ public static class VillagePrefabAssembler
         b.Put(Slot.Lighting, "kit_lantern", new Vector3(14f, 0f, 29f), 0f, b.Uniform("kit_lantern", 1f), All);
     }
 
-    // 성벽 안쪽 면이 로컬 z 약 -17에 있다. 집은 벽에서 몇 미터 띄운다.
-    private static void BuildNorthEastStreet(Builder b)
-    {
-        b.PutAsset(Slot.MainBody, Gaia.House("03A"), new Vector3(-2f, 0f, -8f), 0f, All);
-        b.PutAsset(Slot.SideModule, Gaia.Prop("Stable01"), new Vector3(10.5f, 0f, -9f), 0f, All);
-        b.PutAsset(Slot.Decoration, Gaia.Prop("Wagon05"), new Vector3(6f, 0f, 2f), 40f, All);
-        b.PutAsset(Slot.Decoration, Gaia.Prop("Wood09"), new Vector3(-11f, 0f, -2f), 90f, All);
-        b.Put(Slot.Decoration, "kit_crates", new Vector3(-7.5f, 0f, 3f), 15f, b.Uniform("kit_crates", 1f), All);
-        b.Put(Slot.Decoration, "kit_banner", new Vector3(-4f, 0f, 5f), 0f, b.Uniform("kit_banner", 0.9f), All);
-        b.Put(Slot.Lighting, "kit_lantern", new Vector3(2f, 0f, 4.5f), 0f, b.Uniform("kit_lantern", 1f), All);
-    }
-
-    private static void BuildNorthWestStreet(Builder b)
-    {
-        b.PutAsset(Slot.MainBody, Gaia.House("04A"), new Vector3(0f, 0f, -8f), 0f, All);
-        b.PutAsset(Slot.SideModule, Gaia.Prop("Stable02B"), new Vector3(-11f, 0f, -9f), 0f, All);
-        b.PutAsset(Slot.Decoration, Gaia.Prop("Wagon03"), new Vector3(-5f, 0f, 2.5f), -30f, All);
-        b.PutAsset(Slot.Decoration, Gaia.Prop("Wood06"), new Vector3(10f, 0f, -1f), 0f, All);
-        b.PutAsset(Slot.Decoration, Gaia.Prop("Wood05"), new Vector3(11.5f, 0f, 1f), 50f, All);
-        b.Put(Slot.Decoration, "kit_crates", new Vector3(6.5f, 0f, 3.5f), -20f, b.Uniform("kit_crates", 1f), All);
-        b.Put(Slot.Decoration, "kit_banner", new Vector3(3f, 0f, 5f), 0f, b.Uniform("kit_banner", 0.9f), All);
-        b.Put(Slot.Lighting, "kit_lantern", new Vector3(-2f, 0f, 4.5f), 0f, b.Uniform("kit_lantern", 1f), All);
-    }
-
-    // 숙소 옆 작은 농장.
+    // 서남 마을 옆 작은 농장.
     private static void BuildSouthWestStreet(Builder b)
     {
         b.PutCluster(Slot.MainBody, Gaia.Complete("Small Farm 3"), 0f, All);
@@ -557,62 +539,55 @@ public static class VillagePrefabAssembler
         b.Put(Slot.Lighting, "kit_lantern", new Vector3(-1f, 0f, 5.5f), 0f, b.Uniform("kit_lantern", 1f), All);
     }
 
-    // 대장간과 두 전당 사이. 작은 집 한 채에 짐 몇 개.
-    private static void BuildNorthEastAlley(Builder b)
-    {
-        b.PutAsset(Slot.MainBody, Gaia.House("03B"), new Vector3(0f, 0f, -2f), 0f, All);
-        b.PutAsset(Slot.Decoration, Gaia.Prop("Wagon03"), new Vector3(-6.5f, 0f, 3f), 30f, All);
-        b.PutAsset(Slot.Decoration, Gaia.Prop("Wood05"), new Vector3(6f, 0f, 2.5f), 0f, All);
-        b.Put(Slot.Lighting, "kit_lantern", new Vector3(2f, 0f, 3.5f), 0f, b.Uniform("kit_lantern", 1f), All);
-    }
-
-    private static void BuildNorthWestAlley(Builder b)
-    {
-        b.PutAsset(Slot.MainBody, Gaia.House("04B"), new Vector3(0f, 0f, -2f), 180f, All);
-        b.PutAsset(Slot.Decoration, Gaia.Prop("Wood07"), new Vector3(-5.5f, 0f, 2.5f), 20f, All);
-        b.Put(Slot.Decoration, "kit_crates", new Vector3(5f, 0f, 3f), 40f, b.Uniform("kit_crates", 0.9f), All);
-        b.Put(Slot.Lighting, "kit_lantern", new Vector3(-1.5f, 0f, 3.5f), 0f, b.Uniform("kit_lantern", 1f), All);
-    }
 
     // Gaia(에셋 스토어 패키지, 저장소 밖) 3DForge 마을 에셋. 지형 나무와 마찬가지로 Gaia가 설치돼 있어야 보인다.
     private static class Gaia
     {
         private const string Root = "Assets/Procedural Worlds/Packages - Install/Asset Samples/3DForge/Prefabs/";
-        public const string Forge = Root + "fi_vil_GaiaForge01A.prefab";
         public static string House(string variant) => Root + "fi_vil_GaiaHouse" + variant + ".prefab";
         public static string Prop(string name) => Root + "Props/fi_vil_Gaia" + name + ".prefab";
         // 미리 짜 둔 묶음: "Village 1~3", "Small Farm 1~6", "Medium Farm 1~2".
         public static string Complete(string name) => Root + "Complete/" + name + ".prefab";
     }
 
-    private static void BuildHousing(Builder b)
+    // 서남 마을 — Meshy 집 여덟 채였던 숙소를 걷어 낸 자리(2026-09-25 사용자). 다른 거리처럼 Gaia 집으로 채운다.
+    // 가운데 골목(로컬 Z, +Z가 마을 한가운데)을 사이에 두고 집 여섯 채가 문(+X 박공 끝)을 골목으로 향해 늘어선다.
+    // 성벽 안쪽 면은 로컬 z 약 -18이다. 골목은 입구 길이 지나가므로 비워 두고, 짐은 골목 바깥 끝에 둔다.
+    private static void BuildSouthWestVillage(Builder b)
     {
-        int n = 0;
-        for (int column = 0; column < 3; column++)
+        string[] west = { "01A", "03A", "02B" };
+        string[] east = { "04A", "02A", "03C" };
+        float[] rows = { -10f, 1f, 12f };
+        for (int i = 0; i < rows.Length; i++)
         {
-            for (int row = 0; row < 3; row++)
-            {
-                if (column == 1 && row == 1) continue;   // 가운데는 모닥불 마당
-                var spot = new Vector3(-14f + column * 14f, 0f, -11f + row * 11f);
-                // 네 모서리 집은 3레벨에 한 층 올라간다.
-                bool corner = column != 1 && row != 1;
-                House(b, spot, 0f, 8.5f + (n % 2) * 1f, 4.6f, 6.4f, corner);
-                n++;
-            }
+            LaneHouse(b, Gaia.House(west[i]), rows[i], -1f);
+            LaneHouse(b, Gaia.House(east[i]), rows[i], 1f);
         }
 
-        b.Put(Slot.Lighting, "kit_brazier", Vector3.zero, 0f, b.Uniform("kit_brazier", 1.2f), All);
-        b.PointLight(new Vector3(0f, 2.4f, 0f), new Color(1f, 0.6f, 0.3f), 12f, 2.4f, Lv3);
-        for (int i = 0; i < 4; i++)
-        {
-            var spot = new Vector3(-7f + (i % 2) * 14f, 0f, -5.5f + (i / 2) * 11f);
-            b.Put(Slot.Lighting, "kit_lantern", spot, 0f, b.Uniform("kit_lantern", 0.9f), All);
-        }
-        b.Put(Slot.Decoration, "kit_crates", new Vector3(4f, 0f, 3.4f), 30f, b.Uniform("kit_crates", 0.9f), From2);
-        b.Put(Slot.Decoration, "kit_crates", new Vector3(-4.2f, 0f, -3.2f), 200f, b.Uniform("kit_crates", 0.9f), From2);
+        // 집 사이 틈마다 골목 가장자리에 등불, 바깥 끝에 수레·장작.
         foreach (float s in new[] { -1f, 1f })
-            b.Put(Slot.Decoration, "kit_banner", new Vector3(s * 7f, 0f, 16f), 0f, b.Uniform("kit_banner", 0.9f), From2);
-        b.Put(Slot.SideModule, "kit_tower", new Vector3(0f, 0f, -16.5f), 180f, b.Uniform("kit_tower", 18f / b.Shape("kit_tower").Height), Lv3, true);
+        {
+            b.Put(Slot.Lighting, "kit_lantern", new Vector3(s * (LaneHalfWidth - 0.5f), 0f, -4.5f), 0f, b.Uniform("kit_lantern", 1f), All);
+            b.Put(Slot.Lighting, "kit_lantern", new Vector3(-s * (LaneHalfWidth - 0.5f), 0f, 6.5f), 0f, b.Uniform("kit_lantern", 1f), All);
+        }
+        b.PutAsset(Slot.Decoration, Gaia.Prop("Wagon05"), new Vector3(-19f, 0f, 6.5f), 80f, All);
+        b.PutAsset(Slot.Decoration, Gaia.Prop("Wood09"), new Vector3(-19.5f, 0f, -4.5f), 90f, All);
+        b.PutAsset(Slot.Decoration, Gaia.Prop("Wagon03"), new Vector3(19f, 0f, -4.5f), -100f, All);
+        b.PutAsset(Slot.Decoration, Gaia.Prop("Wood06"), new Vector3(19.5f, 0f, 6.5f), 0f, All);
+        b.Put(Slot.Decoration, "kit_crates", new Vector3(-17f, 0f, 17f), 20f, b.Uniform("kit_crates", 1f), All);
+        b.Put(Slot.Decoration, "kit_banner", new Vector3(LaneHalfWidth + 1.5f, 0f, 17.5f), 0f, b.Uniform("kit_banner", 0.9f), All);
+    }
+
+    private const float LaneHalfWidth = 3.5f;
+
+    // 골목 한쪽(side -1 서쪽, +1 동쪽)에 집을 세운다. 문이 있는 +X 끝이 골목을 보게 돌리고,
+    // 렌더러 범위로 재서 그 끝을 골목 가장자리에, 앞뒤 가운데를 줄(z)에 맞춘다 — 집마다 원점이 제각각이다.
+    private static void LaneHouse(Builder b, string path, float z, float side)
+    {
+        GameObject house = b.PutAsset(Slot.MainBody, path, new Vector3(0f, 0f, z), side < 0f ? 0f : 180f, All);
+        Bounds bounds = Builder.Bounds(house);
+        float laneEnd = side < 0f ? bounds.max.x : bounds.min.x;
+        house.transform.localPosition += new Vector3(side * LaneHalfWidth - laneEnd, 0f, z - bounds.center.z);
     }
 
     // ---- 훈련소 ---------------------------------------------------------------

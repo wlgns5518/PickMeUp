@@ -15,7 +15,7 @@ using UnityEngine;
 //
 // 입구:
 //   - Meshy 시설: 계단이 있으면 계단 발치(합성소·소환소·무기창고·대장간), 계단 자리에 탑이 있으면 탑 앞(비행선착장),
-//     계단이 없으면 문마다(숙소 여덟 채).
+//     계단이 없으면 문마다.
 //   - 거리(Kind.Street)의 Gaia 3DForge 집·대장간: 문이 +X 박공 끝에 있다(계단 조각이 있으면 그 z, 없으면 가운데).
 //   - 시공의 틈·훈련소는 큰길 끝이 곧 입구라 따로 내지 않는다.
 //
@@ -66,7 +66,7 @@ public static class VillageEntrancePaths
             if (lot != null && (lot.label == null || !lot.label.StartsWith(LotPrefix))) keptLots.Add(lot);
         village.EditorSetRoads(new List<VillageBlockout.Road>(trunk), keptLots);
 
-        // 부지: 거리와 숙소의 집 묶음마다 잔디를 깐다(참고 그림의 녹지 블록). 부지는 밟는 바닥이라 길 찾기에 걸리지 않는다.
+        // 부지: 거리의 집 묶음마다 잔디를 깐다(참고 그림의 녹지 블록). 부지는 밟는 바닥이라 길 찾기에 걸리지 않는다.
         List<VillageBlockout.Lot> lots = FindLots(village);
         lots.InsertRange(0, keptLots);
 
@@ -144,7 +144,7 @@ public static class VillageEntrancePaths
 
     // ---- 부지 ------------------------------------------------------------------
 
-    // 거리(Kind.Street)와 숙소 구역마다, 건물(바닥 넓이 15㎡ 넘고 2.5m 넘게 솟은 것)을 다 덮는 마을 축 네모에 여유를 더한다.
+    // 거리(Kind.Street) 구역마다, 건물(바닥 넓이 15㎡ 넘고 2.5m 넘게 솟은 것)을 다 덮는 마을 축 네모에 여유를 더한다.
     private static List<VillageBlockout.Lot> FindLots(VillageBlockout village)
     {
         var lots = new List<VillageBlockout.Lot>();
@@ -153,7 +153,7 @@ public static class VillageEntrancePaths
         {
             var facility = district.GetComponent<VillageFacility>();
             if (facility == null) continue;
-            if (facility.kind != VillageBlockout.Kind.Street && facility.kind != VillageBlockout.Kind.Housing) continue;
+            if (facility.kind != VillageBlockout.Kind.Street) continue;
 
             bool any = false;
             var min = new Vector2(float.MaxValue, float.MaxValue);

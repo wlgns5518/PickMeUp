@@ -6,7 +6,7 @@ using UnityEngine;
 // 참고 그림의 열두 각 성벽 안에 광장과 시설들이 놓인 그 배치를 그대로 세운다.
 // 구역마다 prefab 칸에 에셋을 넣으면 그 자리에 프리팹이 대신 놓이고, 비우면 아래의 임시 도형
 // (큐브/실린더/스피어 덩어리)으로 돌아간다. 배치를 다시 잡거나 이 스크립트를 지울 필요가 없다.
-// 시설 여덟 곳은 Meshy 파츠로 조립한 모듈 건물(FacilityBuilding, VillagePrefabAssembler)이 들어가 있고,
+// 시설 일곱 곳은 Meshy 파츠로 조립한 모듈 건물(FacilityBuilding, VillagePrefabAssembler)이 들어가 있고,
 // 광장만 임시 도형이다. 빈 땅은 거리(Kind.Street) 구역이 채운다 — Gaia 3DForge 집·농장 묶음과 공용 키트로
 // 조립한 것이라 임시 도형이 없고, 프리팹 칸이 비면 아무것도 서지 않는다.
 //
@@ -27,7 +27,7 @@ public class VillageBlockout : MonoBehaviour
         Alchemy,    // 연금시설
         Airdock,    // 비행선착장
         Training,   // 훈련소
-        Housing,    // 숙소
+        Housing,    // 숙소 — 없앴다(2026-09-25, 자리는 거리 "서남 마을"). 씬에 순번으로 저장돼 자리만 남긴다.
         Workshop,   // 공방시설(장식용 뼈대) — 도형만 쓰고 싶을 때는 지금도 이 kind를 쓴다.
         EquipmentWorkshop, // 장비제작소 — 대장간 한 채. 눌러서 장비를 만든다(자동/수동 제작).
         Street      // 거리 — 하는 일 없이 마을을 채우는 집·수레·장작 묶음. 임시 도형이 없어 프리팹이 있어야 보인다.
@@ -371,7 +371,6 @@ public class VillageBlockout : MonoBehaviour
             Make("비행선착장", Kind.Airdock,   150f,  78f, 18f, "비행선이 드나드는 자리."),                                              //  5시
             // 반원이라 곧은 변이 성벽에 닿도록 벽 앞(117.5)에 세운다. 둥근 쪽만 마을로 뻗는다.
             Make("훈련소",     Kind.Training,  180f, 117.5f, 30f, "출전할 파티를 짠다. 여기서 짜 둔 파티로 시공의 틈에 들어간다."),      //  6시
-            Make("숙소",       Kind.Housing,   210f,  72f, 22f, "동료들이 쉬며 스트레스를 회복한다."),                                   //  7시
             Make("합성소",     Kind.Synthesis, 300f,  72f, 22f, "재료를 합쳐 새 물건을 만든다."),                                        // 10시
             // 합성소의 오른쪽 아래.
             Make("무기창고",   Kind.Armory,    295f,  56f, 13f, "무기와 장비를 넣어 두고 꺼내 쓴다."),
@@ -456,7 +455,6 @@ public class VillageBlockout : MonoBehaviour
             case Kind.Alchemy:   BuildAlchemy(root); break;
             case Kind.Airdock:   BuildAirdock(root); break;
             case Kind.Training:  BuildTraining(root); break;
-            case Kind.Housing:   BuildHousing(root); break;
             case Kind.Workshop:  BuildWorkshop(root); break;
             case Kind.EquipmentWorkshop: BuildWorkshop(root); break; // 도형은 공방시설과 같다.
         }
@@ -475,7 +473,6 @@ public class VillageBlockout : MonoBehaviour
             case Kind.Alchemy:   return 17f;
             case Kind.Airdock:   return 20f;
             case Kind.Training:  return 22f;
-            case Kind.Housing:   return 22f;
             case Kind.Workshop:  return 20f;
             case Kind.EquipmentWorkshop: return 20f;
             default:             return 18f;
@@ -651,7 +648,7 @@ public class VillageBlockout : MonoBehaviour
 
     // 지금 시설·거리 배치에 맞춘 길. 구역을 옮겼다면 인스펙터에서 점을 고치면 된다.
     //   남북 큰길: 광장 ↔ 대장간 ↔ 훈련소 입구     동서 길: 서쪽 거리 ↔ 대장간 ↔ 동쪽 거리
-    //   갈래길: 합성소·소환소 정문, 무기창고, 숙소, 비행선착장 탑, 북동·북서 성벽길
+    //   갈래길: 합성소·소환소 정문, 무기창고, 서남 마을, 비행선착장 탑. 시공의 틈 둘레에는 집도 길도 두지 않는다.
     [ContextMenu("기본 길 불러오기")]
     public void LoadDefaultRoads()
     {
@@ -669,10 +666,8 @@ public class VillageBlockout : MonoBehaviour
             MakeRoad("소환소 길", 7f, new Vector2(0f, 40f), new Vector2(18f, 58f), new Vector2(57f, 58f)),
             MakeRoad("합성소 길", 7f, new Vector2(0f, 40f), new Vector2(-18f, 58f), new Vector2(-53f, 58f)),
             MakeRoad("무기창고 길", 6f, new Vector2(-35f, 31f), new Vector2(-35f, 58f)),
-            MakeRoad("숙소 길", 7f, new Vector2(0f, -30f), new Vector2(-60f, -30f), new Vector2(-67f, -37f)),
+            MakeRoad("서남 마을 길", 7f, new Vector2(0f, -30f), new Vector2(-60f, -30f), new Vector2(-67f, -37f)),
             MakeRoad("선착장 길", 7f, new Vector2(0f, -45f), new Vector2(22f, -45f), new Vector2(36f, -59f), new Vector2(52f, -59f)),
-            MakeRoad("북동 성벽길", 6f, new Vector2(20f, 98f), new Vector2(30f, 88f), new Vector2(40f, 88f)),
-            MakeRoad("북서 성벽길", 6f, new Vector2(-20f, 98f), new Vector2(-30f, 88f), new Vector2(-40f, 88f)),
         };
 #if UNITY_EDITOR
         UnityEditor.EditorUtility.SetDirty(this);
@@ -1198,7 +1193,6 @@ public class VillageBlockout : MonoBehaviour
             case Kind.Alchemy:   return new Color(0.49f, 0.62f, 0.69f);
             case Kind.Airdock:   return new Color(0.58f, 0.51f, 0.45f);
             case Kind.Training:  return new Color(0.55f, 0.45f, 0.55f);
-            case Kind.Housing:   return new Color(0.69f, 0.53f, 0.55f);
             case Kind.Workshop:  return new Color(0.68f, 0.62f, 0.43f);
             case Kind.EquipmentWorkshop: return new Color(0.68f, 0.62f, 0.43f);
             default:             return Stone;
@@ -1835,46 +1829,6 @@ public class VillageBlockout : MonoBehaviour
         Box(root, "걸이 가로대", new Vector3(-13.5f, 2.6f, 7f), new Vector3(5.6f, 0.3f, 0.3f), Wood, 0f, false);
         for (int i = 0; i < 4; i++)
             Box(root, "훈련용 무기", new Vector3(-15.4f + i * 1.3f, 1.4f, 7f), new Vector3(0.3f, 2.8f, 0.3f), WoodDark, 0f, false);
-    }
-
-    // 숙소 — 동료들이 쉬며 스트레스를 회복한다. 작은 집이 골목을 사이에 두고 늘어선다.
-    private void BuildHousing(Transform root)
-    {
-        Box(root, "바닥", new Vector3(0f, 0.12f, 0f), new Vector3(44f, 0.25f, 34f), ZoneColor(Kind.Housing), 0f, false);
-
-        for (int column = 0; column < 3; column++)
-        {
-            for (int row = 0; row < 3; row++)
-            {
-                if (column == 1 && row == 1) continue;   // 가운데는 우물 자리
-
-                var spot = new Vector3(-14f + column * 14f, 0f, -11f + row * 11f);
-                Color wall = (column + row) % 2 == 0 ? Sand : StoneLight;
-                Color roof = (column + row) % 2 == 0 ? Roof : RoofRed;
-
-                Box(root, "집", spot + new Vector3(0f, 2.8f, 0f), new Vector3(8f, 5f, 7f), wall);
-                Gable(root, spot + new Vector3(0f, 5.3f, 0f), 9f, 8.4f, 32f, roof);
-                Cyl(root, "굴뚝", spot + new Vector3(2.6f, 7.4f, -2f), 1f, 3f, StoneDark, false);
-                Box(root, "문", spot + new Vector3(0f, 1.6f, 3.6f), new Vector3(1.6f, 2.6f, 0.4f), WoodDark, 0f, false);
-                Box(root, "창", spot + new Vector3(-2.4f, 3.4f, 3.6f), new Vector3(1.4f, 1.4f, 0.4f), Teal, 0f, false);
-                Box(root, "창", spot + new Vector3(2.4f, 3.4f, 3.6f), new Vector3(1.4f, 1.4f, 0.4f), Teal, 0f, false);
-            }
-        }
-
-        // 가운데 우물
-        Cyl(root, "우물", new Vector3(0f, 0.8f, 0f), 4.2f, 1.6f, Stone);
-        Cyl(root, "우물 구멍", new Vector3(0f, 1.6f, 0f), 3.2f, 0.2f, StoneDark, false);
-        Cyl(root, "우물 기둥", new Vector3(-1.8f, 2.6f, 0f), 0.4f, 4f, Wood, false);
-        Cyl(root, "우물 기둥", new Vector3(1.8f, 2.6f, 0f), 0.4f, 4f, Wood, false);
-        Gable(root, new Vector3(0f, 4.6f, 0f), 5f, 4f, 30f, Roof);
-
-        // 골목 등불
-        for (int i = 0; i < 4; i++)
-        {
-            var spot = new Vector3(-7f + (i % 2) * 14f, 0f, -5.5f + (i / 2) * 11f);
-            Cyl(root, "등불 기둥", spot + new Vector3(0f, 1.8f, 0f), 0.3f, 3.6f, WoodDark, false);
-            Ball(root, "등불", spot + new Vector3(0f, 3.9f, 0f), 0.9f, Ember, false, true);
-        }
     }
 
     // 공방시설 — 9시에서 3시까지 마을을 가로지르는 한 줄.
