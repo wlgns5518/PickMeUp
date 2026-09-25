@@ -621,19 +621,32 @@ public class VillageBlockout : MonoBehaviour
     }
 
     // 길 위(가장자리에서 margin 안쪽 포함)인지. 나무를 심을 때 길을 비운다.
+    // 자리 하나마다 길 선분 전부(입구 길까지 200개 가까이)를 훑어서, 마을을 세울 때 가장 자주 도는 검사다.
+    // 길은 바닥 위의 선이라 평면(x,z)에서 제곱 거리로 잰다 — 선분마다 제곱근을 풀지 않는다.
     private bool NearRoad(Vector3 spot, float margin)
     {
         if (!buildRoads || roads == null) return false;
+        var point = new Vector2(spot.x, spot.z);
         foreach (Road road in roads)
         {
             if (road == null || road.points == null) continue;
-            for (int i = 0; i < road.points.Count - 1; i++)
+            float reach = road.width * 0.5f + margin;
+            float reachSqr = reach * reach;
+            List<Vector2> points = road.points;
+            for (int i = 0; i < points.Count - 1; i++)
             {
-                Vector2 a = road.points[i], b = road.points[i + 1];
-                if (DistanceToSegment(spot, new Vector3(a.x, 0f, a.y), new Vector3(b.x, 0f, b.y)) < road.width * 0.5f + margin) return true;
+                if (SqrDistanceToSegment(point, points[i], points[i + 1]) < reachSqr) return true;
             }
         }
         return false;
+    }
+
+    private static float SqrDistanceToSegment(Vector2 point, Vector2 from, Vector2 to)
+    {
+        Vector2 along = to - from;
+        float length = along.sqrMagnitude;
+        float t = length < 0.001f ? 0f : Mathf.Clamp01(Vector2.Dot(point - from, along) / length);
+        return (point - (from + along * t)).sqrMagnitude;
     }
 
     // 지금 시설·거리 배치에 맞춘 길. 구역을 옮겼다면 인스펙터에서 점을 고치면 된다.
@@ -828,14 +841,15 @@ public class VillageBlockout : MonoBehaviour
             float radius = Mathf.Sqrt((float)random.NextDouble()) * limit;
             Vector3 spot = Dir(bearing) * radius;
 
-            if (Occupied(spot)) continue;
-
+            // 이웃 나무 간격이 구역·길 검사(Occupied)보다 싸다. 둘 다 판정만 하므로 순서를 바꿔도 서는 자리는 같다.
             bool tooClose = false;
             foreach (Vector3 other in placed)
             {
                 if ((other - spot).sqrMagnitude < spacing) { tooClose = true; break; }
             }
             if (tooClose) continue;
+
+            if (Occupied(spot)) continue;
 
             placed.Add(spot);
             // 바닥에 살짝 묻어 심는다. 정확히 바닥 높이에 두면 밑동과 바닥 사이가 뜬다.
@@ -876,7 +890,6 @@ public class VillageBlockout : MonoBehaviour
             Vector3 spot = middle + Dir(training.bearing + 180f + offset) * ring;
 
             if (spot.magnitude > limit) continue;
-            if (Occupied(spot)) continue;
 
             bool tooClose = false;
             foreach (Vector3 other in placed)
@@ -884,6 +897,8 @@ public class VillageBlockout : MonoBehaviour
                 if ((other - spot).sqrMagnitude < 16f) { tooClose = true; break; }   // 숲이라 마을보다 촘촘하게
             }
             if (tooClose) continue;
+
+            if (Occupied(spot)) continue;
 
             placed.Add(spot);
             spot.y = GroundY(spot) - transform.position.y + (buildGround ? groundLift : 0f) - 0.05f;
@@ -894,16 +909,16 @@ public class VillageBlockout : MonoBehaviour
     }
 
     // 구역이 차지한 자리인지. 비행선착장은 갑판이 구역 밖으로 길게 뻗어 있어 따로 넉넉히 잡는다.
+    // 길 검사(NearRoad)가 가장 비싸서 맨 끝에 한다 — 구역 몇 개를 보는 것보다 길 선분을 다 훑는 쪽이 훨씬 길다.
     private bool Occupied(Vector3 spot)
     {
         // 한가운데 트인 자리와 시공의 틈까지 걸어 들어가는 길목은 비워 둔다.
         if (spot.sqrMagnitude < treeCenterClear * treeCenterClear) return true;
-        if (NearRoad(spot, treeMargin)) return true;
 
         District rift = Find(Kind.Rift);
         if (rift != null && DistanceToSegment(spot, Vector3.zero, Dir(rift.bearing) * rift.distance) < riftApproachWidth) return true;
 
-        if (districts == null) return false;
+        if (districts == null) return NearRoad(spot, treeMargin);
 
         foreach (District district in districts)
         {
@@ -933,7 +948,7 @@ public class VillageBlockout : MonoBehaviour
 
             if ((Dir(district.bearing) * district.distance - spot).sqrMagnitude < clearance * clearance) return true;
         }
-        return false;
+        return NearRoad(spot, treeMargin);
     }
 
     // 성벽 밖 숲과 같은 나무를 쓴다. 지형에 등록된 프리팹을 그대로 가져오므로 안팎이 따로 놀지 않는다.
@@ -1029,14 +1044,17 @@ public class VillageBlockout : MonoBehaviour
                     lot.center.y + ((float)random.NextDouble() - 0.5f) * Mathf.Max(0f, lot.size.y - 2f));
                 float yaw = (float)random.NextDouble() * 360f;
 
-                // 밑동이 길 위에 서지 않고 수관이 길을 반 넘게 덮지 않게.
-                if (NearRoad(spot, radius * 0.4f + 0.5f)) continue;
+                // 싼 검사부터 한다. 부지가 거의 차면 자리 대부분이 건물이나 이웃 나무에 걸리는데, 길 검사는
+                // 길 선분을 전부 훑으므로 그 둘을 통과한 자리에만 한다. 셋 다 판정만 하므로 순서를 바꿔도 서는 자리는 같다.
                 if (InsideAny(buildings, spot, radius * 0.5f + 0.6f)) continue;
 
                 bool crowded = false;
                 for (int i = 0; i < placed.Count && !crowded; i++)
                     crowded = (placed[i] - spot).sqrMagnitude < Sqr((placedRadius[i] + radius) * 0.65f);
                 if (crowded) continue;
+
+                // 밑동이 길 위에 서지 않고 수관이 길을 반 넘게 덮지 않게.
+                if (NearRoad(spot, radius * 0.4f + 0.5f)) continue;
 
                 placed.Add(spot);
                 placedRadius.Add(radius);
