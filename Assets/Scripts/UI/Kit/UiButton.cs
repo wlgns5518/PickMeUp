@@ -8,6 +8,7 @@ public enum UiButtonStyle
     Secondary, // 그다음 행동(1회 소환, 소환 확률, 해제).
     Ghost,     // 덜 중요한 행동(취소, 닫기).
     Danger,    // 되돌릴 수 없는 손실을 부르는 확인(재료 영웅을 태우는 합성 확인 등).
+    Glass,     // 마을 풍경 위에 떠 있는 버튼(편성). 어두운 반투명 판이라 뒤 풍경이 비친다.
 }
 
 public enum UiButtonSize { Small, Medium, Large }
@@ -234,6 +235,13 @@ public class UiButton : Button
                     fillColor = down ? UiTheme.SurfaceSunken : hover ? UiTheme.SurfaceRaised : UiTheme.Surface;
                     borderColor = UiTheme.Border;
                     textColor = UiTheme.TextSecondary;
+                    break;
+                case UiButtonStyle.Glass:
+                    // 선형 색공간이라 알파가 눈에는 더 옅게 보인다 — 0.7 안팎이어야 글자가 풍경에 묻히지 않는다.
+                    fillColor = UiTheme.WithAlpha(down ? UiTheme.SurfaceSunken : hover ? UiTheme.SurfaceRaised : UiTheme.Surface,
+                        down ? 0.85f : hover ? 0.8f : 0.7f);
+                    borderColor = UiTheme.WithAlpha(UiTheme.BorderStrong, 0.9f);
+                    textColor = UiTheme.TextPrimary;
                     break;
                 default:
                     fillColor = down ? UiTheme.SurfaceRaised : hover ? UiTheme.BorderStrong : UiTheme.SurfaceHover;

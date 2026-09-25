@@ -29,7 +29,6 @@ public class PartyBarHud : MonoBehaviour
 
     private const float EdgeMargin = 32f;
     private const float Diameter = 136f;
-    private const int ShadowBlur = 14;
     private const float BadgeWidth = 72f;
     private const float BadgeHeight = 36f;
 
@@ -64,16 +63,9 @@ public class PartyBarHud : MonoBehaviour
 
     private void Build()
     {
-        int radius = Mathf.RoundToInt(Diameter * 0.5f);
-
-        // 마을 풍경 위에 떠 있는 버튼이라 그림자로 바닥에서 띄운다. 버튼보다 먼저 깔아야 뒤에 그려진다.
-        Image shadow = UiKit.Image(canvasRect, "PartyButtonShadow", UiSprites.Shadow(radius, ShadowBlur), UiTheme.Shadow, false);
-        shadow.type = Image.Type.Sliced;
-        UiKit.BottomLeft(shadow.rectTransform, EdgeMargin - ShadowBlur, EdgeMargin - ShadowBlur * 1.25f,
-            Diameter + ShadowBlur * 2f, Diameter + ShadowBlur * 2f);
-
+        // 상단바처럼 어두운 판으로 — 뒤 풍경이 비치는 반투명이라 그림자는 깔지 않는다(깔면 판이 도로 불투명해 보인다).
         UiButton button = UiButton.CreateIcon(canvasRect, "PartyButton", UiSprites.Icon(UiSprites.Glyph.Party), true,
-            Diameter, UiButtonStyle.Primary, OpenDeck);
+            Diameter, UiButtonStyle.Glass, OpenDeck);
         UiKit.BottomLeft(button.Rect, EdgeMargin, EdgeMargin, Diameter, Diameter);
 
         // 기호는 위쪽에, 라벨은 그 아래에.
