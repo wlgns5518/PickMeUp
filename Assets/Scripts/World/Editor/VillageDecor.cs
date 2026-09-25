@@ -43,6 +43,23 @@ public static class VillageDecor
     {
         "pine_004_1_baked_hierarchy", "pine_004_3_baked_hierarchy", "pine_004_4_baked_hierarchy",
     };
+    // 숲 띠 바깥 낮은 땅의 숲 무더기(떠 있는 섬 가장자리까지). 칸마다 한 그루 후보, 노이즈로 무더기만 남긴다.
+    private const float GroveOuter = 370f;
+    private const float GroveCell = 16f;
+
+    // spot 둘레 margin 안이 모두 섬(지형 구멍이 아님)인지 — 가장자리 바로 앞에 나무가 매달리지 않게.
+    private static bool SolidAround(TerrainData data, Vector3 origin, Vector3 size, int holes, Vector3 spot, float margin)
+    {
+        for (int k = 0; k < 5; k++)
+        {
+            Vector3 p = spot + (k == 0 ? Vector3.zero : Quaternion.Euler(0f, k * 90f, 0f) * Vector3.forward * margin);
+            int ix = Mathf.FloorToInt((p.x - origin.x) / size.x * holes), iz = Mathf.FloorToInt((p.z - origin.z) / size.z * holes);
+            if (ix < 0 || iz < 0 || ix >= holes || iz >= holes) return false;
+            if (data.IsHole(ix, iz)) return false;
+        }
+        return true;
+    }
+
     // 지형 나무 LOD 치우침. 성벽 너머 숲은 카메라에서 150m 넘게 떨어져 있어 낮은 LOD·빌보드로 충분하다 — 0.2와 1은 화면에서
     // 구별이 안 됐고 삼각형은 176만→100만이었다(지형 설정 — 다른 씬에는 없다).
     private const float ForestLodBias = 0.2f;
@@ -130,7 +147,9 @@ public static class VillageDecor
             AssetDatabase.CreateAsset(material, materialPath);
         }
         else material.CopyPropertiesFromMaterial(source);
-        material.SetTexture("_BaseMap", BlueCloth(source.GetTexture("_BaseMap") as Texture2D));
+        Texture2D blue = BlueCloth(source.GetTexture("_BaseMap") as Texture2D);
+        material.SetTexture("_BaseMap", blue);
+        material.SetTexture("_MainTex", blue);   // 옛 슬롯도 맞춘다 — CopyPropertiesFromMaterial이 붉은 원본으로 되돌려 놓는다
         EditorUtility.SetDirty(material);
 
         var go = (GameObject)PrefabUtility.InstantiatePrefab(part);
@@ -257,12 +276,43 @@ public static class VillageDecor
             // 안쪽 가장자리는 성기게 시작해 바깥으로 갈수록 빽빽하게.
             float keep = Mathf.InverseLerp(ForestInner, ForestInner + 10f, r);
             if (r > ForestOuter || random.NextDouble() > keep) continue;
+            // 섬 가장자리 절벽(VillageIsland)에 걸리면 건너뛴다 — 마을 높이 평지에만 심는다.
+            if (terrain.SampleHeight(spot) + terrain.transform.position.y < -1f) continue;
 
             float scale = 0.9f + (float)random.NextDouble() * 0.45f;
             kept.Add(new TreeInstance
             {
                 prototypeIndex = picks[random.Next(picks.Count)],
                 position = new Vector3((spot.x - origin.x) / size.x, 0f, (spot.z - origin.z) / size.z),
+                widthScale = scale,
+                heightScale = scale,
+                rotation = (float)(random.NextDouble() * Mathf.PI * 2f),
+                color = Color.white,
+                lightmapColor = Color.white,
+            });
+        }
+
+        // 떠 있는 섬(VillageIsland)의 낮은 땅(숲 띠 바깥 ~ 가장자리)에 드문드문 숲 무더기. 빈 잔디판처럼 보이지 않게.
+        // 노이즈가 높은 자리에만 모여 서고, 섬 밖(지형 구멍)·가장자리 10m 안·가파른 자리는 비운다.
+        int holes = data.holesResolution;
+        for (float x = -GroveOuter; x <= GroveOuter; x += GroveCell)
+        for (float z = -GroveOuter; z <= GroveOuter; z += GroveCell)
+        {
+            var spot = new Vector3(x + ((float)random.NextDouble() - 0.5f) * GroveCell,
+                                   0f,
+                                   z + ((float)random.NextDouble() - 0.5f) * GroveCell);
+            float r = new Vector2(spot.x, spot.z).magnitude;
+            if (r < ForestOuter + 12f || r > GroveOuter) continue;
+            if (Mathf.PerlinNoise(spot.x * 0.012f + 3f, spot.z * 0.012f + 91f) < 0.52f) continue;
+            if (!SolidAround(data, origin, size, holes, spot, 10f)) continue;
+            float u = (spot.x - origin.x) / size.x, v = (spot.z - origin.z) / size.z;
+            if (data.GetSteepness(u, v) > 25f) continue;
+
+            float scale = 0.85f + (float)random.NextDouble() * 0.5f;
+            kept.Add(new TreeInstance
+            {
+                prototypeIndex = picks[random.Next(picks.Count)],
+                position = new Vector3(u, 0f, v),
                 widthScale = scale,
                 heightScale = scale,
                 rotation = (float)(random.NextDouble() * Mathf.PI * 2f),

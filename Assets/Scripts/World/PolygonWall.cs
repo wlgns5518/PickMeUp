@@ -7,7 +7,7 @@ using UnityEngine;
 // 예전 배경의 벽은 큐브 여덟 개를 손으로 배치한 것이라 각도와 간격이 어긋나 있었다.
 // 변 수나 반지름을 바꾸면 모서리 기둥까지 알아서 다시 놓이도록 코드에서 만든다.
 //
-// 메시를 에셋으로 굽지 않는 이유는 FloatingIsland와 같다 — 값만 고치면 바로 반영되고
+// 메시를 에셋으로 굽지 않고 코드로 만든다 — 값만 고치면 바로 반영되고
 // 씬 파일에는 숫자 몇 개만 남는다.
 [ExecuteAlways]
 [DisallowMultipleComponent]
@@ -105,7 +105,7 @@ public class PolygonWall : MonoBehaviour
     }
 #endif
 
-    // 메시 정리 규칙은 FloatingIsland와 같다 — DontSave라 직접 지우지 않으면 씬을 불러올 때마다 쌓인다.
+    // 메시는 DontSave라 직접 지우지 않으면 씬을 불러올 때마다 쌓인다.
     private void OnDestroy()
     {
         ReleaseMesh();

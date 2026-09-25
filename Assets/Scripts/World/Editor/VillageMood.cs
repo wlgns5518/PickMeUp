@@ -26,17 +26,18 @@ public static class VillageMood
     // 적도색이 해 세기에 비해 너무 낮으면 그 면이 새까맣게 죽는다.
     private static readonly Color AmbientSky = new Color(0.22f, 0.25f, 0.27f);
     private static readonly Color AmbientEquator = new Color(0.19f, 0.21f, 0.22f);
-    private static readonly Color AmbientGround = new Color(0.08f, 0.085f, 0.09f);
+    private static readonly Color AmbientGround = new Color(0.15f, 0.17f, 0.19f);
 
-    // 하늘(절차적). 화면 위쪽에 보이므로 해질녘 어두운 청록 회색.
+    // 하늘(절차적). 화면 위쪽에 보이므로 해질녘 어두운 청록 회색. 섬이 하늘에 떠 있어(VillageIsland) 지평선 아래도 하늘이다 —
+    // 아래쪽(ground) 색을 지평선 색에 가깝게 둬야 섬 밖이 땅처럼 어둡게 막히지 않는다.
     private static readonly Color SkyTint = new Color(0.20f, 0.27f, 0.33f);
-    private static readonly Color SkyGround = new Color(0.14f, 0.17f, 0.19f);
+    private static readonly Color SkyGround = new Color(0.50f, 0.57f, 0.65f);
     private const float SkyExposure = 0.55f;
 
-    // 안개(선형). 성벽(반지름 124)까지는 거의 없고, 성벽 밖 숲이 어두운 안개 속으로 잠긴다.
-    private static readonly Color FogColor = new Color(0.16f, 0.20f, 0.22f);
-    private const float FogStart = 115f;
-    private const float FogEnd = 400f;
+    // 안개(선형). 성벽(반지름 124)까지는 거의 없고, 섬 가장자리·구름 바다가 하늘색 안개 속으로 흐려진다(하늘 아래쪽과 같은 색).
+    private static readonly Color FogColor = new Color(0.31f, 0.36f, 0.42f);
+    private const float FogStart = 150f;
+    private const float FogEnd = 700f;
 
     // 지형 풀(디테일)과 MainScene 전용 풀 레이어 색 — 어두운 숲 녹색 쪽으로 곱한다.
     // Floor1 지형 레이어(Forest_Grass 등)는 전투 맵도 쓰므로 건드리지 않는다.

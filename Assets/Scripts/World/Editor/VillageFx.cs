@@ -37,6 +37,7 @@ public static class VillageFx
         ChimneySmoke();
         PlazaMotes();
         Fireflies();
+        CloudSea();
         TowerTorch();
         AssetDatabase.SaveAssets();
     }
@@ -239,6 +240,56 @@ public static class VillageFx
             Noise(flies, 0.8f, 0.3f);
             Fade(flies, new Color(1f, 0.9f, 0.55f), new Color(0.9f, 0.75f, 0.3f), flicker: true);
             Save(root, "FX_Fireflies");
+        }
+        finally { Object.DestroyImmediate(root); }
+    }
+
+    // 떠 있는 섬(VillageIsland) 아래·둘레의 구름 바다 — 아주 큰 부드러운 알갱이가 천천히 흐른다(알파 합성).
+    // 섬 아랫면 둘레(반지름 250~650m)의 두 겹: 섬보다 한참 아래 넓은 층, 가장자리 가까이 조금 높은 옅은 층.
+    // 화면을 넓게 덮는 반투명이라 개수는 적게 둔다(모바일 채움 비용).
+    private static void CloudSea()
+    {
+        var root = new GameObject("FX_CloudSea");
+        try
+        {
+            ParticleSystem low = Emitter(root, "Low", smoke, 70, loopRate: 1f);
+            var main = low.main;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(60f, 80f);
+            main.startSpeed = 0f;
+            main.startSize = new ParticleSystem.MinMaxCurve(260f, 420f);
+            main.startColor = new Color(0.42f, 0.48f, 0.55f, 0.35f);
+            main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+            var shape = Shape(low, ParticleSystemShapeType.Circle, new Vector3(0f, -120f, 0f), 650f, rotateX: 90f);
+            shape.radiusThickness = 0.62f;   // 가운데 250m 안은 비운다(섬 밑동)
+            Velocity(low, new Vector3(0.6f, -0.1f, 0.2f), new Vector3(1.4f, 0.1f, 0.6f));
+            var fade = new Gradient();
+            fade.SetKeys(
+                new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(1f, 0.2f), new GradientAlphaKey(1f, 0.8f), new GradientAlphaKey(0f, 1f) });
+            var color = low.colorOverLifetime;
+            color.enabled = true;
+            color.color = fade;
+
+            ParticleSystem high = Emitter(root, "Wisps", smoke, 20, loopRate: 0.4f);
+            main = high.main;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(45f, 60f);
+            main.startSpeed = 0f;
+            main.startSize = new ParticleSystem.MinMaxCurve(150f, 240f);
+            main.startColor = new Color(0.45f, 0.5f, 0.57f, 0.22f);
+            main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+            shape = Shape(high, ParticleSystemShapeType.Circle, new Vector3(0f, -45f, 0f), 480f, rotateX: 90f);
+            shape.radiusThickness = 0.45f;   // 가장자리 바깥 고리(265~480m)
+            Velocity(high, new Vector3(0.5f, 0f, 0.1f), new Vector3(1.2f, 0.2f, 0.5f));
+            color = high.colorOverLifetime;
+            color.enabled = true;
+            color.color = fade;
+            // 멀리 있는 커다란 반투명판이라 화면 크기 상한을 풀어 준다(기본 0.5는 가까울 때 잘린다).
+            foreach (var renderer in root.GetComponentsInChildren<ParticleSystemRenderer>())
+            {
+                renderer.maxParticleSize = 3f;
+                renderer.sortingFudge = 50f;   // 섬·불빛보다 뒤로
+            }
+            Save(root, "FX_CloudSea");
         }
         finally { Object.DestroyImmediate(root); }
     }
