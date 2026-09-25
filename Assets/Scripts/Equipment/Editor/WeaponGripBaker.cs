@@ -450,16 +450,17 @@ public static class WeaponGripBaker
         GameObject source = PrefabUtility.GetCorrespondingObjectFromSource(model.gameObject);
         if (source == null) source = model.gameObject;
 
-        Vector3 position;
-        Quaternion rotation;
-        if (!MeasureGrip(source, definition.type, HandOf(definition), out position, out rotation)) return false;
-
         // 손으로 줄여 둔 크기는 건드리지 않는다. 방패 셋은 애니메이션에서 몸을 뚫지 않도록
         // 그립을 중심으로 0.5배로 줄여 놓았는데, 여기서 배율을 1로 되돌리면 자세만 다시 잡으려다
-        // 방패가 원래 크기로 부풀어 오른다. MeasureGrip이 내주는 자리는 배율 1 기준이므로
-        // 같은 배율로 당겨야 "판만 그립 쪽으로 줄어든" 자세가 그대로 유지된다.
+        // 방패가 원래 크기로 부풀어 오른다. 배율은 MeasureGrip에 넘겨 모델 쪽 거리만 줄인다 —
+        // 손에서 판까지 띄우는 거리는 손 크기라, 모델과 같이 줄면 판이 주먹을 뚫는다.
         float modelScale = Mathf.Max(0.0001f, model.localScale.x);
-        model.localPosition = position * modelScale;
+
+        Vector3 position;
+        Quaternion rotation;
+        if (!MeasureGrip(source, definition.type, HandOf(definition), out position, out rotation, modelScale)) return false;
+
+        model.localPosition = position;
         model.localRotation = rotation;
         model.localScale = Vector3.one * modelScale;
 
@@ -502,7 +503,9 @@ public static class WeaponGripBaker
     // 여기서 할 일은 모델을 그 방향으로 세우고, 자루가 루트 원점에 오도록 밀어 넣는 것.
     // ------------------------------------------------------------------
 
-    public static bool MeasureGrip(GameObject model, WeaponType type, EquipHand hand, out Vector3 position, out Quaternion rotation)
+    // modelScale은 Model 자식에 걸린 배율이다. 돌려주는 자리는 그 배율을 이미 반영한 값이다.
+    public static bool MeasureGrip(GameObject model, WeaponType type, EquipHand hand, out Vector3 position, out Quaternion rotation,
+                                   float modelScale = 1f)
     {
         position = Vector3.zero;
         rotation = Quaternion.identity;
@@ -515,7 +518,7 @@ public static class WeaponGripBaker
 
         if (type == WeaponType.Shield)
         {
-            MeasureShield(mesh, hand, out position, out rotation);
+            MeasureShield(mesh, hand, modelScale, out position, out rotation);
             return true;
         }
 
@@ -531,19 +534,29 @@ public static class WeaponGripBaker
         Vector3 gripPoint = CrossSectionCenter(mesh, axis, gripAlong);
         gripPoint[axis] = gripAlong;
 
-        position = -(align * gripPoint);
+        position = -(align * gripPoint) * modelScale;
         return true;
     }
 
-    // 그립(손바닥 가운데)에서 방패 판까지의 거리(m). 손등과 팔뚝 두께만큼 띄워야 판이 손을 뚫지 않는다.
-    private const float ShieldBoardStandOff = 0.045f;
+    // 그립(손바닥 가운데)에서 방패 판까지의 거리(m). 손등과 주먹 마디만큼 띄워야 판이 손을 뚫지 않는다.
+    private const float ShieldBoardStandOff = 0.05f;
+
+    // 왼손 소켓 기준으로 방패 앞면이 향하는 쪽과 방패의 위쪽.
+    //
+    // 손등(-Z)에서 손가락 쪽(-X)으로 39°, 새끼손가락 쪽(-Y)으로 조금 기운 방향이다. 방패를 든 유닛이
+    // 쓰는 팩의 방패 자세(Armed-Shield-Idle, Walk/Run-Forward-Block, Strafe 셋, ShieldBlock)를
+    // Y Bot에 샘플링해 "몸 정면이 소켓에서 어느 쪽인가"를 평균 낸 값이다(대기 자세에 5배 가중).
+    // 예전처럼 판을 손바닥과 나란히(앞면 = 손등) 두면, 이 자세들에서 앞면이 정면보다 50° 바깥,
+    // 40° 위를 봐서 방패가 몸 쪽으로 돌아가 보였다. 지금은 대기 -25° 안팎, 막기·이동 +20° 안팎이다.
+    //
+    // 오른손은 좌우 소켓이 거울이라 Z만 부호가 바뀐다(X·Y는 그대로).
+    private static readonly Vector3 LeftShieldFacing = new Vector3(-0.570f, -0.261f, -0.779f);
+    private static readonly Vector3 LeftShieldUp = new Vector3(0.407f, 0.734f, -0.544f);
 
     // 방패를 팔에 거는 자세.
     //
-    // 방패는 팔뚝에 차는 물건으로 본다 — 이 게임의 막기·공격 동작이 팔뚝을 방패 뒤에 대고 든다.
-    // 그래서 판은 손바닥과 나란하고, 앞면은 손등 바깥을 향하며, 뒷면의 끈·손잡이는 손 쪽으로 온다.
-    // 방패의 위아래(카이트 방패의 뾰족한 끝)는 모델의 세로축을 소켓 +Y(엄지 쪽)에 맞춰,
-    // 팔을 가로로 들면 끝이 아래로 온다.
+    // 판의 앞면은 위 LeftShieldFacing 쪽, 방패의 위아래(카이트 방패의 뾰족한 끝)는 LeftShieldUp 쪽이다.
+    // 뒷면의 끈·손잡이는 손 쪽으로 온다.
     //
     // 손등이 어느 쪽인지는 손마다 다르다. 좌우 소켓이 서로 거울이라 소켓 +Z가 왼손에서는 손바닥 쪽,
     // 오른손에서는 손등 쪽이다. 예전에는 앞면을 손과 무관하게 +Z로 돌려서 왼손에 드는 방패가 전부
@@ -555,14 +568,16 @@ public static class WeaponGripBaker
     //     다른 팩에서 뒤집혀 나오면 프리팹의 Model을 세로축으로 반 바퀴 돌리면 된다.
     //   · 판의 깊이 = 두께 축을 따라 정점이 가장 몰린 곳.
     //   · 손이 잡는 자리 = 판 뒤로 튀어나온 정점(끈·손잡이)의 가운데. 뒤에 아무것도 없으면 판 가운데.
-    private static void MeasureShield(Mesh mesh, EquipHand hand, out Vector3 position, out Quaternion rotation)
+    private static void MeasureShield(Mesh mesh, EquipHand hand, float modelScale, out Vector3 position, out Quaternion rotation)
     {
         Bounds bounds = mesh.bounds;
         Vector3 thin = ThinnestAxis(bounds.size);
         Vector3 modelUp = thin == Vector3.up ? Vector3.forward : Vector3.up;
 
-        Vector3 backOfHand = hand == EquipHand.Left ? Vector3.back : Vector3.forward;
-        rotation = Quaternion.LookRotation(backOfHand, Vector3.up) * Quaternion.Inverse(Quaternion.LookRotation(thin, modelUp));
+        Vector3 mirror = hand == EquipHand.Left ? Vector3.one : new Vector3(1f, 1f, -1f);
+        Vector3 facing = Vector3.Scale(LeftShieldFacing, mirror).normalized;
+        Vector3 up = Vector3.Scale(LeftShieldUp, mirror);
+        rotation = Quaternion.LookRotation(facing, up) * Quaternion.Inverse(Quaternion.LookRotation(thin, modelUp));
 
         Vector3[] vertices = mesh.vertices;
         float board = DensestDepth(vertices, thin, bounds);
@@ -595,7 +610,7 @@ public static class WeaponGripBaker
         // 판 위의 점으로 옮긴다. 깊이는 판에, 가로세로는 손잡이에 맞춘다.
         anchor += thin * (board - Vector3.Dot(anchor, thin));
 
-        position = backOfHand * ShieldBoardStandOff - rotation * anchor;
+        position = facing * ShieldBoardStandOff - rotation * (anchor * modelScale);
     }
 
     // 축을 따라 정점이 가장 몰린 깊이. 방패라면 판이 있는 자리다(보스·끈은 정점이 적게 흩어져 있다).

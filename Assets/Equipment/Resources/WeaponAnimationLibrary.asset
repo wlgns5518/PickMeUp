@@ -43,3 +43,17 @@ MonoBehaviour:
   shieldClips:
   - original: {fileID: 7400000, guid: 59929a0c23b907e41977a4df7fd407ce, type: 2}
     shield: {fileID: 7400000, guid: 1b3c649dcdaaf894db5c457215e5db87, type: 2}
+  - original: {fileID: 7400000, guid: 617bb96a2c0ab4741ac584d03ecf5435, type: 2}
+    shield: {fileID: 7400000, guid: ce17fb0217a6f72448cfeec8c4fd3c5b, type: 2}
+  - original: {fileID: 7400000, guid: cd57dccba0b37ef458d4c923c8a4119a, type: 2}
+    shield: {fileID: 7400000, guid: c795682d319656d489095ec71876fd66, type: 2}
+  - original: {fileID: 7400000, guid: 9d440ced786167d4a93ec619fc694f95, type: 2}
+    shield: {fileID: 7400000, guid: dd2087c6f8e66db4f8683c42d21c569c, type: 2}
+  - original: {fileID: 7400000, guid: f74777c0377d3f4499ab619190807020, type: 2}
+    shield: {fileID: 7400000, guid: cb6e71df0c1534448b4b6aa93bc27ef9, type: 2}
+  - original: {fileID: 7400000, guid: d846f378208baa6448e9e4ec5623fe0b, type: 2}
+    shield: {fileID: 7400000, guid: c0d1578f6daa908478b744840264fefa, type: 2}
+  - original: {fileID: 7400000, guid: 6654dc91838910549b6a24fbe747fc54, type: 2}
+    shield: {fileID: 7400000, guid: a4add09e0624e804baeb05a615a478d8, type: 2}
+  - original: {fileID: 7400000, guid: 57fc859810e355e4faf5e228b1ad8479, type: 2}
+    shield: {fileID: 7400000, guid: ce17fb0217a6f72448cfeec8c4fd3c5b, type: 2}
