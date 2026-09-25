@@ -33,6 +33,9 @@ public class PolygonWall : MonoBehaviour
     [Header("출입구")]
     [Tooltip("벽 한 면을 비워 출입구로 쓴다. -1이면 완전히 막는다.")]
     [SerializeField] private int gateSide = -1;
+    [Tooltip("출입구 면에서 이 칸만 비운다(0부터, 모듈 칸 나눔과 같다). -1이면 면 전체를 비운다. " +
+             "시공의 틈 문틀이 성벽 자리에 서도록 북쪽 면 가운데 칸을 비운다(2026-09-25 사용자가 씬에서 그 칸을 지웠다).")]
+    [SerializeField] private int gateSegment = -1;
 
     [Header("재질")]
     [SerializeField] private Material wallMaterial;
@@ -53,6 +56,16 @@ public class PolygonWall : MonoBehaviour
     [SerializeField, Min(0f)] private float moduleSink = 4f;
     [Tooltip("모서리 탑이 벽 위로 더 솟는 높이.")]
     [SerializeField, Min(0f)] private float cornerRise = 5f;
+
+    [Header("모서리 장식")]
+    [Tooltip("모서리 탑 꼭대기에 올리는 것(횃불 화로). 비우면 없음. 불빛은 발광뿐이다(점광원 없음).")]
+    [SerializeField] private GameObject cornerTopPrefab;
+    [SerializeField, Min(0.1f)] private float cornerTopScale = 1.3f;
+    [Tooltip("탑 맨 위(성가퀴 끝)에서 이만큼 내려 앉힌다 — 성가퀴 안쪽 바닥 높이.")]
+    [SerializeField, Min(0f)] private float cornerTopDrop = 2f;
+    [Tooltip("모서리 탑 안쪽(마을 쪽) 발치에 세우는 깃발. 비우면 없음.")]
+    [SerializeField] private GameObject cornerBannerPrefab;
+    [SerializeField, Min(0.1f)] private float cornerBannerScale = 1.4f;
 
     private Mesh mesh;
     private Transform modules;
@@ -184,7 +197,7 @@ public class PolygonWall : MonoBehaviour
             Vector3 inward = -((from + to) * 0.5f).normalized;
             Quaternion facing = Quaternion.LookRotation(inward, Vector3.up);   // 칸의 정면(+Z)이 마을 안쪽
 
-            if (i != gateSide)
+            if (i != gateSide || gateSegment >= 0)
             {
                 float length = along.magnitude / segmentsPerSide;
                 // 이음매가 벌어지지 않게 칸끼리 조금 겹친다.
@@ -193,6 +206,7 @@ public class PolygonWall : MonoBehaviour
                                         thickness / segment.size.z);
                 for (int k = 0; k < segmentsPerSide; k++)
                 {
+                    if (i == gateSide && k == gateSegment) continue;   // 출입구 칸
                     Vector3 spot = from + along * ((k + 0.5f) / segmentsPerSide);
                     Place(segmentPrefab, spot + Vector3.down * moduleSink, facing, scale);
                 }
@@ -206,6 +220,17 @@ public class PolygonWall : MonoBehaviour
                                         width / corner.size.z);
                 // 기둥처럼 모서리에서 바깥을 본다.
                 Place(cornerPrefab, from + Vector3.down * moduleSink, Quaternion.LookRotation(from.normalized, Vector3.up), scale);
+
+                // 저녁 거점의 탑 꼭대기 횃불과 안쪽 발치의 깃발(2026-09-25 참고 그림).
+                if (cornerTopPrefab != null)
+                    Place(cornerTopPrefab, from + Vector3.up * (height + cornerRise - cornerTopDrop), Quaternion.identity,
+                        Vector3.one * cornerTopScale);
+                if (cornerBannerPrefab != null)
+                {
+                    Vector3 toCenter = -from.normalized;
+                    Place(cornerBannerPrefab, from + toCenter * (width * 0.5f + 1.5f), Quaternion.LookRotation(toCenter, Vector3.up),
+                        Vector3.one * cornerBannerScale);
+                }
             }
         }
 
@@ -268,13 +293,23 @@ public class PolygonWall : MonoBehaviour
                 Quaternion.Euler(0f, pillarAngle, 0f),
                 new Vector3(pillarSize, pillarHeight, pillarSize));
 
-            if (i == gateSide) continue;   // 이 면은 비워 둔다
+            if (i == gateSide && gateSegment < 0) continue;   // 이 면은 비워 둔다
+
+            Vector3 along = next - corner;
+            float yaw = Mathf.Atan2(along.x, along.z) * Mathf.Rad2Deg;
+            if (i == gateSide)
+            {
+                // 출입구 칸만 비우고 양쪽을 따로 세운다. 충돌 메시도 같은 모양이라 문 안쪽(시공의 틈)을 눌러도 벽에 막히지 않는다.
+                int n = Mathf.Max(1, segmentsPerSide);
+                float gapFrom = Mathf.Clamp01(gateSegment / (float)n), gapTo = Mathf.Clamp01((gateSegment + 1) / (float)n);
+                AddWallPiece(vertices, uvs, wallTriangles, corner, along, 0f, gapFrom, yaw, centerY, totalHeight, true, false);
+                AddWallPiece(vertices, uvs, wallTriangles, corner, along, gapTo, 1f, yaw, centerY, totalHeight, false, true);
+                continue;
+            }
 
             // 벽 한 판. 모서리 기둥 안쪽으로 살짝 파고들게 해서 이음매가 벌어지지 않게 한다.
             Vector3 mid = (corner + next) * 0.5f;
-            Vector3 along = next - corner;
             float length = along.magnitude + thickness;
-            float yaw = Mathf.Atan2(along.x, along.z) * Mathf.Rad2Deg;
 
             AddBox(vertices, uvs, wallTriangles,
                 new Vector3(mid.x, centerY, mid.z),
@@ -289,6 +324,22 @@ public class PolygonWall : MonoBehaviour
         target.SetTriangles(pillarTriangles, 1);
         target.RecalculateNormals();
         target.RecalculateBounds();
+    }
+
+    // 면의 [from, to] 비율 구간만 벽 판으로 세운다. 모서리 쪽 끝은 기둥 안으로 반 두께만큼 파고든다(이음매).
+    private void AddWallPiece(List<Vector3> vertices, List<Vector2> uvs, List<int> triangles, Vector3 corner, Vector3 along,
+        float from, float to, float yaw, float centerY, float totalHeight, bool intoStart, bool intoEnd)
+    {
+        if (to <= from) return;
+        float full = along.magnitude;
+        Vector3 dir = along / full;
+        float start = from * full - (intoStart ? thickness * 0.5f : 0f);
+        float end = to * full + (intoEnd ? thickness * 0.5f : 0f);
+        Vector3 mid = corner + dir * ((start + end) * 0.5f);
+        AddBox(vertices, uvs, triangles,
+            new Vector3(mid.x, centerY, mid.z),
+            Quaternion.Euler(0f, yaw, 0f),
+            new Vector3(thickness, totalHeight, end - start));
     }
 
     private Vector3 CornerAt(int index, int count)

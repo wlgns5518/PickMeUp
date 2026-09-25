@@ -132,6 +132,35 @@ public class VillageBlockout : MonoBehaviour
     [Tooltip("부지 100㎡마다 심으려는 수. 건물·길·다른 나무에 걸리는 자리는 버리므로 실제로는 이보다 적다.")]
     [SerializeField, Min(0f)] private float lotTreeDensity = 2f;
 
+    [Header("가로등")]
+    [Tooltip("큰길 가장자리를 따라 세우는 등불(입구 길에는 세우지 않는다). 비우면 없음.")]
+    [SerializeField] private GameObject roadLampPrefab;
+    [Tooltip("같은 길에서 등불 사이 거리(미터). 양쪽을 번갈아 세운다.")]
+    [SerializeField, Min(4f)] private float roadLampSpacing = 22f;
+    [Tooltip("이름에 '큰길'이 든 길에서는 등불과 번갈아 이 깃발을 세운다. 비우면 등불만.")]
+    [SerializeField] private GameObject roadBannerPrefab;
+
+    [System.Serializable]
+    public class Extra
+    {
+        public string label;
+        public GameObject prefab;
+        [Tooltip("마을 좌표(미터). y는 바닥 윗면에서 잰 높이.")]
+        public Vector3 position;
+        public float yaw;
+        public float scale = 1f;
+    }
+
+    [Header("장식·효과")]
+    [Tooltip("자리를 정해 두고 세우는 것(광장 빛 알갱이·반딧불 등 입자 효과). 다시 세울 때마다 새로 만든다.")]
+    [SerializeField] private List<Extra> extras = new List<Extra>();
+
+    [Header("광장 마법진")]
+    [Tooltip("시공의 틈 앞 광장의 원 무늬(바깥 고리). 비우면 돌색. 은은한 청록 발광 머티리얼을 건다(VillageMood).")]
+    [SerializeField] private Material magicCircleMaterial;
+    [Tooltip("광장 가운데 원. 마법진의 핵심이라 고리보다 밝게.")]
+    [SerializeField] private Material magicCoreMaterial;
+
     [Header("나무")]
     [Tooltip("구역과 구역 사이 빈 자리에 나무를 심는다. 훈련소 둘레 숲은 이 값과 상관없이 늘 심는다.")]
     [SerializeField] private bool buildTrees = true;
@@ -176,11 +205,11 @@ public class VillageBlockout : MonoBehaviour
     private static readonly Color Turf       = new Color(0.34f, 0.44f, 0.28f);   // 나무 밑 잔디
 
     // 마을 바닥과 광장. 시설이 Meshy 파츠(어두운 돌·나무·쇠)로 바뀌어 밝은 베이지 바닥에서 따로 놀았다.
-    // 거점 분위기에 맞춰 어두운 포석 색으로 낮춘다.
-    private static readonly Color GroundColor = new Color(0.33f, 0.32f, 0.30f);
-    private static readonly Color PlazaBase   = new Color(0.29f, 0.29f, 0.28f);
-    private static readonly Color PlazaInner  = new Color(0.24f, 0.24f, 0.24f);
-    private static readonly Color PlazaRing   = new Color(0.42f, 0.41f, 0.38f);
+    // 다크 판타지 팔레트(VillagePalette)의 회청색 돌로 둔다. 광장 무늬(마법진)는 magicCircleMaterial이 있으면 그것을 쓴다.
+    private static readonly Color GroundColor = VillagePalette.DarkStone;
+    private static readonly Color PlazaBase   = Color.Lerp(VillagePalette.DarkStone, VillagePalette.Stone, 0.5f);
+    private static readonly Color PlazaInner  = VillagePalette.DarkStone * 0.85f;
+    private static readonly Color PlazaRing   = VillagePalette.LightStone;
 
     private readonly Dictionary<Color, Material> materials = new Dictionary<Color, Material>();
     private readonly Dictionary<Color, Material> glowMaterials = new Dictionary<Color, Material>();
@@ -263,7 +292,12 @@ public class VillageBlockout : MonoBehaviour
             }
         }
 
-        if (buildRoads) BuildRoads();
+        if (buildRoads)
+        {
+            BuildRoads();
+            BuildRoadLamps();
+        }
+        BuildExtras();
         if (buildTrees)
         {
             BuildTrees();
@@ -366,7 +400,8 @@ public class VillageBlockout : MonoBehaviour
         districts = new List<District>
         {
             // 시계 방향으로 12시가 정북. 거리 117.5는 성벽(반지름 124, 열두 각, 두께 4) 안쪽 면이다.
-            Make("시공의 틈",  Kind.Rift,        0f, 117.5f, 18f, "탑의 층으로 들어가는 입구. 벽이 갈라진 자리를 눌러 원정을 떠난다."),   // 12시
+            // 시공의 틈만 125 — 성벽 앞이 아니라 성벽 자리에 선다(북쪽 면 가운데 칸이 비어 있다, PolygonWall.gateSegment).
+            Make("시공의 틈",  Kind.Rift,        0f, 125f,   18f, "탑의 층으로 들어가는 입구. 벽이 갈라진 자리를 눌러 원정을 떠난다."),   // 12시
             Make("소환소",     Kind.Summoning,  60f,  78f, 18f, "새 동료를 불러낸다."),                                                  //  2시
             Make("비행선착장", Kind.Airdock,   150f,  78f, 18f, "비행선이 드나드는 자리."),                                              //  5시
             // 반원이라 곧은 변이 성벽에 닿도록 벽 앞(117.5)에 세운다. 둥근 쪽만 마을로 뻗는다.
@@ -1064,6 +1099,78 @@ public class VillageBlockout : MonoBehaviour
         }
     }
 
+    // 큰길 가장자리 등불 — 저녁 거점에서 길을 따라 따뜻한 점이 이어지게(2026-09-25 사용자가 준 참고 그림).
+    // 불빛은 등불 파츠의 발광뿐이다(점광원을 달지 않는다 — 수십 개라 모바일에서 감당이 안 된다).
+    // 입구 길("입구 · ")에는 세우지 않고, 다른 길 위·건물 자리·다른 등불 6m 안은 건너뛴다.
+    private void BuildRoadLamps()
+    {
+        if (roadLampPrefab == null || roads == null) return;
+
+        List<Rect> buildings = BuildingFootprints();
+        Transform root = NewChild(transform, "가로등", Vector3.zero, 0f);
+        float y = GroundY(Vector3.zero) - transform.position.y + (buildGround ? groundLift : 0f);
+        var placed = new List<Vector3>();
+
+        foreach (Road road in roads)
+        {
+            if (road == null || road.points == null || road.points.Count < 2) continue;
+            if (road.label != null && road.label.StartsWith("입구")) continue;
+
+            float offset = road.width * 0.5f + roadEdge + 0.9f;
+            float next = roadLampSpacing * 0.5f, walked = 0f;
+            int side = 1, count = 0;
+            bool main = roadBannerPrefab != null && road.label != null && road.label.Contains("큰길");
+            for (int i = 0; i < road.points.Count - 1; i++)
+            {
+                Vector2 a = road.points[i], b = road.points[i + 1];
+                float length = Vector2.Distance(a, b);
+                if (length < 0.01f) continue;
+                Vector2 dir = (b - a) / length;
+                var normal = new Vector2(-dir.y, dir.x);
+
+                for (; next <= walked + length; next += roadLampSpacing, side = -side)
+                {
+                    Vector2 p = a + dir * (next - walked) + normal * (offset * side);
+                    var spot = new Vector3(p.x, 0f, p.y);
+                    if (NearRoad(spot, 0.3f) || InsideAny(buildings, spot, 1f)) continue;
+                    bool crowded = false;
+                    foreach (Vector3 other in placed)
+                        if ((other - spot).sqrMagnitude < 36f) { crowded = true; break; }
+                    if (crowded) continue;
+                    placed.Add(spot);
+
+                    // 큰길은 등불·깃발을 번갈아 — 참고 그림의 깃발 늘어선 진입로.
+                    GameObject prefab = main && (count++ % 2 == 1) ? roadBannerPrefab : roadLampPrefab;
+                    GameObject lamp = Instantiate(prefab, root);
+                    lamp.name = prefab.name;
+                    lamp.transform.localPosition = new Vector3(spot.x, y, spot.z);
+                    // 등을 길 쪽으로 돌린다.
+                    lamp.transform.localRotation = Quaternion.LookRotation(new Vector3(-normal.x * side, 0f, -normal.y * side));
+                    MarkTree(lamp);
+                }
+                walked += length;
+            }
+        }
+    }
+
+    // 자리를 정해 둔 장식·효과(extras). 바닥 윗면 높이를 더해 세운다.
+    private void BuildExtras()
+    {
+        if (extras == null || extras.Count == 0) return;
+        Transform root = NewChild(transform, "장식", Vector3.zero, 0f);
+        float floor = GroundY(Vector3.zero) - transform.position.y + (buildGround ? groundLift : 0f);
+        foreach (Extra extra in extras)
+        {
+            if (extra == null || extra.prefab == null) continue;
+            GameObject go = Instantiate(extra.prefab, root);
+            go.name = string.IsNullOrEmpty(extra.label) ? extra.prefab.name : extra.label;
+            go.transform.localPosition = extra.position + Vector3.up * floor;
+            go.transform.localRotation = Quaternion.Euler(0f, extra.yaw, 0f);
+            go.transform.localScale = Vector3.one * extra.scale;
+            MarkTree(go);
+        }
+    }
+
     private static float Sqr(float v) => v * v;
 
     // 수관 반지름(미터). 프리팹 에셋의 렌더러 범위는 빌드에서 비어 올 수 있어 메시 범위로 잰다.
@@ -1525,9 +1632,11 @@ public class VillageBlockout : MonoBehaviour
 
         // 광장 무늬는 겹친 원으로만 만든다.
         // 가운데로 뻗는 살을 두면 길이 광장으로 모여드는 것처럼 보인다.
-        Cyl(root, "무늬 바깥", new Vector3(0f, 0.33f, 0f), 26f, 0.14f, PlazaRing, false);
+        GameObject ring = Cyl(root, "무늬 바깥", new Vector3(0f, 0.33f, 0f), 26f, 0.14f, PlazaRing, false);
         Cyl(root, "무늬 안", new Vector3(0f, 0.42f, 0f), 21f, 0.14f, PlazaBase, false);
-        Cyl(root, "가운데 무늬", new Vector3(0f, 0.51f, 0f), 9f, 0.12f, PlazaRing, false);
+        GameObject core = Cyl(root, "가운데 무늬", new Vector3(0f, 0.51f, 0f), 9f, 0.12f, PlazaRing, false);
+        if (magicCircleMaterial != null) ring.GetComponent<MeshRenderer>().sharedMaterial = magicCircleMaterial;
+        if (magicCoreMaterial != null) core.GetComponent<MeshRenderer>().sharedMaterial = magicCoreMaterial;
 
         // 기념비와 가로등은 두지 않는다. 시공의 틈 바로 앞이라 시야를 막는다.
         // 바닥 무늬와 화단만 남긴다.

@@ -332,10 +332,10 @@ public static class VillageEntrancePaths
             Transform root = village.transform;
             foreach (MeshRenderer renderer in root.GetComponentsInChildren<MeshRenderer>(true))
             {
-                // 바닥과 길은 밟는 것이다. 부지 나무는 길을 피해 다시 심기므로 길이 나무를 피할 까닭이 없다.
+                // 바닥과 길은 밟는 것이다. 부지 나무·가로등은 길을 피해 다시 세우므로 길이 그것을 피할 까닭이 없다.
                 Transform top = renderer.transform;
                 while (top.parent != null && top.parent != root) top = top.parent;
-                if (top.name == "바닥" || top.name == "길" || top.name == "부지 나무") continue;
+                if (top.name == "바닥" || top.name == "길" || top.name == "부지 나무" || top.name == "가로등" || top.name == "장식") continue;
 
                 var filter = renderer.GetComponent<MeshFilter>();
                 if (filter == null || filter.sharedMesh == null) continue;

@@ -15,17 +15,17 @@ OcclusionCullingSettings:
 RenderSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 10
-  m_Fog: 0
-  m_FogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
-  m_FogMode: 3
+  m_Fog: 1
+  m_FogColor: {r: 0.16, g: 0.2, b: 0.22, a: 1}
+  m_FogMode: 1
   m_FogDensity: 0.01
-  m_LinearFogStart: 0
-  m_LinearFogEnd: 300
-  m_AmbientSkyColor: {r: 0.212, g: 0.227, b: 0.259, a: 1}
-  m_AmbientEquatorColor: {r: 0.114, g: 0.125, b: 0.133, a: 1}
-  m_AmbientGroundColor: {r: 0.047, g: 0.043, b: 0.035, a: 1}
+  m_LinearFogStart: 115
+  m_LinearFogEnd: 400
+  m_AmbientSkyColor: {r: 0.22, g: 0.25, b: 0.27, a: 1}
+  m_AmbientEquatorColor: {r: 0.19, g: 0.21, b: 0.22, a: 1}
+  m_AmbientGroundColor: {r: 0.08, g: 0.085, b: 0.09, a: 1}
   m_AmbientIntensity: 1
-  m_AmbientMode: 0
+  m_AmbientMode: 1
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
   m_SkyboxMaterial: {fileID: 2100000, guid: 76d7b651b142397409afa59d7a66fce0, type: 2}
   m_HaloStrength: 0.5
@@ -36,7 +36,7 @@ RenderSettings:
   m_DefaultReflectionMode: 0
   m_DefaultReflectionResolution: 128
   m_ReflectionBounces: 1
-  m_ReflectionIntensity: 1
+  m_ReflectionIntensity: 0.6
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
   m_UseRadianceAmbientProbe: 0
@@ -1164,7 +1164,8 @@ MonoBehaviour:
   baseSink: 14
   pillarExtra: 3
   pillarHeightExtra: 3
-  gateSide: -1
+  gateSide: 11
+  gateSegment: 1
   wallMaterial: {fileID: 2100000, guid: 3dba0c9010cffcb4285f9928929e28aa, type: 2}
   pillarMaterial: {fileID: 2100000, guid: 8a135830c211c8140a29ce8c718e9067, type: 2}
   generateCollider: 1
@@ -1175,6 +1176,13 @@ MonoBehaviour:
   segmentsPerSide: 3
   moduleSink: 4
   cornerRise: 5
+  cornerTopPrefab: {fileID: 7335124107471033416, guid: 18dd4c4d823026a439b06fe6c3103c7c,
+    type: 3}
+  cornerTopScale: 2.6
+  cornerTopDrop: 3.0921767
+  cornerBannerPrefab: {fileID: 1731861764181130196, guid: 43539a06ccf8b4c4c8f82b84f3cf1944,
+    type: 3}
+  cornerBannerScale: 1.4
 --- !u!23 &66534173
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -5521,8 +5529,8 @@ Light:
   m_Enabled: 1
   serializedVersion: 13
   m_Type: 1
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
-  m_Intensity: 2
+  m_Color: {r: 0.78, g: 0.82, b: 0.88, a: 1}
+  m_Intensity: 1.25
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -5531,7 +5539,7 @@ Light:
     m_Type: 2
     m_Resolution: -1
     m_CustomResolution: -1
-    m_Strength: 1
+    m_Strength: 0.85
     m_Bias: 0.05
     m_NormalBias: 0.4
     m_NearPlane: 0.2
@@ -5566,7 +5574,7 @@ Light:
   m_AreaSize: {x: 1, y: 1}
   m_BounceIntensity: 1
   m_ColorTemperature: 5000
-  m_UseColorTemperature: 1
+  m_UseColorTemperature: 0
   m_BoundingSphereOverride: {x: 0, y: 0, z: 0, w: 0}
   m_UseBoundingSphereOverride: 0
   m_UseViewFrustumForShadowCasterCull: 1
@@ -24575,7 +24583,7 @@ MonoBehaviour:
       \uBCBD\uC774 \uAC08\uB77C\uC9C4 \uC790\uB9AC\uB97C \uB20C\uB7EC \uC6D0\uC815\uC744
       \uB5A0\uB09C\uB2E4."
     bearing: 0
-    distance: 117.5
+    distance: 125
     size: 18
     facing: 0
     useOtherBuilding: 0
@@ -25155,7 +25163,26 @@ MonoBehaviour:
   - {fileID: 1265747328178262, guid: 9e109038305bafc4eb9e6e34683f26b4, type: 3}
   - {fileID: 1160909292853286, guid: ac291e8de91a8954babcd46c906e0c32, type: 3}
   - {fileID: 1160909292853286, guid: ac291e8de91a8954babcd46c906e0c32, type: 3}
-  lotTreeDensity: 2
+  lotTreeDensity: 3
+  roadLampPrefab: {fileID: 3770149164211606638, guid: 15de97f3fa148ea4787894d8b65bd821,
+    type: 3}
+  roadLampSpacing: 16
+  roadBannerPrefab: {fileID: 1731861764181130196, guid: 43539a06ccf8b4c4c8f82b84f3cf1944,
+    type: 3}
+  extras:
+  - label: "\uAD11\uC7A5 \uB9C8\uBC95\uC9C4 \uD6A8\uACFC"
+    prefab: {fileID: 388412405149930555, guid: ee7e49e7fecd67a4681d0c6b007abbdc, type: 3}
+    position: {x: 0, y: 0, z: 105}
+    yaw: 0
+    scale: 0.8
+  - label: "\uBC18\uB527\uBD88"
+    prefab: {fileID: 8944467315985540970, guid: 41ff20024ff208449966171a6e06558d,
+      type: 3}
+    position: {x: 0, y: 0, z: 0}
+    yaw: 0
+    scale: 1
+  magicCircleMaterial: {fileID: 2100000, guid: 275aaea5382c7494f8ff618cd61cdd99, type: 2}
+  magicCoreMaterial: {fileID: 2100000, guid: ec2e27c6af062d945b142ca85fce52cd, type: 2}
   buildTrees: 1
   treeCount: 0
   treeMargin: 4
@@ -38400,6 +38427,7 @@ GameObject:
   - component: {fileID: 1611576143}
   - component: {fileID: 1611576142}
   - component: {fileID: 1611576141}
+  - component: {fileID: 1611576144}
   m_Layer: 0
   m_Name: Island Terrain
   m_TagString: Untagged
@@ -38483,6 +38511,19 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1159383353}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1611576144
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1611576140}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d2feaa7879407d94582aad9bd67bad36, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PickMeUp::TerrainTreeLod
+  lodBias: 0.2
 --- !u!1 &1663409353
 GameObject:
   m_ObjectHideFlags: 0

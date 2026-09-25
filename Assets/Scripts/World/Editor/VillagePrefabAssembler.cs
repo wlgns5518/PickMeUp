@@ -250,8 +250,11 @@ public static class VillagePrefabAssembler
 
         // 소환의 구슬. 문을 가리지 않게 앞 오른쪽 땅 위에 둔다(임시 도형에서 가장 눈에 띄던 것).
         Vector3 spot = Dir(38f) * (hall.plinthRadius + 3.5f);
-        b.Put(Slot.SideModule, "summon_orb", spot, 38f, b.Uniform("summon_orb", 8f / b.Shape("summon_orb").Height), All, true);
-        b.PointLight(spot + Vector3.up * 6f, new Color(0.62f, 0.45f, 1f), 16f, 3f, Lv3);
+        Placed orb = b.Put(Slot.SideModule, "summon_orb", spot, 38f, b.Uniform("summon_orb", 8f / b.Shape("summon_orb").Height), All, true);
+        // 거점에서 가장 먼저 눈에 들어와야 하는 자리 — 구슬의 청록 빛이 둘레 바닥·벽에 번지게 모든 레벨에서 켠다(그림자 없음).
+        Vector3 crystal = b.GlowCenter(orb, spot + Vector3.up * 6f);
+        b.PointLight(crystal, VillagePalette.MagicCyan, 16f, 3f, All);
+        b.PutFx(Slot.Lighting, "FX_OrbMotes", crystal, All);
     }
 
     private readonly struct Hall
@@ -367,7 +370,22 @@ public static class VillagePrefabAssembler
             b.Put(Slot.Decoration, "kit_obelisk", new Vector3(s * (side + 5f), 0f, archZ + 17f), 0f, b.Uniform("kit_obelisk", 0.8f), Lv3);
             b.PointLight(new Vector3(s * (side + 1.5f), 2.6f, archZ + 8f), new Color(1f, 0.6f, 0.3f), 12f, 2.5f, Lv3);
         }
+        // 포탈 빛 — 문 앞 바닥과 문틀을 청록으로 물들인다. 모든 레벨(그림자 없음). 3레벨 푸른 점광원은 그 위에 더해진다.
+        b.PointLight(new Vector3(0f, top * 0.35f, archZ + 4f), VillagePalette.MagicCyan, 28f, 3.5f, All);
         b.PointLight(new Vector3(0f, top * 0.5f, archZ + 3f), new Color(0.55f, 0.75f, 1f), 24f, 3f, Lv3);
+
+        // 문 앞에서 떠올라 문으로 빨려 드는 빛 알갱이, 문 안쪽 반짝임(문 구멍 크기에 맞춘다).
+        GameObject motes = b.PutFx(Slot.Lighting, "FX_PortalMotes", new Vector3(0f, 0f, archZ + 7f), All);
+        if (motes != null)
+        {
+            Transform sparkle = motes.transform.Find("Sparkle");
+            if (sparkle != null)
+            {
+                var shape = sparkle.GetComponent<ParticleSystem>().shape;
+                shape.position = new Vector3(0f, top * 0.5f, -6.2f);
+                shape.scale = new Vector3(halfWidth * 1.8f, top * 0.9f, 1f);
+            }
+        }
     }
 
     // ---- 네모난 집: 무기창고 -----------------------------------------------------------
@@ -434,6 +452,10 @@ public static class VillagePrefabAssembler
             b.Uniform("forge", ForgeHeight / b.Shape("forge").Height), All, true);
         float front = forge.transform.localPosition.z + forge.Depth * 0.5f;   // 화덕 앞면
 
+        // 불티는 화덕 불(발광 마스크가 가장 밝은 곳)에서, 연기는 굴뚝 꼭대기에서.
+        b.PutFx(Slot.Lighting, "FX_ForgeSparks", b.GlowCenter(forge, new Vector3(0f, floor + 2.5f, front - 2f)), All);
+        b.PutFx(Slot.Lighting, "FX_ChimneySmoke", forge.TopCenter(0.06f) + Vector3.up * 0.3f, All);
+
         // 계단 두 줄(각 4.5m)을 붙여 9m 폭으로.
         foreach (float x in new[] { -2.25f, 2.25f })
         {
@@ -461,9 +483,11 @@ public static class VillagePrefabAssembler
         b.PutAsset(Slot.UpgradeModule, Gaia.Prop("Stable02B"), new Vector3(-13.5f, floor, -8f), 90f, From2);
         b.Put(Slot.Decoration, "kit_crates", new Vector3(-10.5f, floor, -1f), 200f, b.Uniform("kit_crates", 0.9f), From2);
 
-        // 3레벨: 마당 밖 오른쪽 뒤 망루, 화덕 불빛과 화로 불빛.
+        // 화덕 불빛 — 주변 벽·바닥에 은은하게. 모든 레벨에서 켠다(그림자 없음).
+        b.PointLight(new Vector3(0f, floor + 2.5f, front + 1.5f), VillagePalette.WarmOrange, 11f, 1.6f, All);
+
+        // 3레벨: 마당 밖 오른쪽 뒤 망루와 화로 불빛.
         b.Put(Slot.SideModule, "kit_tower", new Vector3(18.5f, 0f, -8f), 200f, b.Uniform("kit_tower", 18f / b.Shape("kit_tower").Height), Lv3, true);
-        b.PointLight(new Vector3(0f, floor + 2.5f, front + 1.5f), new Color(1f, 0.55f, 0.25f), 14f, 2.5f, Lv3);
         b.PointLight(new Vector3(10.5f, floor + 2.2f, 8.5f), new Color(1f, 0.6f, 0.3f), 10f, 2f, Lv3);
     }
 
@@ -734,6 +758,22 @@ private static void BuildTraining(Builder b)
         public float Width => shape.Width * Scale.x;
         public float Depth => shape.Depth * Scale.z;
 
+        /// 파츠 맨 위 fraction(높이 비율) 안 정점들의 가운데(건물 공간) — 굴뚝 꼭대기처럼 가장 높이 솟은 곳.
+        public Vector3 TopCenter(float fraction)
+        {
+            Matrix4x4 m = Matrix4x4.TRS(transform.localPosition, transform.localRotation, Scale);
+            float cut = shape.bounds.max.y - shape.Height * fraction;
+            Vector3 sum = Vector3.zero;
+            int count = 0;
+            foreach (Vector3 v in shape.vertices)
+            {
+                if (v.y < cut) continue;
+                sum += m.MultiplyPoint3x4(v);
+                count++;
+            }
+            return count > 0 ? sum / count : new Vector3(transform.localPosition.x, Top, transform.localPosition.z);
+        }
+
         /// 건물 공간의 bearing 방향으로 이 파츠의 바깥 면이 가운데에서 얼마나 떨어져 있는가.
         /// y 띠(건물 공간 높이)와, 그 방향에 수직인 옆 폭(halfWidth) 안의 정점만 본다.
         public float Reach(float bearing, float y0, float y1, float halfWidth)
@@ -756,6 +796,55 @@ private static void BuildTraining(Builder b)
             if (float.IsNegativeInfinity(best)) best = Mathf.Abs(Vector3.Dot(Vector3.Scale(shape.bounds.extents, Scale), dir));
             return best;
         }
+    }
+
+    /// 조립하지 않고 단색 머티리얼(포털 판·훈련장 바닥) 값만 다시 적는다(VillageMood가 팔레트를 바꿀 때 부른다).
+    public static void RefreshNamedMaterials()
+    {
+        foreach (string name in new[] { "RiftVoid", "RiftGlow", "TrainingGround", "TrainingDirt" }) NamedMaterial(name);
+    }
+
+    // 파츠가 아닌 조각(포털 판, 훈련장 바닥)의 단색 머티리얼. 조립할 때마다 값을 다시 적어
+    // 여기 숫자를 고치면 다음 조립에 그대로 반영된다. 색은 다크 판타지 팔레트(VillagePalette).
+    private static Material NamedMaterial(string name)
+    {
+        string path = $"{MaterialRoot}/{name}.mat";
+        var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (material == null)
+        {
+            Directory.CreateDirectory(MaterialRoot);
+            material = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = name };
+            AssetDatabase.CreateAsset(material, path);
+        }
+
+        material.DisableKeyword("_EMISSION");
+        material.SetColor("_EmissionColor", Color.black);
+        switch (name)
+        {
+            case "RiftVoid":
+                material.SetColor("_BaseColor", VillagePalette.DarkStone * 0.3f);
+                material.SetFloat("_Smoothness", 0.75f);
+                break;
+            case "RiftGlow":
+                // 포탈 속 에너지 — 청록 마법광. "좀 더 화려하게"(2026-09-25)로 블룸에 걸리게 올렸다(1.0→1.8).
+                // 판이 커서 너무 올리면 하얗게 날아간다 — 앞에서 1.3도 하얗게 떴었는데, 지금은 해질녘이라 1.8까지 견딘다.
+                material.SetColor("_BaseColor", VillagePalette.DarkStone * 0.5f);
+                material.EnableKeyword("_EMISSION");
+                material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+                material.SetColor("_EmissionColor", VillagePalette.MagicCyan * 1.8f);
+                break;
+            case "TrainingGround":
+                material.SetColor("_BaseColor", Color.Lerp(VillagePalette.DarkStone, VillagePalette.Stone, 0.35f));
+                material.SetFloat("_Smoothness", 0.05f);
+                break;
+            case "TrainingDirt":
+                // 다진 흙 — 어두운 목재 빛을 조금 눌러 돌 바닥과 갈리게.
+                material.SetColor("_BaseColor", VillagePalette.DarkWood * 0.9f);
+                material.SetFloat("_Smoothness", 0.05f);
+                break;
+        }
+        EditorUtility.SetDirty(material);
+        return material;
     }
 
     private sealed class Builder
@@ -832,6 +921,51 @@ private static void BuildTraining(Builder b)
 
         public void Move(Placed placed, Vector3 position) => placed.transform.localPosition = position;
 
+        /// 입자 효과 프리팹(VillageFx)을 놓는다. 재질을 누르지 않는다(PutAsset은 Gaia 색 누름을 한다). 아직 안 구웠으면 건너뛴다.
+        public GameObject PutFx(Slot slot, string name, Vector3 position, Vector2Int levels)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(VillageFx.PrefabPath(name));
+            if (prefab == null)
+            {
+                Debug.LogWarning($"[VillagePrefabAssembler] 효과가 아직 없다: {name} (메뉴 12. 입자 효과 다시 굽기)");
+                return null;
+            }
+            var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, slots[slot]);
+            go.name = Label(name, levels);
+            go.transform.localPosition = position;
+            Register(slot, go, levels);
+            return go;
+        }
+
+        /// 파츠에서 발광이 가장 센 곳의 가운데(건물 공간). 발광 마스크를 파츠 표면에 펼쳐 밝은 칸의 3D 위치를 평균낸다 —
+        /// 화덕 불, 구슬 수정처럼 효과를 얹을 자리. 마스크가 없거나 비었으면 fallback.
+        public Vector3 GlowCenter(Placed placed, Vector3 fallback)
+        {
+            string id = placed.shape.mesh.name.Replace("_mesh", "");
+            string path = $"Assets/Environment/Village/Parts/{id}/{id}_emission.jpg";
+            if (!File.Exists(path)) return fallback;
+            var mask = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            mask.LoadImage(File.ReadAllBytes(path));
+            VillagePartSurface surface = VillagePartSurface.Unwrap(placed.shape.mesh, mask.width, mask.height, 0);
+            Color32[] px = mask.GetPixels32();
+            UnityEngine.Object.DestroyImmediate(mask);
+            if (surface == null) return fallback;
+
+            Vector3 sum = Vector3.zero;
+            float weight = 0f;
+            for (int i = 0; i < px.Length; i++)
+            {
+                if (!surface.covered[i]) continue;
+                float w = Mathf.Max(px[i].r, Mathf.Max(px[i].g, px[i].b)) / 255f;
+                if (w < 0.5f) continue;
+                sum += surface.positions[i] * w;
+                weight += w;
+            }
+            if (weight <= 0f) return fallback;
+            Matrix4x4 m = Matrix4x4.TRS(placed.transform.localPosition, placed.transform.localRotation, placed.transform.localScale);
+            return m.MultiplyPoint3x4(sum / weight);
+        }
+
         /// 우리 파츠가 아닌 에셋 프리팹(Gaia)을 그대로 놓는다. 콜라이더·LOD는 원본 것을 쓰고, 색만 마을 톤으로 누른다.
         public GameObject PutAsset(Slot slot, string path, Vector3 position, float yaw, Vector2Int levels, float scale = 1f)
         {
@@ -874,6 +1008,7 @@ private static void BuildTraining(Builder b)
 
         // Gaia 3DForge 에셋은 회벽이 희고 지붕 널이 밝은 갈색이라 Meshy 파츠(어두운 돌·쇠) 옆에서 튄다.
         // 원본 머티리얼은 Gaia 패키지 안(저장소 밖, 재설치하면 되돌아간다)이라 건드리지 않고, 색만 누른 사본을 우리 폴더에 둔다.
+        // 처음 만들 때만 0.72로 누른다. 그 뒤 다크 판타지 팔레트로 다시 칠한 아틀라스·색은 VillageGaiaSkin이 넣고, 조립이 덮지 않는다.
         private const float GaiaTone = 0.72f;
 
         private static Material Toned(Material source)
@@ -882,12 +1017,11 @@ private static void BuildTraining(Builder b)
             string folder = $"{MaterialRoot}/Gaia";
             string path = $"{folder}/{source.name}_Village.mat";
             var toned = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (toned == null)
-            {
-                Directory.CreateDirectory(folder);
-                toned = new Material(source) { name = source.name + "_Village" };
-                AssetDatabase.CreateAsset(toned, path);
-            }
+            if (toned != null) return toned;   // 이미 있으면 그대로 — 팔레트 색은 VillageGaiaSkin.BakeHouseAtlas가 넣는다
+
+            Directory.CreateDirectory(folder);
+            toned = new Material(source) { name = source.name + "_Village" };
+            AssetDatabase.CreateAsset(toned, path);
             if (source.HasProperty("_Color"))
             {
                 Color color = source.GetColor("_Color") * GaiaTone;
@@ -1023,46 +1157,7 @@ private static void BuildTraining(Builder b)
             Register(Slot.Lighting, go, levels);
         }
 
-        // 파츠가 아닌 조각(포털 판, 훈련장 바닥)의 단색 머티리얼. 조립할 때마다 값을 다시 적어
-        // 여기 숫자를 고치면 다음 조립에 그대로 반영된다.
-        public Material Material(string name)
-        {
-            string path = $"{MaterialRoot}/{name}.mat";
-            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (material == null)
-            {
-                Directory.CreateDirectory(MaterialRoot);
-                material = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = name };
-                AssetDatabase.CreateAsset(material, path);
-            }
-
-            material.DisableKeyword("_EMISSION");
-            material.SetColor("_EmissionColor", Color.black);
-            switch (name)
-            {
-                case "RiftVoid":
-                    material.SetColor("_BaseColor", new Color(0.04f, 0.03f, 0.07f));
-                    material.SetFloat("_Smoothness", 0.75f);
-                    break;
-                case "RiftGlow":
-                    // 하얗게 날아가지 않게 어두운 보라 바탕에 푸른 보라로 은은하게. 1을 넘기면 블룸에서 흰 판이 된다.
-                    material.SetColor("_BaseColor", new Color(0.10f, 0.07f, 0.22f));
-                    material.EnableKeyword("_EMISSION");
-                    material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
-                    material.SetColor("_EmissionColor", new Color(0.32f, 0.22f, 0.85f) * 0.9f);
-                    break;
-                case "TrainingGround":
-                    material.SetColor("_BaseColor", new Color(0.24f, 0.23f, 0.21f));
-                    material.SetFloat("_Smoothness", 0.05f);
-                    break;
-                case "TrainingDirt":
-                    material.SetColor("_BaseColor", new Color(0.30f, 0.25f, 0.19f));
-                    material.SetFloat("_Smoothness", 0.05f);
-                    break;
-            }
-            EditorUtility.SetDirty(material);
-            return material;
-        }
+        public Material Material(string name) => NamedMaterial(name);
 
         private void Register(Slot slot, GameObject go, Vector2Int levels)
         {

@@ -93,16 +93,16 @@ public static class VillagePartBaker
             "a building entrance: a pointed gothic arch doorway frame of dark carved stone blocks holding a heavy closed " +
             "double door of dark aged oak planks reinforced with black iron straps and a ring handle, " +
             "and a small dark slate canopy on two iron brackets above it." + FlatBack),
-        new Part("kit_window", 3.2f, 1500, 1024, 0.6f,
+        new Part("kit_window", 3.2f, 1500, 1024, 1.4f,
             "a single tall narrow gothic window: pointed arch stone frame with a stone sill, dark iron grille bars " +
             "and leaded glass glowing with warm candlelight from inside." + FlatBack),
         new Part("kit_buttress", 7f, 1500, 1024, 0f,
             "a single stone wall buttress: a tall narrow sloped pier of dark grey stone blocks that steps back twice as it rises, " +
             "wrapped by two black riveted iron bands." + FlatBack),
-        new Part("kit_lantern", 4f, 1500, 1024, 0.8f,
+        new Part("kit_lantern", 4f, 1500, 1024, 3f,
             "a street lantern post: a slim black forged iron post on a small square stone base, with a square iron lantern " +
             "with glass panes and a warm candle flame hanging from a curled bracket at the top."),
-        new Part("kit_brazier", 1.8f, 1500, 1024, 1.5f,
+        new Part("kit_brazier", 1.8f, 1500, 1024, 3f,
             "a standing fire brazier: a wide black iron bowl on three curved iron legs, filled with glowing embers and " +
             "a bright orange fire, on a small round stone base."),
         new Part("kit_banner", 7f, 1500, 1024, 0f,
@@ -148,14 +148,14 @@ public static class VillagePartBaker
             "The bottom rim is a flat level rectangle. Only the roof, no walls under it."),
 
         // ---- 시설마다 하나뿐인 것 -----------------------------------------------------------
-        new Part("rift_arch", 24f, 6000, 2048, 0.4f,
+        new Part("rift_arch", 24f, 6000, 2048, 2.4f,
             "a massive ancient gothic stone gateway standing alone: two thick dark stone pillars joined by a tall pointed arch, " +
             "carved with worn faintly glowing violet runes, bound by heavy black iron braces with broken chains hanging, " +
             "the arch cracked with a few stones missing. The opening inside the arch is empty. Taller than wide."),
-        new Part("summon_orb", 9f, 3000, 1024, 1.2f,
+        new Part("summon_orb", 9f, 3000, 1024, 2.4f,
             "a large summoning orb shrine: a big smooth dark crystal sphere glowing faint violet from inside, held up by " +
             "four curved black iron claws rising from a round carved stone pedestal with glowing rune marks."),
-        new Part("forge", 8f, 5000, 2048, 1.0f,
+        new Part("forge", 8f, 5000, 2048, 2.2f,
             "an open-sided blacksmith forge: a heavy stone hearth with glowing coals under a dark slate lean-to roof " +
             "on thick timber posts, a tall stone chimney, a black iron anvil on a stump, a quench barrel and hanging tools."),
         new Part("weapon_rack", 2.6f, 2000, 1024, 0f,
@@ -537,7 +537,7 @@ public static class VillagePartBaker
 
             if (part.glow > 0f)
             {
-                emission = GlowMask(albedo, part.textureSize / 2);
+                emission = GlowMask(albedo, part.textureSize / 2, GlowTints.ContainsKey(part.id), part.id);
                 File.WriteAllBytes(EmissionPath(part.id), emission.EncodeToJPG(90));
             }
         }
@@ -589,21 +589,107 @@ public static class VillagePartBaker
         return result;
     }
 
+    // 발광 색(2026-09-25 다크 판타지 팔레트, VillagePalette). 여기 있는 파츠는 발광 마스크를 무채색으로 굽고 이 색을 곱한다 —
+    // 원래 마스크는 베이스 컬러 색(구슬은 보라, 창은 촛불색)이라 색을 곱하면 탁해진다.
+    // 마법(구슬·포탈 문틀 룬·창·오벨리스크)은 청록, 대장간 화덕은 주황. 등불·화로는 원래 불빛 색 그대로.
+    private static readonly Dictionary<string, Color> GlowTints = new Dictionary<string, Color>
+    {
+        ["summon_orb"] = VillagePalette.MagicBright,
+        ["rift_arch"] = VillagePalette.MagicCyan,
+        ["kit_window"] = VillagePalette.MagicCyan,
+        ["kit_obelisk"] = VillagePalette.MagicCyan,
+        ["forge"] = VillagePalette.WarmOrange,
+        // 등불 유리 — 저녁 거점의 따뜻한 등불(참고 그림).
+        ["kit_lantern"] = Color.Lerp(VillagePalette.WarmOrange, VillagePalette.Gold, 0.5f),
+    };
+
+    // 밝기가 아니라 색상(HSV hue)으로 빛나는 곳을 고르는 파츠. 소환 구슬의 수정은 어두운 보라라 "밝고 채도 있는 곳" 마스크에
+    // 거의 안 걸렸다(최댓값 0.09) — 구슬이 한 번도 빛나지 않았다. 수정의 보라 hue 구간을 통째로 빛나게 한다.
+    private static readonly Dictionary<string, Vector2> HueGlow = new Dictionary<string, Vector2>
+    {
+        ["summon_orb"] = new Vector2(0.62f, 0.82f),
+    };
+
+    // 채도 없이 밝기만으로 고르는 파츠. 등불 유리는 흰 크림색이라 같은 마스크가 통째로 비어 있었다(최댓값 0) — 등불이 한 번도
+    // 켜지지 않았다. 검은 쇠 등 속의 가장 밝은 곳이 유리다.
+    private static readonly HashSet<string> BrightGlow = new HashSet<string> { "kit_lantern" };
+
+    /// 발광 색만 바꿨을 때: 색을 곱할 파츠의 발광 마스크를 무채색으로 바꾸고 머티리얼을 다시 쓴다(크레딧·원본 없이).
+    [MenuItem("PickMeUp/Village/파츠 발광 색 다시 쓰기", priority = 71)]
+    public static void RetintGlow()
+    {
+        foreach (Part part in Parts)
+        {
+            if (part.glow <= 0f || !File.Exists(EmissionPath(part.id)) || AssetDatabase.LoadAssetAtPath<Material>(MaterialPath(part.id)) == null)
+                continue;
+            if (HueGlow.ContainsKey(part.id) || BrightGlow.Contains(part.id))
+            {
+                // 앉혀 둔 베이스 컬러에서 다시 뽑는다.
+                var albedo = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                albedo.LoadImage(File.ReadAllBytes(AlbedoPath(part.id)));
+                Texture2D mask = GlowMask(albedo, part.textureSize / 2, true, part.id);
+                File.WriteAllBytes(EmissionPath(part.id), mask.EncodeToJPG(90));
+                UnityEngine.Object.DestroyImmediate(albedo);
+                UnityEngine.Object.DestroyImmediate(mask);
+                AssetDatabase.ImportAsset(EmissionPath(part.id), ImportAssetOptions.ForceUpdate);
+            }
+            else if (GlowTints.ContainsKey(part.id))
+            {
+                var mask = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                mask.LoadImage(File.ReadAllBytes(EmissionPath(part.id)));
+                Color32[] px = mask.GetPixels32();
+                for (int i = 0; i < px.Length; i++)
+                {
+                    byte v = Math.Max(px[i].r, Math.Max(px[i].g, px[i].b));
+                    px[i] = new Color32(v, v, v, 255);
+                }
+                mask.SetPixels32(px);
+                mask.Apply();
+                File.WriteAllBytes(EmissionPath(part.id), mask.EncodeToJPG(90));
+                UnityEngine.Object.DestroyImmediate(mask);
+                AssetDatabase.ImportAsset(EmissionPath(part.id), ImportAssetOptions.ForceUpdate);
+            }
+            WriteMaterial(part);
+        }
+        AssetDatabase.SaveAssets();
+    }
+
     // 베이스 컬러에서 불꽃·등불·룬만 남긴다. 밝으면서 채도가 있는 곳이다 —
-    // 돌의 밝은 모서리는 회색(채도 없음)이고 이끼·녹은 어두워서 걸러진다.
-    private static Texture2D GlowMask(Texture2D albedo, int size)
+    // 돌의 밝은 모서리는 회색(채도 없음)이고 이끼·녹은 어두워서 걸러진다. gray면 세기만 남긴다(색은 GlowTints).
+    private static Texture2D GlowMask(Texture2D albedo, int size, bool gray, string id = null)
     {
         Texture2D small = Downsample(albedo, size);
         Color32[] px = small.GetPixels32();
+        bool byHue = id != null && HueGlow.TryGetValue(id, out _);
+        Vector2 hues = byHue ? HueGlow[id] : default;
         for (int i = 0; i < px.Length; i++)
         {
             Color c = px[i];
             float max = Mathf.Max(c.r, Mathf.Max(c.g, c.b));
             float min = Mathf.Min(c.r, Mathf.Min(c.g, c.b));
             float saturation = max > 0.001f ? (max - min) / max : 0f;
-            float weight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 0.85f, max)) *
-                           Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.2f, 0.45f, saturation));
-            px[i] = new Color(c.r * weight, c.g * weight, c.b * weight, 1f);
+            float weight;
+            if (byHue)
+            {
+                Color.RGBToHSV(c, out float hue, out _, out _);
+                float inside = Mathf.Min(hue - hues.x, hues.y - hue);   // 구간 안쪽으로 얼마나 들어왔나
+                weight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 0.03f, inside)) *
+                         Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.12f, 0.25f, saturation)) *
+                         Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.12f, 0.3f, max));
+                // 수정 전체가 고르게 빛나게 밝기를 거의 1로 둔다.
+                max = Mathf.Lerp(0.75f, 1f, max);
+            }
+            else if (id != null && BrightGlow.Contains(id))
+            {
+                weight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 0.8f, max));
+                max = 1f;
+            }
+            else
+            {
+                weight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 0.85f, max)) *
+                         Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.2f, 0.45f, saturation));
+            }
+            px[i] = gray ? new Color(max * weight, max * weight, max * weight, 1f) : new Color(c.r * weight, c.g * weight, c.b * weight, 1f);
         }
         small.SetPixels32(px);
         small.Apply();
@@ -648,7 +734,7 @@ public static class VillagePartBaker
             material.EnableKeyword("_EMISSION");
             material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
             material.SetTexture("_EmissionMap", AssetDatabase.LoadAssetAtPath<Texture2D>(EmissionPath(part.id)));
-            material.SetColor("_EmissionColor", Color.white * part.glow);
+            material.SetColor("_EmissionColor", (GlowTints.TryGetValue(part.id, out Color tint) ? tint : Color.white) * part.glow);
         }
         else
         {

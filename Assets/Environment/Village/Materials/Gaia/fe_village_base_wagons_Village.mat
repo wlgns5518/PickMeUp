@@ -134,7 +134,7 @@ Material:
     - _QueueOffset: 0
     - _WrapLighting: 0
     m_Colors:
-    - _Color: {r: 0.42352945, g: 0.42352945, b: 0.42352945, a: 1}
+    - _Color: {r: 0.5908391, g: 0.48072633, b: 0.45217553, a: 1}
     - _PW_CoverLayer0Color: {r: 1, g: 1, b: 1, a: 1}
     - _PW_CoverLayer1Color: {r: 0.7490196, g: 0.7490196, b: 0.7490196, a: 1}
     - _PW_SSSTint: {r: 1, g: 1, b: 1, a: 1}

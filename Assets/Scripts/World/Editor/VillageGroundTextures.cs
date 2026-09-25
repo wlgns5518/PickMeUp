@@ -36,14 +36,18 @@ public static class VillageGroundTextures
 
     // ---- 재질 --------------------------------------------------------------------
 
+    // 색은 다크 판타지 팔레트(VillagePalette)에서 온다 — 무늬 평균이 그 색이 되도록 틴트를 잰다(VillageColorGrade).
+    // 바닥은 어두운 돌, 길은 한 단 밝은 돌(시설로 이어지는 길이 읽히게), 연석은 바닥보다 더 어둡게, 부지는 어두운 풀.
+
     /// 도로 윗면. 한 장이 TileMeters를 덮게 VillageBlockout의 roadTile과 맞춘다.
     public static Material Road()
     {
         EnsureTextures();
         Material m = Lit("Road");
-        m.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(AlbedoPath));
+        var albedo = AssetDatabase.LoadAssetAtPath<Texture2D>(AlbedoPath);
+        m.SetTexture("_BaseMap", albedo);
         SetNormal(m, AssetDatabase.LoadAssetAtPath<Texture2D>(NormalPath), 1f);
-        m.SetColor("_BaseColor", new Color(0.92f, 0.92f, 0.94f));
+        m.SetColor("_BaseColor", VillageColorGrade.TintFor(albedo, Color.Lerp(VillagePalette.DarkStone, VillagePalette.Stone, 0.65f)));
         m.SetFloat("_Smoothness", 0.12f);
         return Save(m);
     }
@@ -53,9 +57,10 @@ public static class VillageGroundTextures
     {
         EnsureTextures();
         Material m = Lit("RoadEdge");
-        m.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(AlbedoPath));
+        var albedo = AssetDatabase.LoadAssetAtPath<Texture2D>(AlbedoPath);
+        m.SetTexture("_BaseMap", albedo);
         SetNormal(m, AssetDatabase.LoadAssetAtPath<Texture2D>(NormalPath), 1f);
-        m.SetColor("_BaseColor", new Color(0.30f, 0.30f, 0.33f));
+        m.SetColor("_BaseColor", VillageColorGrade.TintFor(albedo, VillagePalette.DarkStone * 0.65f));
         m.SetFloat("_Smoothness", 0.1f);
         return Save(m);
     }
@@ -64,9 +69,10 @@ public static class VillageGroundTextures
     public static Material Lot()
     {
         Material m = Lit("Lot");
-        m.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(GrassAlbedo));
+        var albedo = AssetDatabase.LoadAssetAtPath<Texture2D>(GrassAlbedo);
+        m.SetTexture("_BaseMap", albedo);
         SetNormal(m, null, 1f);
-        m.SetColor("_BaseColor", new Color(0.50f, 0.58f, 0.46f));
+        m.SetColor("_BaseColor", albedo != null ? VillageColorGrade.TintFor(albedo, VillagePalette.Grass) : VillagePalette.Grass);
         m.SetFloat("_Smoothness", 0.05f);
         return Save(m);
     }
@@ -82,7 +88,8 @@ public static class VillageGroundTextures
         SetNormal(m, AssetDatabase.LoadAssetAtPath<Texture2D>(NormalPath), 0.8f);
         float tiles = diameter / (TileMeters * 1.5f);
         m.SetTextureScale("_BaseMap", new Vector2(tiles, tiles));
-        m.SetColor("_BaseColor", new Color(0.58f, 0.58f, 0.60f));
+        m.SetColor("_BaseColor", VillageColorGrade.TintFor(m.GetTexture("_BaseMap"),
+            VillagePalette.DarkStone));
         m.SetFloat("_Smoothness", 0.08f);
         return Save(m);
     }
