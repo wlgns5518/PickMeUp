@@ -1841,10 +1841,13 @@ MonoBehaviour:
     guardStyle: 0
     isTank: 0
     threatWeight: 1
+    enemyAttackSlots: 0
     backlinePreference: 0
     peelBonus: 0
+    focusBonus: 0
     engageAngle: 0
     keepDistanceRange: 0
+    fleeByRunning: 0
     viewAngle: 0
     affinity: 0
     castSpeedMultiplier: 1
@@ -1901,6 +1904,8 @@ MonoBehaviour:
     staggerDamageMultiplier: 1.4
     hitStopDuration: 0.06
     hitStopScale: 0.12
+    hitFlinchDuration: 0.35
+    hitFlinchMoveMultiplier: 0.55
     retreatHpThreshold: 0.25
     canHealAllies: 0
     healAmount: 25
@@ -1910,6 +1915,22 @@ MonoBehaviour:
     healTargetHpRatio: 0.7
     dispelOnHeal: 1
     dispelPriorityBonus: 0.2
+    canStealth: 0
+    stealthDelay: 0.8
+    stealthDamageMultiplier: 0.35
+    stealthRevealRange: 2.2
+    stalkAfterCombo: 0
+    stalkDistance: 6
+    stalkMinDuration: 0.7
+    stalkMaxDuration: 2.5
+    stalkSkipHpRatio: 0.3
+    canShieldAllies: 0
+    shieldAmount: 45
+    shieldDuration: 6
+    shieldCooldown: 7
+    shieldManaCost: 18
+    shieldThreatCount: 2
+    currentShield: 0
   agent: {fileID: 0}
   animator: {fileID: 0}
   scanner: {fileID: 0}
@@ -1929,7 +1950,6 @@ MonoBehaviour:
   - {fileID: 2360933683143488451, guid: 730678b8a5330c449ada55bde83402ce, type: 3}
   - {fileID: 5016170632959171363, guid: c3ed06559a66b724b91c3124e75ddec9, type: 3}
   - {fileID: 8859926575668995837, guid: 097a30048e9007141899f834041a5ac7, type: 3}
-  - {fileID: 5936082179827903908, guid: cb58ece77d11ef945aecd072f2e46a8d, type: 3}
   - {fileID: 5494213943435191861, guid: db51fe09adf27d640b4e10018c2d76ba, type: 3}
   - {fileID: 5371219466416337994, guid: f9e099178c81bee439a79eecec91dacb, type: 3}
   bloodEffectOffset: {x: 0, y: 1, z: 0}
@@ -1976,9 +1996,9 @@ MonoBehaviour:
   moveSpeedDampTime: 0.15
   animatorCullingMode: 1
   disableAnimatorAfterDeath: 1
-  debugLogs: 0
-  currentStateName: 
+  currentBehaviorName: 
   currentTargetName: 
+  retreatDirectionHold: 1.5
 --- !u!114 &6204127898441601742
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2041,7 +2061,6 @@ MonoBehaviour:
   defaultOffHand: {fileID: 0}
   drawTime: 0.35
   releaseTime: 0.12
-  debugLogs: 0
 --- !u!114 &4122659743410037250
 MonoBehaviour:
   m_ObjectHideFlags: 0

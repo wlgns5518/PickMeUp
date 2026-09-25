@@ -172,6 +172,7 @@ MonoBehaviour:
     guardStyle: 0
     isTank: 0
     threatWeight: 1
+    enemyAttackSlots: 0
     backlinePreference: 0
     peelBonus: 0
     focusBonus: 0
@@ -234,6 +235,8 @@ MonoBehaviour:
     staggerDamageMultiplier: 1.4
     hitStopDuration: 0.06
     hitStopScale: 0.12
+    hitFlinchDuration: 0.35
+    hitFlinchMoveMultiplier: 0.55
     retreatHpThreshold: 0.25
     canHealAllies: 0
     healAmount: 25
@@ -278,7 +281,6 @@ MonoBehaviour:
   - {fileID: 2360933683143488451, guid: 730678b8a5330c449ada55bde83402ce, type: 3}
   - {fileID: 5016170632959171363, guid: c3ed06559a66b724b91c3124e75ddec9, type: 3}
   - {fileID: 8859926575668995837, guid: 097a30048e9007141899f834041a5ac7, type: 3}
-  - {fileID: 5936082179827903908, guid: cb58ece77d11ef945aecd072f2e46a8d, type: 3}
   - {fileID: 5494213943435191861, guid: db51fe09adf27d640b4e10018c2d76ba, type: 3}
   - {fileID: 5371219466416337994, guid: f9e099178c81bee439a79eecec91dacb, type: 3}
   bloodEffectOffset: {x: 0, y: 1, z: 0}
@@ -325,7 +327,6 @@ MonoBehaviour:
   moveSpeedDampTime: 0.15
   animatorCullingMode: 1
   disableAnimatorAfterDeath: 1
-  debugLogs: 0
   currentBehaviorName: 
   currentTargetName: 
   retreatDirectionHold: 1.5
@@ -391,7 +392,6 @@ MonoBehaviour:
   defaultOffHand: {fileID: 0}
   drawTime: 0.35
   releaseTime: 0.12
-  debugLogs: 0
 --- !u!114 &4116191302638315253
 MonoBehaviour:
   m_ObjectHideFlags: 0

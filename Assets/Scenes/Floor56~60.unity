@@ -1491,6 +1491,7 @@ MonoBehaviour:
   axisMoveThreshold: 1
   lookRotationEuler: {x: 36, y: 270, z: 0}
   rotationSpeed: 5
+  refocusDelayAfterDeath: 1
 --- !u!1 &371861223
 GameObject:
   m_ObjectHideFlags: 0
@@ -3506,7 +3507,6 @@ MonoBehaviour:
   - {fileID: 2360933683143488451, guid: 730678b8a5330c449ada55bde83402ce, type: 3}
   - {fileID: 5016170632959171363, guid: c3ed06559a66b724b91c3124e75ddec9, type: 3}
   - {fileID: 8859926575668995837, guid: 097a30048e9007141899f834041a5ac7, type: 3}
-  - {fileID: 5936082179827903908, guid: cb58ece77d11ef945aecd072f2e46a8d, type: 3}
   - {fileID: 5494213943435191861, guid: db51fe09adf27d640b4e10018c2d76ba, type: 3}
   - {fileID: 5371219466416337994, guid: f9e099178c81bee439a79eecec91dacb, type: 3}
   bloodColor: {r: 0.235, g: 1, b: 0.16, a: 1}
@@ -3556,6 +3556,14 @@ MonoBehaviour:
   hitStopScale: 0.1
   hitFlinchDuration: 0.4
   hitFlinchMoveMultiplier: 0.5
+  patrolDelay: 3
+  patrolSpeed: 1.5
+  patrolPauseMin: 1
+  patrolPauseMax: 2.5
+  searchRadiusStart: 6
+  searchRadiusGrowth: 6
+  patrolEdgeMargin: 2
+  fallbackPatrolHalfExtent: 38
   hpPerLevel: 0.15
   damagePerLevel: 0.1
 --- !u!4 &986908206
@@ -11017,9 +11025,6 @@ MonoBehaviour:
     mvpTankWeight: 0.3
     materialsMin: 2
     materialsMax: 3
-    floorsPerGrade: 2
-    gradeDownChance: 0.25
-    gradeUpChance: 0.15
 --- !u!4 &1973978574
 Transform:
   m_ObjectHideFlags: 0
