@@ -884,6 +884,56 @@ public partial class UnitController
         noticedThreat.IsTelegraphing &&
         Time.time >= noticedThreatTime + noticedThreatDelay;
 
+    // ---------------------------------------------------------------- 막기가 먼저다
+
+    // 나를 노리고 칼을 들어올린 적을 봤다. 반응 시간이 아직 안 끝났어도 참이다.
+    //
+    // 이 동안은 새 스윙을 시작하지 않는다(CanAttack·스킬·도약). 막는 것이 치는 것보다 먼저다.
+    // 예전에는 반응 시간이 도는 사이에도 칼이 나갔다 — 실측(12층, 5인 90초): 맞은 303대 중 179대(59%)가
+    // 제 스윙에 묶여 있던 중이었고 막으면서 받은 것은 12대였다. 적의 준비 동작은 0.4초인데 아군의
+    // 스윙은 0.5~1.7초라, 한 번 휘두르기 시작하면 그 사이에 들어오는 칼을 받을 방법이 없었다.
+    // 이제는 상대가 칼을 드는 동안은 기다렸다 막고, 그 칼이 지나간 뒤(상대의 회수 동작)에 친다 —
+    // 원작의 "적의 턴에는 받고 후딜에만 넣는다"가 이것이다.
+    public bool IsHoldingForGuard =>
+        CanEverBlock() &&
+        noticedThreat.Exists &&
+        noticedThreat.IsAlive &&
+        noticedThreat.IsTelegraphing;
+
+    // 내지른 뒤 칼을 거두는 동작을 끊고 방어로 넘어가기 전에 남겨 둘 시간(초).
+    // 타격 프레임 직후 곧바로 끊으면 칼이 닿기도 전에 방패가 올라간 것처럼 보인다.
+    private const float GuardFollowThrough = 0.12f;
+
+    // 이번 스윙이 상대에게 닿은(또는 헛친) 시각. 회수 동작을 언제부터 끊을 수 있는지 잰다.
+    private float lastStrikeTime = -999f;
+
+    // 휘두르던 것을 거두고 막을 수 있는가.
+    //
+    // 내지르기 전(준비 동작)과, 내지르고 칼을 거두는 동작(회수) 모두다. 예전에는 준비 동작만 거둘 수
+    // 있었는데, 무거운 무기일수록 클립의 절반 넘게가 회수라(도끼 1.67초) 그 구간에 들어온 칼은 전부
+    // 맞았다. 칼을 거두는 중에 방패를 끌어올리는 것은 훈련받은 사람이면 누구나 하는 동작이다.
+    // 끊지 못하는 것은 실제로 칼이 나가는 그 짧은 순간(타격 직후 GuardFollowThrough)뿐이다.
+    public bool CanCancelSwingIntoGuard =>
+        IsTelegraphing ||
+        (IsInAttackRecovery && Time.time >= lastStrikeTime + GuardFollowThrough);
+
+    // 방어 자세로 들어가며 휘두르던 스윙을 버린다. BlockBehavior가 자세를 잡기 직전에 부른다.
+    //
+    // 잠금을 풀지 않으면 방패를 든 채로도 IsAttackAnimationLocked가 참으로 남아, 방어가 끝난 뒤
+    // AttackBehavior가 이미 버린 스윙을 "휘두르는 중"으로 알고 기다린다. 준비 동작에서 버린 칼은
+    // 타격 이벤트가 섞여 들어와도 닿지 않아야 한다(swingCancelled, ResolveAttackHit).
+    public void CancelSwingForGuard()
+    {
+        if (!IsAttackAnimationLocked) return;
+
+        if (!hasStruckThisSwing) swingCancelled = true;
+        attackLockedUntil = 0f;
+        lungeRemaining = 0f;
+    }
+
+    // 준비 동작에서 거둔 스윙. 섞여 나가던 클립의 타격 이벤트가 뒤늦게 와도 무시한다.
+    private bool swingCancelled;
+
     // ---------------------------------------------------------------- 퍼펙트 가드
 
     // 방패를 올린 직후의 짧은 창 안에 들어온 공격은 통째로 흘려낸다.
@@ -1516,6 +1566,8 @@ public partial class UnitController
         castHealTarget = null;
         ResetMagicRuntime();
         ResetCommandRuntime();
+        swingCancelled = false;
+        lastStrikeTime = -999f;
         ClearHitStop();
     }
 }

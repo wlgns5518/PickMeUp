@@ -101,6 +101,8 @@ public partial class EnemyBridgeOutputSystem : SystemBase
                 threatWeight = stats.threatWeight,
                 targetAllyIndex = target.allyIndex,
                 action = action.kind,
+                lungeOrBiteIncoming = (byte)((action.kind == EnemyActionKind.Leap || action.kind == EnemyActionKind.Bite) &&
+                                        !action.struckThisSwing ? 1 : 0),
             };
         }
     }

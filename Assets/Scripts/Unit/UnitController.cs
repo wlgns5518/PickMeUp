@@ -976,6 +976,8 @@ public partial class UnitController : MonoBehaviour
                // 스윙과 스윙 사이의 호흡. 이게 없으면 클립이 끝난 프레임에 곧바로 다음 스윙이
                // 나가 쉼 없이 칼을 돌린다. 그 사이 시간에 AttackBehavior가 발놀림을 한다.
                IsSwingReady &&
+               // 나를 향해 칼을 든 적이 보이면 새로 휘두르지 않는다. 막는 것이 먼저다(IsHoldingForGuard 주석).
+               !IsHoldingForGuard &&
                // 마주 보기 전에는 휘두르지 않는다. 도착하자마자 등을 진 채 스윙을 시작하면
                // 모션이 비스듬히 나갈 뿐 아니라, 타격 판정(attackArcAngle)에서 그대로 빗나간다.
                // 몸을 돌리는 것도 전투의 일부다 — 그동안 상대는 먼저 칠 기회를 얻는다.
@@ -1250,6 +1252,9 @@ public partial class UnitController : MonoBehaviour
     // 정면 반구와 나눠 둔 것이 중요하다. 하나로 합치면 패링 각도를 좁히는 순간 그 바깥이
     // 통째로 "등 뒤"가 되어, 검사만 ±55도 밖에서 맞을 때마다 1.6배를 맞게 된다.
     private bool IsWithinGuardArc(Vector3 attackerPosition) => IsWithinArc(attackerPosition, stats.guardArcAngle);
+
+    // 지금 그쪽에서 오는 것을 막고 있는가(자세를 들었고, 방어 각도 안이다). 붙잡는 수가 막혔는지 가를 때 쓴다.
+    public bool IsGuardingAgainst(Vector3 attackerPosition) => IsBlocking && IsWithinGuardArc(attackerPosition);
 
     private bool IsWithinArc(Vector3 attackerPosition, float arcAngle)
     {
@@ -1889,8 +1894,12 @@ public partial class UnitController : MonoBehaviour
         // 시체가 휘두르던 칼의 이벤트가 뒤늦게 도착할 수 있다. 죽었으면 아무 일도 없다.
         if (IsDead) return;
 
+        // 준비 동작에서 거두고 방패를 든 스윙이다(CancelSwingForGuard). 섞여 나가던 클립의 이벤트일 뿐이다.
+        if (swingCancelled) return;
+
         // 여기를 지나면 준비 동작이 끝나고 회수 동작이 시작된다.
         hasStruckThisSwing = true;
+        lastStrikeTime = Time.time;
 
         TargetRef victim = ResolveSwingVictim();
         // 발차기는 베는 대신 무너뜨린다 — 피해는 낮고 강인도 피해는 크다.
@@ -1969,6 +1978,7 @@ public partial class UnitController : MonoBehaviour
         if (IsDead) return;
 
         hasStruckThisSwing = true;
+        lastStrikeTime = Time.time;
 
         TargetRef victim = ResolveSwingVictim();
         int damage = ScaleDamage(stats.skillDamage);
@@ -2030,6 +2040,7 @@ public partial class UnitController : MonoBehaviour
         // 이번 스윙은 아직 아무도 때리지 않았다. 이 플래그가 준비 동작(막을 수 있는 구간)과
         // 회수 동작(무방비 구간)을 가른다 — 클립 길이로 추정하지 않고 타격 이벤트로 안다.
         hasStruckThisSwing = false;
+        swingCancelled = false;
         hasSwungAtLeastOnce = true;
 
         // 물러난 뒤 한 발은 쐈다는 표시. 원거리 유닛이 Attack↔Evade만 오가는 것을 막는다.

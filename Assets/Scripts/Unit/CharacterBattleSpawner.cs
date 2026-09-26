@@ -493,8 +493,10 @@ public class CharacterBattleSpawner : MonoBehaviour
                 stats.perfectGuardWindow = 0.16f;
                 // 막아도 절반 넘게 들어온다. 몸으로 버티는 직군이 아니라는 것이 여기서 드러난다.
                 stats.blockDamageReduction = Mathf.Lerp(0.20f, 0.50f, factor);
-                // 손에 익은 동작이 아니라 반응이 한 박자 늦다.
-                stats.blockReactionTime = Mathf.Lerp(0.30f, 0.20f, factor);
+                // 손에 익은 동작이 아니라 반응이 한 박자 늦다. 다만 적의 준비 동작(0.4초)보다는 빨라야 한다 —
+                // 반응 시간은 유닛마다 ±40% 흔들리므로(TickThreatAwareness) 0.30이면 가장 늦은 쪽이 0.42초로
+                // 칼이 이미 내려온 뒤였다. 무기로 받는 직군은 반응할 수는 있되 받아도 절반이 넘어온다.
+                stats.blockReactionTime = Mathf.Lerp(0.24f, 0.16f, factor);
                 stats.counterAfterPerfectGuard = false;
                 break;
             }

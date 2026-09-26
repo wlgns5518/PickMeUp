@@ -76,9 +76,16 @@ public static class EnemyWorldBridge
 
         public EnemyActionKind action;
 
+        // 덤벼들거나 달라붙어 아직 한 방을 넣지 않았다(도약의 웅크림~공중, 물기의 이빨이 박히기 전).
+        public byte lungeOrBiteIncoming;
+
         // 칼을 들어올렸는가. 아군의 방어가 이 값 하나에 걸려 있다 —
         // 아군 쪽 UnitController.IsTelegraphing과 같은 뜻이다.
-        public bool IsTelegraphing => action == EnemyActionKind.Windup;
+        //
+        // 도약과 물기도 든다. 예전에는 칼의 준비 동작만 셌기에 둘은 누구도 막을 수 없었다 — 실측(12층, 5인 90초):
+        // 막기를 우선한 뒤에도 남은 피해의 절반이 물려서 굳은(1.5초) 사이에 들어왔다. 웅크렸다 뛰는 몸과 달라붙는
+        // 몸은 칼보다 더 잘 보인다. 막아 낸 물기는 굳히지 못한다(DrainHitsOnAllies).
+        public bool IsTelegraphing => action == EnemyActionKind.Windup || lungeOrBiteIncoming != 0;
 
         public bool IsAlive => hp > 0 && action != EnemyActionKind.Dead;
     }
@@ -808,7 +815,9 @@ public static class EnemyWorldBridge
             if (ally == null || ally.IsDead) continue;
 
             // 붙잡아 무는 한 방은 평타보다 무겁다 — 더 오래 멈칫하고 더 밀린다.
-            bool pins = hit.forceStaggerDuration > 0f;
+            // 다만 방패·무기를 든 쪽으로 물고 들어왔으면 이빨이 막힌 것이라 굳지 않는다(막는 것이 먼저다).
+            // 막은 만큼의 피해 감소는 평소 방어처럼 TakeDamage가 한다.
+            bool pins = hit.forceStaggerDuration > 0f && !ally.IsGuardingAgainst(hit.fromPosition);
             ally.TakeEnemyDamage(hit.damage, hit.fromPosition, hit.source, hit.poiseDamage,
                 pins ? PinImpactWeight : 1f);
 

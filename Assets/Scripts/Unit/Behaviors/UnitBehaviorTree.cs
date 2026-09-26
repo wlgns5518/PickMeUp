@@ -240,15 +240,18 @@ public static class UnitBehaviorTree
 
         if (!unit.IsAttackAnimationLocked) return true;
 
-        // 휘두르는 중이라면, 아직 내지르지 않은 스윙만 거둘 수 있다(IsTelegraphing).
-        // 이미 내지른 뒤에는 되돌리지 못한다 — 그게 선공의 대가다.
+        // 휘두르는 중이라도 막는다. 막는 것이 치는 것보다 먼저다.
         //
-        // 받아내는 방식을 가진 직군만이다 — 그게 그들의 역할이고, 전원이 스윙을 물리면
-        // 아무도 공격을 끝내지 못한다. 일곱 직군 중 탱커(방패)와 검사(패링) 둘뿐이다.
+        // 거둘 수 있는 것은 내지르기 전(준비 동작)과 내지르고 칼을 거두는 동작(회수)이다.
+        // 칼이 실제로 나가는 그 짧은 순간만은 되돌리지 못한다 — 그게 선공의 대가다
+        // (UnitController.CanCancelSwingIntoGuard). 예전에는 준비 동작만 거둘 수 있어서, 맞은 칼의
+        // 6할이 제 스윙에 묶여 있던 중에 들어왔다.
+        //
+        // 여기까지 왔으면 막는 수단이 있는 직군이다(CanBlock이 GuardStyle.None을 걸렀다).
         // 검사에게 특히 중요하다: 패링은 버티는 자세가 아니라 날아오는 궤적에 맞춰 내미는
         // 한 동작이라, 휘두르던 칼을 거두고 들어가지 못하면 성립 자체가 안 된다 —
         // 원작의 공수 전환(파고들다가 반격이 오면 즉시 받아친다)이 이 한 줄에 걸려 있다.
-        return unit.IsTelegraphing && unit.Stats.guardStyle != GuardStyle.None;
+        return unit.CanCancelSwingIntoGuard;
     }
 
     // 마법사의 영창. 사거리 안에서만 검토한다.
@@ -281,6 +284,10 @@ public static class UnitBehaviorTree
         // 이 게이트가 거의 언제나 거짓이라, 뒤에 두면 매 프레임 그 아홉 가지를 헛돈다.
         if (attack.IsRunning && !unit.IsComboRecoveryPoint) return false;
 
+        // 나를 향해 칼을 든 적이 보이면 큰 수를 꺼내지 않는다. 스킬은 한번 나가면 거둘 수 없다
+        // (SkillBehavior가 스스로 잠근다) — 막아야 할 순간에 시작하면 그 칼을 통째로 맞는다.
+        if (unit.IsHoldingForGuard) return false;
+
         return unit.CanUseSkill();
     }
 
@@ -288,7 +295,8 @@ public static class UnitBehaviorTree
     private static bool WantsLeapAttack(UnitController unit)
     {
         // 덤벼드는 것은 자리를 떠나는 것이다. 진형을 지키는 중에는 뛰어나가지 않는다.
-        return !unit.IsAttackAnimationLocked && !unit.IsHoldOrdered && unit.CanLeapAttack();
+        // 칼을 든 적 앞에서 몸을 띄우지도 않는다(도약은 끝까지 거둘 수 없다).
+        return !unit.IsAttackAnimationLocked && !unit.IsHoldOrdered && !unit.IsHoldingForGuard && unit.CanLeapAttack();
     }
 
     // 암살자는 콤보를 한 바퀴 돌리고 나면 일단 빠진다. 그 사이에 은신이 걸리고,
@@ -308,6 +316,9 @@ public static class UnitBehaviorTree
     private static bool ShouldKeepHoldPosition(UnitController unit, BTSelector<UnitController> engage)
     {
         if (unit.IsAttackAnimationLocked || engage.RunningChildLocked) return false;
+        // 나를 향해 칼을 든 적이 보이면 자리로 걸어가던 것도 멈추고 교전 가지(맨 위가 방어)로 내려보낸다.
+        // 자리를 지키는 것보다 막는 것이 먼저다 — 등을 보이고 걸어가는 중에 들어온 칼은 그대로 맞는다.
+        if (unit.IsHoldingForGuard) return false;
         if (unit.IsReturningToHoldAnchor || unit.IsBeyondHoldLeash) return true;
         return !(unit.HasUsableTarget() && unit.IsTargetInAttackRange());
     }

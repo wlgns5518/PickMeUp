@@ -36,6 +36,8 @@ public class BlockBehavior : UnitBehavior
         stateTimer = unit.Stats.blockDuration;
         minHoldTimer = Mathf.Max(MinGuardHold, unit.Stats.perfectGuardWindow);
 
+        // 휘두르던 칼을 거두고 들어왔을 수 있다(UnitBehaviorTree.WantsBlock). 그 스윙은 버린다.
+        unit.CancelSwingForGuard();
         unit.StopMovement();
         unit.SetBlocking(true);
         unit.FaceBlockThreat();
