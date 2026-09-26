@@ -106,7 +106,19 @@ public static class CharacterBodyFactory
         // 올라왔다. 전투 카메라(10m 거리)에서는 그게 화면 몇십 픽셀로 줄어드는데 밉맵이 없으면
         // 픽셀을 건너뛰며 찍어 옷 무늬가 자글자글 깨지고 반짝거린다. 에디터판은 12단계가 있다.
         // GLB 자체도 샘플러에 밉맵 필터(LINEAR_MIPMAP_LINEAR)를 적어 두었다 — 원래 있어야 했던 것이다.
-        var settings = new ImportSettings { GenerateMipMaps = true, AnisotropicFilterLevel = 1 };
+        //
+        // GLB에 든 애니메이션은 읽지 않는다. Meshy 리그는 기본 클립(Armature|clip0|baselayer)을 하나 넣어 보내는데,
+        // glTFast 기본값(Legacy)은 그걸 레거시 Animation 컴포넌트에 걸어 자동 재생시킨다. 그 클립은 뼈 위치를
+        // 센티미터로 적고 있어서, 배율을 걷어 낸 몸(BakeOutScale)에 적용되면 뼈가 100배 멀리 벌어진다.
+        // 살아 있는 동안은 Animator가 매 프레임 덮어써서 안 보이다가, 쓰러진 뒤 Animator를 끄는 순간
+        // (UnitController.FinalizeDeath) 그 클립이 몸을 차지해 시체가 144m짜리 거대한 형체로 부풀었다.
+        // 몸의 동작은 전부 Animator(PlayerRPGAnimator)가 맡으므로 GLB 클립은 쓸 곳이 없다.
+        var settings = new ImportSettings
+        {
+            GenerateMipMaps = true,
+            AnisotropicFilterLevel = 1,
+            AnimationMethod = AnimationMethod.None,
+        };
         Task<bool> loading = import.LoadFile(CharacterModelStore.PathFor(id), importSettings: settings);
         while (!loading.IsCompleted) yield return null;
 
