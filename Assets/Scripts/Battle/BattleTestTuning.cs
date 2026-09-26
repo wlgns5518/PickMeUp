@@ -6,5 +6,5 @@
 public static class BattleTestTuning
 {
     // 아군(CharacterBattleSpawner.MapStats)과 적(EnemyHordeSpawner.BuildStats)의 최대 체력 배율.
-    public const int HealthMultiplier = 100;
+    public const int HealthMultiplier = 1;
 }
