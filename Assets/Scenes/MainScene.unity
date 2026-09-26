@@ -25083,6 +25083,7 @@ MonoBehaviour:
   groundThickness: 0.4
   groundYaw: 15
   groundLift: 0.15
+  wallThickness: 4
   buildRoads: 1
   roads:
   - label: "\uB0A8\uBD81 \uD070\uAE38 \uBD81"

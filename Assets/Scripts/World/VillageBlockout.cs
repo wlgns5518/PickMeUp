@@ -89,6 +89,9 @@ public class VillageBlockout : MonoBehaviour
     [SerializeField] private float groundYaw = 15f;
     [Tooltip("지면보다 얼마나 띄울지. 지형과 높이가 똑같으면 두 면이 겹쳐 깜빡이고 지형이 뚫고 올라온다.")]
     [SerializeField, Min(0f)] private float groundLift = 0.15f;
+    [Tooltip("성벽(PolygonWall) 두께. 부지·광장 바닥이 성벽 밖으로 나가지 않게 벽 한가운데 선 조금 안쪽에서 자르고, " +
+             "부지 나무는 벽 안쪽 면에서 떨어뜨려 심는 데 쓴다. 성벽 모양은 위 변 수·반지름·각도와 같다고 본다.")]
+    [SerializeField, Min(0f)] private float wallThickness = 4f;
 
     // 마을 바닥 위에 까는 길 한 줄. 점을 부드러운 곡선으로 잇는다.
     [System.Serializable]
@@ -400,7 +403,7 @@ public class VillageBlockout : MonoBehaviour
         districts = new List<District>
         {
             // 시계 방향으로 12시가 정북. 거리 117.5는 성벽(반지름 124, 열두 각, 두께 4) 안쪽 면이다.
-            // 시공의 틈만 125 — 성벽 앞이 아니라 성벽 자리에 선다(북쪽 면 가운데 칸이 비어 있다, PolygonWall.gateSegment).
+            // 시공의 틈만 125 — 성벽 앞이 아니라 성벽 자리에 선다(북쪽 면 가운데 칸이 비어 있다, PolygonWall.gateSegment).
             Make("시공의 틈",  Kind.Rift,        0f, 125f,   18f, "탑의 층으로 들어가는 입구. 벽이 갈라진 자리를 눌러 원정을 떠난다."),   // 12시
             Make("소환소",     Kind.Summoning,  60f,  78f, 18f, "새 동료를 불러낸다."),                                                  //  2시
             Make("비행선착장", Kind.Airdock,   150f,  78f, 18f, "비행선이 드나드는 자리."),                                              //  5시
@@ -557,6 +560,8 @@ public class VillageBlockout : MonoBehaviour
             {
                 if (lot == null) continue;
                 string name = string.IsNullOrEmpty(lot.label) ? "부지" : lot.label;
+                // 부지는 마을 축 네모라 비스듬히 놓인 집 묶음을 덮으면 커져서 성벽 밖으로 삐져나간다(서남 마을).
+                // 성벽 선에서 잘라 낸다 — 잘린 가장자리는 벽 속에 묻혀 연석이 없어도 보이지 않는다.
                 if (roadEdgeMaterial != null)
                     Flat(root, name + " 연석", baseY + LotEdgeLift, RectMesh(lot.center, lot.size + Vector2.one * (LotEdge * 2f), name), roadEdgeMaterial);
                 Flat(root, name, baseY + LotLift, RectMesh(lot.center, lot.size, name), lotMaterial != null ? lotMaterial : Mat(LotColor));
@@ -627,16 +632,125 @@ public class VillageBlockout : MonoBehaviour
     private Mesh RectMesh(Vector2 center, Vector2 size, string name)
     {
         Vector2 h = size * 0.5f;
-        var corners = new[] { center + new Vector2(-h.x, -h.y), center + new Vector2(-h.x, h.y),
-                              center + new Vector2(h.x, h.y), center + new Vector2(h.x, -h.y) };
+        var corners = new List<Vector2> { center + new Vector2(-h.x, -h.y), center + new Vector2(-h.x, h.y),
+                                          center + new Vector2(h.x, h.y), center + new Vector2(h.x, -h.y) };
+        corners = ClipToWall(corners);
+
         var vertices = new List<Vector3>();
         var uvs = new List<Vector2>();
+        var triangles = new List<int>();
         foreach (Vector2 c in corners)
         {
             vertices.Add(new Vector3(c.x, 0f, c.y));
             uvs.Add(c / roadTile);
         }
-        return FlatMesh("Lot " + name, vertices, uvs, new List<int> { 0, 1, 2, 0, 2, 3 });
+        // 잘라도 볼록 다각형이고 위에서 봐 시계 방향 그대로라 첫 꼭짓점에서 부채꼴로 채운다.
+        for (int i = 1; i + 1 < corners.Count; i++)
+        {
+            triangles.Add(0); triangles.Add(i); triangles.Add(i + 1);
+        }
+        return FlatMesh("Lot " + name, vertices, uvs, triangles);
+    }
+
+    // ---- 성벽 안쪽 ---------------------------------------------------------------
+
+    // 바닥을 자르는 선: 성벽 한가운데 선(바닥 다각형의 변)에서 벽 두께의 1/4만큼 안쪽.
+    // 벽 안쪽 면보다는 바깥이라 잘린 가장자리가 벽 속에 묻힌다.
+    private float WallClipLine => groundRadius * Mathf.Cos(Mathf.PI / Mathf.Max(3, groundSides)) - wallThickness * 0.25f;
+
+    // 성벽 i번째 면의 바깥쪽 방향(마을 좌표 x=동, y=북). 바닥·성벽 모서리가 groundYaw에서 시작하므로 면은 그 사이 반 칸.
+    private Vector2 WallNormal(int side)
+    {
+        int sides = Mathf.Max(3, groundSides);
+        Vector3 d = Dir(groundYaw + (side + 0.5f) * 360f / sides);
+        return new Vector2(d.x, d.z);
+    }
+
+    // 마을 좌표의 점이 성벽 안쪽 면에서 margin 넘게 안쪽인지.
+    private bool InsideWall(Vector2 point, float margin)
+    {
+        float limit = groundRadius * Mathf.Cos(Mathf.PI / Mathf.Max(3, groundSides)) - wallThickness * 0.5f - margin;
+        int sides = Mathf.Max(3, groundSides);
+        for (int i = 0; i < sides; i++)
+            if (Vector2.Dot(point, WallNormal(i)) > limit) return false;
+        return true;
+    }
+
+    // 볼록 다각형을 성벽 면마다 반평면으로 잘라 낸다(Sutherland–Hodgman). 성벽 안이면 그대로 돌려준다.
+    private List<Vector2> ClipToWall(List<Vector2> polygon)
+    {
+        float line = WallClipLine;
+        int sides = Mathf.Max(3, groundSides);
+        for (int s = 0; s < sides && polygon.Count >= 3; s++)
+        {
+            Vector2 n = WallNormal(s);
+            var clipped = new List<Vector2>(polygon.Count + 1);
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                Vector2 a = polygon[i], b = polygon[(i + 1) % polygon.Count];
+                float da = Vector2.Dot(a, n) - line, db = Vector2.Dot(b, n) - line;
+                if (da <= 0f) clipped.Add(a);
+                if ((da <= 0f) != (db <= 0f)) clipped.Add(Vector2.Lerp(a, b, da / (da - db)));
+            }
+            polygon = clipped;
+        }
+        return polygon;
+    }
+
+    // 구역 안의 원판(광장 바닥 등)을 세운다. 성벽 밖으로 나가면 성벽 선에서 잘라 낸 판으로, 안이면 원기둥 그대로.
+    // center·diameter·height는 Cyl과 같은 뜻(구역 기준 크기, 구역 배율이 곱해진다).
+    private GameObject WallClippedDisc(Transform root, string name, Vector3 center, float diameter, float height, Color color)
+    {
+        const int Segments = 48;
+        var outline = new List<Vector2>(Segments);
+        bool crosses = false;
+        for (int i = 0; i < Segments; i++)
+        {
+            // 시계 방향(북→동)으로 돌아야 윗면이 위를 본다.
+            Vector3 local = center + Dir(i * 360f / Segments) * (diameter * 0.5f);
+            Vector3 village = transform.InverseTransformPoint(root.TransformPoint(local));
+            var p = new Vector2(village.x, village.z);
+            outline.Add(p);
+            if (!InsideWall(p, -wallThickness * 0.25f)) crosses = true;   // 자르는 선을 넘는지
+        }
+        if (!crosses) return Cyl(root, name, center, diameter, height, color, false);
+
+        outline = ClipToWall(outline);
+
+        // 잘린 윤곽을 구역 좌표로 되돌려 옆면이 있는 얇은 판으로 세운다(원기둥과 같은 두께).
+        var ring = new List<Vector3>(outline.Count);
+        foreach (Vector2 p in outline)
+        {
+            Vector3 local = root.InverseTransformPoint(transform.TransformPoint(new Vector3(p.x, 0f, p.y)));
+            ring.Add(new Vector3(local.x - center.x, 0f, local.z - center.z));
+        }
+
+        float half = height * 0.5f;
+        var vertices = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var triangles = new List<int>();
+        int count = ring.Count;
+        for (int i = 0; i < count; i++) { vertices.Add(ring[i] + Vector3.up * half); uvs.Add(new Vector2(ring[i].x, ring[i].z) / diameter + Vector2.one * 0.5f); }
+        for (int i = 1; i + 1 < count; i++) { triangles.Add(0); triangles.Add(i); triangles.Add(i + 1); }
+        for (int i = 0; i < count; i++)
+        {
+            int next = (i + 1) % count, b = vertices.Count;
+            vertices.Add(ring[i] + Vector3.up * half); vertices.Add(ring[next] + Vector3.up * half);
+            vertices.Add(ring[i] - Vector3.up * half); vertices.Add(ring[next] - Vector3.up * half);
+            uvs.Add(new Vector2(0f, 1f)); uvs.Add(new Vector2(1f, 1f)); uvs.Add(new Vector2(0f, 0f)); uvs.Add(new Vector2(1f, 0f));
+            // 밖에서 봤을 때 시계 방향 — 윤곽이 위에서 봐 시계 방향으로 돌므로 바깥은 진행 방향의 왼쪽이다.
+            triangles.Add(b); triangles.Add(b + 2); triangles.Add(b + 1);
+            triangles.Add(b + 2); triangles.Add(b + 3); triangles.Add(b + 1);
+        }
+
+        var mesh = new Mesh { name = "Clipped " + name, hideFlags = HideFlags.DontSave };
+        meshes.Add(mesh);
+        mesh.SetVertices(vertices);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(triangles, 0);
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return MeshPiece(root, name, center, mesh, color, false);
     }
 
     private Mesh FlatMesh(string name, List<Vector3> vertices, List<Vector2> uvs, List<int> triangles)
@@ -1077,6 +1191,9 @@ public class VillageBlockout : MonoBehaviour
                 // 싼 검사부터 한다. 부지가 거의 차면 자리 대부분이 건물이나 이웃 나무에 걸리는데, 길 검사는
                 // 길 선분을 전부 훑으므로 그 둘을 통과한 자리에만 한다. 셋 다 판정만 하므로 순서를 바꿔도 서는 자리는 같다.
                 if (InsideAny(buildings, spot, radius * 0.5f + 0.6f)) continue;
+
+                // 부지는 성벽 선에서 잘렸다. 잘려 나간 네모 귀퉁이(성벽 밖)나 벽에 붙은 자리에는 심지 않는다.
+                if (!InsideWall(new Vector2(spot.x, spot.z), radius * 0.5f + 0.5f)) continue;
 
                 bool crowded = false;
                 for (int i = 0; i < placed.Count && !crowded; i++)
@@ -1627,8 +1744,9 @@ public class VillageBlockout : MonoBehaviour
     // 광장 — 마을 한가운데. 길이 여기서 갈라진다.
     private void BuildPlaza(Transform root)
     {
-        Cyl(root, "바닥", new Vector3(0f, 0.1f, 0f), 60f, 0.2f, PlazaBase, false);
-        Cyl(root, "안쪽 원", new Vector3(0f, 0.24f, 0f), 40f, 0.12f, PlazaInner, false);
+        // 광장은 시공의 틈 바로 앞(성벽 앞)이라 넓은 두 겹이 성벽 밖으로 반원만큼 삐져나간다 — 성벽 선에서 자른다.
+        WallClippedDisc(root, "바닥", new Vector3(0f, 0.1f, 0f), 60f, 0.2f, PlazaBase);
+        WallClippedDisc(root, "안쪽 원", new Vector3(0f, 0.24f, 0f), 40f, 0.12f, PlazaInner);
 
         // 광장 무늬는 겹친 원으로만 만든다.
         // 가운데로 뻗는 살을 두면 길이 광장으로 모여드는 것처럼 보인다.
