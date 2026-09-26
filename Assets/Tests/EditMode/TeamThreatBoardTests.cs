@@ -35,8 +35,8 @@ public class TeamThreatBoardTests
 
         TeamThreatBoard.Report(UnitTeam.Ally, threat);
 
-        Assert.IsTrue(TeamThreatBoard.TryConsume(UnitTeam.Ally, ref version, out UnitController received));
-        Assert.AreSame(threat, received);
+        Assert.IsTrue(TeamThreatBoard.TryConsume(UnitTeam.Ally, ref version, out TargetRef received));
+        Assert.AreSame(threat, received.Unit);
     }
 
     [Test]
@@ -80,8 +80,8 @@ public class TeamThreatBoardTests
 
         TeamThreatBoard.Report(UnitTeam.Ally, second);
 
-        Assert.IsTrue(TeamThreatBoard.TryConsume(UnitTeam.Ally, ref version, out UnitController received));
-        Assert.AreSame(second, received);
+        Assert.IsTrue(TeamThreatBoard.TryConsume(UnitTeam.Ally, ref version, out TargetRef received));
+        Assert.AreSame(second, received.Unit);
     }
 
     [Test]

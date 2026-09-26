@@ -30,7 +30,7 @@ public static class UnitRegistry
         enemies.Clear();
         neutrals.Clear();
         unitColliders.Clear();
-        for (int i = 0; i < focusTargets.Length; i++) focusTargets[i] = null;
+        for (int i = 0; i < focusTargets.Length; i++) focusTargets[i] = TargetRef.None;
     }
 
     // ------------------------------------------------------------------
@@ -52,7 +52,10 @@ public static class UnitRegistry
     // 하므로 그쪽은 이 편향을 받지 않는다(JobProfile.FocusBonus). 집중은 딜러의 몫이다.
     // ------------------------------------------------------------------
 
-    private static readonly UnitController[] focusTargets = new UnitController[3];
+    //
+    // 표적은 손잡이(TargetRef)다. 게임오브젝트만 담던 시절에는 적이 엔티티가 되자 집중 표적이 영영 비어,
+    // 딜러의 집중 편향·집중 표적 우선 선택·"집중 중이면 맞아도 안 흔들린다"가 전부 조용히 꺼져 있었다.
+    private static readonly TargetRef[] focusTargets = new TargetRef[3];
 
     // 한 번 정한 표적은 쓰러질 때까지 바꾸지 않는다.
     //
@@ -63,12 +66,12 @@ public static class UnitRegistry
     // 집중 사격은 "지금 가장 약한 놈"을 쫓는 것이 아니라 "하나를 정해 끝까지 미는 것"이다.
     // 그래서 표적은 죽어야만 바뀐다. 하나가 쓰러지면 그만큼 들어오는 공격도 줄어드는데,
     // 표적을 계속 갈아타면 그 이득을 영영 얻지 못한다.
-    public static UnitController GetFocusTarget(UnitTeam team)
+    public static TargetRef GetFocusTarget(UnitTeam team)
     {
         int index = TeamIndex(team);
 
-        UnitController current = focusTargets[index];
-        if (current != null && !current.IsDead && current.isActiveAndEnabled) return current;
+        TargetRef current = focusTargets[index];
+        if (current.Exists && current.IsAlive) return current;
 
         focusTargets[index] = PickFocusTarget(team);
         return focusTargets[index];
@@ -79,21 +82,37 @@ public static class UnitRegistry
     // 이미 교전 중인 적을 먼저 본다 — 아무도 손대지 않은 적을 고르면 파티가 전선을 버리고
     // 그쪽으로 끌려간다. 그 안에서는 가장 많이 깎인 쪽을 골라 들인 피해를 버리지 않는다.
     // 교전 중인 적이 하나도 없으면(전투 시작 직후) 전선에서 가장 가까운 적으로 떨어진다.
-    private static UnitController PickFocusTarget(UnitTeam team)
+    //
+    // 게임오브젝트 적과 엔티티 적을 같은 누적값으로 이어서 훑는다 — 세계마다 따로 고른 뒤 합치면
+    // "가장 많이 깎인 하나"가 세계마다 하나씩 둘이 나온다.
+    private static TargetRef PickFocusTarget(UnitTeam team)
     {
         GetHostileLists(team, out List<UnitController> first, out List<UnitController> second);
 
-        UnitController engaged = null;
+        UnitController engagedUnit = null;
         float bestRatio = float.MaxValue;
-        UnitController nearest = null;
+        UnitController nearestUnit = null;
         float nearestSqr = float.MaxValue;
 
         Vector3 origin = TeamOrigin(team);
 
-        AccumulateFocusCandidate(team, first, origin, ref engaged, ref bestRatio, ref nearest, ref nearestSqr);
-        AccumulateFocusCandidate(team, second, origin, ref engaged, ref bestRatio, ref nearest, ref nearestSqr);
+        AccumulateFocusCandidate(team, first, origin, ref engagedUnit, ref bestRatio, ref nearestUnit, ref nearestSqr);
+        AccumulateFocusCandidate(team, second, origin, ref engagedUnit, ref bestRatio, ref nearestUnit, ref nearestSqr);
 
-        return engaged != null ? engaged : nearest;
+        // 엔티티는 전부 적 팀이다. 적 팀이 고르는 집중 표적에는 들어가지 않는다.
+        Entity engagedEntity = Entity.Null;
+        Entity nearestEntity = Entity.Null;
+        if (team != UnitTeam.Enemy)
+        {
+            EnemyWorldBridge.AccumulateFocusCandidates(origin, ref engagedEntity, ref bestRatio,
+                ref nearestEntity, ref nearestSqr);
+        }
+
+        // 엔티티 쪽이 값을 덮었으면 그쪽이 더 나은 후보다(같은 누적값에서 더 작을 때만 덮는다).
+        TargetRef engaged = engagedEntity != Entity.Null ? new TargetRef(engagedEntity) : engagedUnit;
+        TargetRef nearest = nearestEntity != Entity.Null ? new TargetRef(nearestEntity) : nearestUnit;
+
+        return engaged.Exists ? engaged : nearest;
     }
 
     private static void AccumulateFocusCandidate(UnitTeam team, List<UnitController> list, Vector3 origin,
@@ -316,7 +335,13 @@ public static class UnitRegistry
         }
     }
 
-    public static UnitController FindNearestVisibleEnemy(
+    // 편향을 얹어 가장 나은 적 하나를 고른다. 게임오브젝트 적과 엔티티 적을 같은 점수로 이어서 훑는다.
+    //
+    // 예전에는 게임오브젝트만 훑었다(시야 레이캐스트를 1000마리에 걸 수 없어서 엔티티는 따로
+    // TryAcquireEntityTarget이 거리와 붙은 수만 보고 골랐다). 그래서 적이 엔티티가 된 뒤로는 편향 전부가
+    // 꺼져 있었다 — 탱커의 도발(peel)도, 딜러의 집중도, 교전 중 재평가의 유지 편향도 엔티티 앞에서는 없었다.
+    // 엔티티는 콜라이더가 없어 시야각·레이캐스트 대신 탐지 거리만 본다. 편향은 똑같이 얹는다.
+    public static TargetRef FindNearestVisibleEnemy(
         UnitController requester,
         float range,
         float viewAngle,
@@ -325,7 +350,7 @@ public static class UnitRegistry
         LayerMask obstacleMask,
         in TargetBias bias)
     {
-        if (requester == null) return null;
+        if (requester == null) return TargetRef.None;
 
         var query = new VisionQuery(requester, range, viewAngle, closeVisibleRange);
         float bestSqrDistance = range * range;
@@ -334,6 +359,79 @@ public static class UnitRegistry
         GetHostileLists(requester.Team, out List<UnitController> first, out List<UnitController> second);
         SearchNearestInList(requester, first, query, eyeHeight, obstacleMask, bias, ref bestSqrDistance, ref best);
         SearchNearestInList(requester, second, query, eyeHeight, obstacleMask, bias, ref bestSqrDistance, ref best);
+
+        Entity bestEntity = Entity.Null;
+        if (SeesEnemyEntities(requester))
+        {
+            SearchEntityEnemies(requester, range, bias, ref bestSqrDistance, ref bestEntity);
+        }
+
+        return bestEntity != Entity.Null ? new TargetRef(bestEntity) : best;
+    }
+
+    // 엔티티 적에게 같은 편향을 얹어 훑는다(SearchNearestInList의 엔티티판).
+    //
+    // 어그로(ThreatScale)·후방 침투(Backline)·혼잡도 상한(MaxAttackers)은 적이 아군을 고를 때만 쓰이는
+    // 값이라 여기서는 빠진다 — 엔티티는 늘 적이고, 고르는 쪽은 늘 아군이다.
+    private static void SearchEntityEnemies(UnitController requester, float range, in TargetBias settings,
+        ref float bestSqrDistance, ref Entity best)
+    {
+        int count = EnemyWorldBridge.EnemyCount;
+        if (count == 0) return;
+
+        bool useGrouping = settings.GroupingPerAlly > 0f;
+        bool usePeel = settings.PeelBonus > 0f;
+        TargetRef focus = settings.FocusBonus > 0f ? GetFocusTarget(requester.Team) : TargetRef.None;
+        Entity current = settings.Stickiness > 0f && requester.IsTargetValid() ? requester.CurrentTarget.Entity : Entity.Null;
+
+        Vector3 origin = requester.transform.position;
+        float rangeSqr = range * range;
+
+        for (int i = 0; i < count; i++)
+        {
+            EnemyWorldBridge.EnemyState enemy = EnemyWorldBridge.GetEnemy(i);
+            if (!enemy.IsAlive) continue;
+
+            Vector3 offset = (Vector3)enemy.position - origin;
+            offset.y = 0f;
+            float sqrDistance = offset.sqrMagnitude;
+            if (sqrDistance > rangeSqr) continue;
+
+            float bias = 0f;
+            if (useGrouping) bias += EnemyWorldBridge.AllyAttackersOn(enemy.entity) * settings.GroupingPerAlly;
+            if (usePeel) bias += PeelBiasForEntity(requester, enemy, settings.PeelBonus);
+            if (focus.IsEntity && focus.Entity == enemy.entity) bias += settings.FocusBonus;
+            if (current != Entity.Null && current == enemy.entity) bias += settings.Stickiness;
+
+            float effectiveSqrDistance = sqrDistance;
+            if (bias != 0f)
+            {
+                float biasedDistance = Mathf.Max(0f, Mathf.Sqrt(sqrDistance) - bias);
+                effectiveSqrDistance = biasedDistance * biasedDistance;
+            }
+
+            if (effectiveSqrDistance >= bestSqrDistance) continue;
+
+            bestSqrDistance = effectiveSqrDistance;
+            best = enemy.entity;
+        }
+    }
+
+    // PeelBiasFor의 엔티티판. 이 적이 물고 있는 아군은 스냅샷 인덱스로 온다.
+    private static float PeelBiasForEntity(UnitController requester, in EnemyWorldBridge.EnemyState enemy, float peelBonus)
+    {
+        float best = 0f;
+
+        UnitController victim = EnemyWorldBridge.GetAlly(enemy.targetAllyIndex);
+        if (IsWorthGuarding(requester, victim))
+        {
+            best = victim.IsCasting ? peelBonus * CastingGuardScale : peelBonus;
+        }
+
+        if (best <= 0f && IsNearGuardedAlly(requester, (Vector3)enemy.position))
+        {
+            best = peelBonus * ApproachGuardScale;
+        }
 
         return best;
     }
@@ -532,7 +630,10 @@ public static class UnitRegistry
             // 이미 걸려 있으면 덧바르지 않는다. 마력을 그냥 버리는 셈이다.
             if (candidate.Stats.HasShield) continue;
 
+            // 엔티티 적은 AddAttacker를 부르지 않으므로 브리지가 센 수를 더한다. 이게 빠져 있던 동안
+            // 고블린에게 둘러싸인 탱커도 "붙은 적 0"으로 보여 사제의 보호막이 한 번도 나가지 않았다.
             int attackers = candidate.AttackersFrom(hostile);
+            if (hostile == UnitTeam.Enemy) attackers += EnemyWorldBridge.EntityAttackersOnAlly(candidate);
             if (attackers < bestAttackers) continue;
             if (attackers == bestAttackers && best != null && candidate.Stats.HpRatio >= bestRatio) continue;
             if ((candidate.transform.position - origin).sqrMagnitude > rangeSqr) continue;
@@ -966,7 +1067,7 @@ public static class UnitRegistry
         bool useBackline = settings.BacklineBonus > 0f;
         bool usePeel = settings.PeelBonus > 0f;
         bool useFocus = settings.FocusBonus > 0f;
-        UnitController focus = useFocus ? GetFocusTarget(requester.Team) : null;
+        UnitController focus = useFocus ? GetFocusTarget(requester.Team).Unit : null;
         if (focus == null) useFocus = false;
         bool useStickiness = settings.Stickiness > 0f && requester.IsTargetValid();
         bool useCrowdCap = settings.MaxAttackers > 0 && settings.CrowdingPenalty > 0f;
@@ -1115,8 +1216,12 @@ public static class UnitRegistry
     // 이 적이 지켜야 할 아군 바로 곁에 와 있는가.
     private static bool IsNearGuardedAlly(UnitController requester, UnitController candidate)
     {
+        return IsNearGuardedAlly(requester, candidate.transform.position);
+    }
+
+    private static bool IsNearGuardedAlly(UnitController requester, Vector3 enemyPosition)
+    {
         List<UnitController> team = GetList(requester.Team);
-        Vector3 enemyPosition = candidate.transform.position;
         float rangeSqr = GuardProximity * GuardProximity;
 
         for (int i = team.Count - 1; i >= 0; i--)

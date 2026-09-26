@@ -21,6 +21,7 @@ public static class EnemyAnimationBaker
     private static readonly (EnemyClip clip, string stateName, bool loops)[] Wanted =
     {
         (EnemyClip.Idle, "CombatIdle", true),
+        (EnemyClip.GuardIdle, "GuardIdle", true),
         (EnemyClip.Walk, "Walk", true),
         (EnemyClip.Run, "Run", true),
         (EnemyClip.Attack, "Attack1", false),

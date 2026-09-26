@@ -97,6 +97,8 @@ public static class EnemyHorde
             typeof(EnemyAnimation),
             typeof(EnemyTactics),
             typeof(EnemyImpact),
+            typeof(EnemyEmotion),
+            typeof(EnemyEmotionProfile),
             typeof(LocalTransform),
             typeof(LocalToWorld));
 
@@ -132,6 +134,8 @@ public static class EnemyHorde
 
             // 애니메이션을 셰이더에 넘길 자리. 값은 EnemyAnimationRenderSystem이 매 프레임 채운다.
             manager.AddComponentData(prototype, new EnemyAnimationMaterial { Value = float4.zero });
+            manager.AddComponentData(prototype, new EnemyAnimationFadeMaterial { Value = float4.zero });
+            manager.AddComponentData(prototype, new EnemyAnimationFade());
         }
 
         result = prototype;
@@ -139,7 +143,10 @@ public static class EnemyHorde
     }
 
     // 한 층 분량을 한 번에 만든다.
-    public static int Spawn(in EnemyStats stats, int count, Vector3 center, float spread, uint seed = 1)
+    //
+    // emotionProfile: 감정 튜닝값(EnemyEmotionProfile.From). 비워 두면 감정을 굴리지 않는다.
+    public static int Spawn(in EnemyStats stats, int count, Vector3 center, float spread, uint seed = 1,
+        EnemyEmotionProfile emotionProfile = default)
     {
         if (count <= 0) return 0;
         if (!TryGetPrototype(out Entity source)) return 0;
@@ -178,8 +185,14 @@ public static class EnemyHorde
             });
             manager.SetComponentData(entity, new EnemyMotion());
             manager.SetComponentData(entity, new EnemyTarget { allyIndex = EnemyTarget.None });
-            manager.SetComponentData(entity, new EnemyAction { kind = EnemyActionKind.Idle });
+            manager.SetComponentData(entity, new EnemyAction
+            {
+                kind = EnemyActionKind.Idle,
+                engageAllyIndex = EnemyTarget.None,
+            });
             manager.SetComponentData(entity, new EnemyImpact());
+            manager.SetComponentData(entity, emotionProfile);
+            manager.SetComponentData(entity, new EnemyEmotion { stress = emotionProfile.initialStress });
 
             // 개체마다 다른 난수 씨. 판단 주기와 기다리는 거리 같은 성격은 첫 판단 때 이 씨로 뽑힌다
             // (EnemyThinkSystem). 엔티티 인덱스로 뿌리면 층이 바뀌어도 같은 자리의 놈이 같은 성격이 된다.

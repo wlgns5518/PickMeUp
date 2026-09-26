@@ -37,13 +37,15 @@ public class TargetScanner : MonoBehaviour
     [SerializeField, Min(0f)] private float aggroReviewInterval = 2.5f;
 
     private UnitController owner;
-    private UnitController target;
+    // 게임오브젝트 적이든 엔티티 적이든 담는다. UnitController만 담던 동안 적이 엔티티가 되자 이 스캐너가
+    // 통째로 헛돌았다 — 붙은 적에게 돌아서기, 집중 표적 우선, 교전 중 재평가, 팀 게시판이 전부 엔티티를 못 봤다.
+    private TargetRef target;
     private float scanTimer;
     private float nextAggroReviewTime;
     // 팀 게시판에서 마지막으로 받아 간 소식 번호. 같은 소식을 두 번 반영하지 않기 위한 것.
     private int lastThreatVersion;
 
-    public UnitController Target => target;
+    public TargetRef Target => target;
     // 실제로 쓰이는 시야각. 직업이 정해 준 값이 있으면 그쪽이다(궁수만 넓다).
     public float ViewAngle => EffectiveViewAngle;
 
@@ -84,7 +86,7 @@ public class TargetScanner : MonoBehaviour
     {
         if (owner == null || owner.IsDead)
         {
-            target = null;
+            target = TargetRef.None;
             return;
         }
 
@@ -94,7 +96,7 @@ public class TargetScanner : MonoBehaviour
             // 주기 사이에는 죽음/비활성화처럼 값싼 조건만 확인한다.
             // 시야·거리·레이캐스트를 포함한 전체 탐색은 아래 스캔 주기에서만 수행 —
             // 타깃이 없다고 매 프레임 전체 유닛을 훑으면 유닛 수의 제곱으로 비용이 커진다.
-            if (target != null && (target.IsDead || !target.isActiveAndEnabled)) target = null;
+            if (target.Exists && !target.IsAlive) target = TargetRef.None;
             return;
         }
 
@@ -102,16 +104,16 @@ public class TargetScanner : MonoBehaviour
 
         if (!IsCurrentTargetValid())
         {
-            target = null;
+            target = TargetRef.None;
         }
         // Line-of-sight is a raycast, so it's only re-checked here at the scan cadence
         // rather than every frame in IsCurrentTargetValid.
         else if (!HasLineOfSight(target))
         {
-            target = null;
+            target = TargetRef.None;
         }
 
-        if (target == null)
+        if (!target.Exists)
         {
             target = ScanForTarget();
         }
@@ -145,13 +147,13 @@ public class TargetScanner : MonoBehaviour
         //  1) 쫓아온 적이 내 간격 안에 있는데 그놈을 겨누고 있지 않다 — 가장 급한 경우다.
         //     쫓기기 시작한 순간 바로 돌아서야 견제가 된다.
         //  2) 집중 딜러가 파티 집중 표적을 벗어나 있다 — 화력이 흩어진 상태다.
-        UnitController presser = ClosestPressuringEnemy();
-        bool urgent = presser != null && owner.CurrentTarget != presser;
+        TargetRef presser = ClosestPressuringEnemy();
+        bool urgent = presser.Exists && owner.CurrentTarget != presser;
 
-        if (!urgent)
+        if (!urgent && owner.Stats.focusBonus > 0f)
         {
-            urgent = owner.Stats.focusBonus > 0f
-                     && owner.CurrentTarget != UnitRegistry.GetFocusTarget(owner.Team);
+            TargetRef focus = UnitRegistry.GetFocusTarget(owner.Team);
+            urgent = focus.Exists && owner.CurrentTarget != focus;
         }
 
         if (!urgent && Time.time < nextAggroReviewTime) return;
@@ -159,24 +161,24 @@ public class TargetScanner : MonoBehaviour
         // 주기도 스캔과 같은 이유로 유닛마다 흩어 놓는다(ScatterSchedule 주석 참조).
         nextAggroReviewTime = Time.time + aggroReviewInterval * Random.Range(0.8f, 1.2f);
 
-        UnitController candidate = ScanForTarget();
-        if (candidate == null)
+        TargetRef candidate = ScanForTarget();
+        if (!candidate.Exists)
         {
             // 다시 굴렸더니 아무것도 안 잡혔다면 원래 타깃을 그대로 들고 간다 —
             // 시야가 잠깐 끊긴 것뿐일 수 있고, 여기서 놓으면 교전이 통째로 끊긴다.
-            target = owner.CurrentTarget.Unit;
+            target = owner.CurrentTarget;
             return;
         }
 
-        if (owner.CurrentTarget.Unit == candidate) return;
+        if (owner.CurrentTarget == candidate) return;
 
         // 편향이 이미 반영된 결과이므로 거리 기반 재검사를 다시 걸지 않는다(TryRetarget 주석 참조).
-        if (!owner.TryRetarget(candidate)) target = owner.CurrentTarget.Unit;
+        if (!owner.TryRetarget(candidate)) target = owner.CurrentTarget;
     }
 
-    public UnitController FindTargetNow()
+    public TargetRef FindTargetNow()
     {
-        if (owner == null) return null;
+        if (owner == null) return TargetRef.None;
 
         scanTimer = NextScanDelay();
         target = ScanForTarget();
@@ -185,7 +187,7 @@ public class TargetScanner : MonoBehaviour
         return target;
     }
 
-    private UnitController ScanForTarget()
+    private TargetRef ScanForTarget()
     {
         // 나를 쫓아와 간격을 무너뜨린 적이 있으면 그놈부터 쏜다.
         //
@@ -195,8 +197,8 @@ public class TargetScanner : MonoBehaviour
         //
         // 이 판단은 물러남·영창 접기·발놀림이 쓰는 것과 같은 기준(내 간격 안의 적)을 쓴다.
         // 넷이 같은 것을 봐야 "물러나는 이유"와 "쏘는 대상"이 어긋나지 않는다.
-        UnitController presser = ClosestPressuringEnemy();
-        if (presser != null) return presser;
+        TargetRef presser = ClosestPressuringEnemy();
+        if (presser.Exists) return presser;
 
         // 집중 딜러는 파티가 정한 표적을 먼저 본다.
         //
@@ -207,8 +209,8 @@ public class TargetScanner : MonoBehaviour
         // 그래서 편향이 아니라 우선 선택으로 바꾼다: 닿을 수 있는 집중 표적이 있으면 그쪽이다.
         // 닿을 수 없으면(사거리 밖이거나 벽 너머) 평소대로 고른다 — 도달하지 못할 표적을
         // 붙들고 있으면 그것대로 아무것도 못 한다.
-        UnitController focus = ReachableFocusTarget();
-        if (focus != null) return focus;
+        TargetRef focus = ReachableFocusTarget();
+        if (focus.Exists) return focus;
 
         return UnitRegistry.FindNearestVisibleEnemy(
             owner, owner.Stats.detectRange, EffectiveViewAngle, GetCloseVisibleRange(), eyeHeight, obstacleMask,
@@ -227,19 +229,20 @@ public class TargetScanner : MonoBehaviour
     private static readonly System.Collections.Generic.List<UnitController> PressureBuffer =
         new System.Collections.Generic.List<UnitController>(8);
 
-    // 내 간격 안까지 들어온 적 중 가장 급한 하나. 없으면 null.
+    // 내 간격 안까지 들어온 적 중 가장 급한 하나. 없으면 None.
     //
     // 나를 노리고 온 놈(쫓아오는 적)을 먼저 고르고, 그런 놈이 없으면 그냥 가장 가까운 놈을
     // 고른다 — 나를 노리지 않더라도 내 간격 안에 있는 이상 물러나게 만드는 원인은 같다.
-    private UnitController ClosestPressuringEnemy()
+    //
+    // 게임오브젝트 적과 엔티티 적을 같은 누적값으로 이어서 훑는다. 엔티티를 빼먹던 동안 궁수·마법사는
+    // 코앞의 고블린을 두고 처음 겨눈 먼 표적만 쏘았다 — 물러나는 이유(ShouldKeepDistance)는 엔티티를
+    // 보는데 쏘는 대상은 못 봐서, 둘이 어긋나 있었다.
+    private TargetRef ClosestPressuringEnemy()
     {
-        if (owner == null) return null;
+        if (owner == null) return TargetRef.None;
 
         float threshold = owner.Stats.keepDistanceRange;
-        if (threshold <= 0f) return null;
-
-        UnitRegistry.FindEnemiesAround(owner, owner.transform.position, threshold, PressureBuffer);
-        if (PressureBuffer.Count == 0) return null;
+        if (threshold <= 0f) return TargetRef.None;
 
         UnitController chasing = null;
         float chasingSqr = float.MaxValue;
@@ -247,6 +250,7 @@ public class TargetScanner : MonoBehaviour
         float nearestSqr = float.MaxValue;
         Vector3 origin = owner.transform.position;
 
+        UnitRegistry.FindEnemiesAround(owner, origin, threshold, PressureBuffer);
         for (int i = 0; i < PressureBuffer.Count; i++)
         {
             UnitController candidate = PressureBuffer[i];
@@ -267,29 +271,46 @@ public class TargetScanner : MonoBehaviour
         }
 
         PressureBuffer.Clear();
-        return chasing != null ? chasing : nearest;
+
+        Unity.Entities.Entity chasingEntity = Unity.Entities.Entity.Null;
+        Unity.Entities.Entity nearestEntity = Unity.Entities.Entity.Null;
+        if (owner.Team != UnitTeam.Enemy)
+        {
+            EnemyWorldBridge.AccumulatePressure(origin, threshold, EnemyWorldBridge.IndexOfAlly(owner),
+                ref chasingEntity, ref chasingSqr, ref nearestEntity, ref nearestSqr);
+        }
+
+        // 쫓아온 놈이 먼저다. 엔티티 쪽이 누적값을 덮었으면 그쪽이 더 가깝다.
+        if (chasingEntity != Unity.Entities.Entity.Null) return new TargetRef(chasingEntity);
+        if (chasing != null) return chasing;
+        if (nearestEntity != Unity.Entities.Entity.Null) return new TargetRef(nearestEntity);
+        return nearest;
     }
 
-    // 지금 닿을 수 있는 파티 집중 표적. 없으면 null.
+    // 지금 닿을 수 있는 파티 집중 표적. 없으면 None.
     //
     // 시야각(cone)은 보지 않고 탐지 거리와 시야선만 본다. 유닛은 어차피 표적 쪽으로 몸을 돌리므로,
     // "지금 등지고 있다"는 이유로 집중 표적을 놓치면 파티가 다시 흩어진다.
-    private UnitController ReachableFocusTarget()
+    // 엔티티는 콜라이더가 없어 시야선 대신 탐지 거리만 본다(엔티티 표적 전부와 같은 규칙).
+    private TargetRef ReachableFocusTarget()
     {
-        if (owner == null || owner.Stats.focusBonus <= 0f) return null;
+        if (owner == null || owner.Stats.focusBonus <= 0f) return TargetRef.None;
 
-        UnitController focus = UnitRegistry.GetFocusTarget(owner.Team);
-        if (focus == null || focus == owner || focus.IsDead || !focus.isActiveAndEnabled) return null;
-        if (!UnitRegistry.AreEnemies(owner, focus)) return null;
+        TargetRef focus = UnitRegistry.GetFocusTarget(owner.Team);
+        if (!focus.Exists || !focus.IsAlive || focus.Unit == owner) return TargetRef.None;
+        if (focus.IsUnit && !UnitRegistry.AreEnemies(owner, focus.Unit)) return TargetRef.None;
+        if (focus.IsEntity && owner.Team == UnitTeam.Enemy) return TargetRef.None;
 
-        Vector3 offset = focus.transform.position - owner.transform.position;
+        Vector3 offset = focus.Position - owner.transform.position;
         offset.y = 0f;
         float detect = owner.Stats.detectRange;
-        if (offset.sqrMagnitude > detect * detect) return null;
+        if (offset.sqrMagnitude > detect * detect) return TargetRef.None;
 
-        return UnitRegistry.HasLineOfSight(owner.transform.position, focus.transform.position, eyeHeight, obstacleMask)
+        if (focus.IsEntity) return focus;
+
+        return UnitRegistry.HasLineOfSight(owner.transform.position, focus.Position, eyeHeight, obstacleMask)
             ? focus
-            : null;
+            : TargetRef.None;
     }
 
     // 직업이 정해 준 시야각이 있으면 그것을 쓴다. 정찰을 겸하는 궁수만 넓다(200도) —
@@ -328,7 +349,7 @@ public class TargetScanner : MonoBehaviour
     // 예전에는 여기서 팀 전원을 순회하며 직접 알렸고, 그 비용이 발견한 프레임에 통째로 몰렸다.
     private void ReportThreat()
     {
-        if (target == null || owner == null) return;
+        if (!target.Exists || owner == null) return;
         TeamThreatBoard.Report(owner.Team, target);
     }
 
@@ -337,22 +358,30 @@ public class TargetScanner : MonoBehaviour
     private void ConsumeTeamThreat()
     {
         if (owner == null || owner.IsDead) return;
-        if (!TeamThreatBoard.TryConsume(owner.Team, ref lastThreatVersion, out UnitController shared)) return;
+        if (!TeamThreatBoard.TryConsume(owner.Team, ref lastThreatVersion, out TargetRef shared)) return;
         if (shared == target) return;
 
         owner.ReceiveSharedTarget(shared);
     }
 
+    // 스캐너가 들고 있는 후보가 아직 쓸 만한가. 게임오브젝트는 시야(거리·각도)로, 엔티티는 살아서
+    // 탐지 거리 안에 있는지로 본다 — 엔티티는 콜라이더가 없어 시야를 잴 수 없다.
     private bool IsCurrentTargetValid()
     {
-        if (target == null || target.IsDead) return false;
-        return IsVisible(target);
+        if (!target.Exists || !target.IsAlive) return false;
+        if (target.IsUnit) return IsVisible(target.Unit);
+
+        Vector3 offset = target.Position - owner.transform.position;
+        offset.y = 0f;
+        float detect = owner.Stats.detectRange;
+        return offset.sqrMagnitude <= detect * detect;
     }
 
-    private bool HasLineOfSight(UnitController candidate)
+    private bool HasLineOfSight(TargetRef candidate)
     {
-        if (owner == null || candidate == null) return false;
-        return UnitRegistry.HasLineOfSight(owner.transform.position, candidate.transform.position, eyeHeight, obstacleMask);
+        if (owner == null || !candidate.Exists) return false;
+        if (candidate.IsEntity) return true;
+        return UnitRegistry.HasLineOfSight(owner.transform.position, candidate.Position, eyeHeight, obstacleMask);
     }
 
     private float GetCloseVisibleRange()

@@ -11,11 +11,14 @@ using UnityEngine;
 //
 // 버전 번호를 두는 이유: "새 소식이 있는지"를 참조 비교 한 번으로 알기 위해서다.
 // 각 유닛은 자기가 마지막으로 받아 간 번호만 기억하면 같은 소식을 두 번 받지 않는다.
+//
+// 소식은 손잡이(TargetRef)다. 게임오브젝트만 담던 동안 적이 엔티티가 되자 게시판이 영영 비어,
+// 한 명이 발견한 고블린을 팀이 함께 알아채는 일이 없었다.
 public static class TeamThreatBoard
 {
     private struct Entry
     {
-        public UnitController Target;
+        public TargetRef Target;
         public int Version;
     }
 
@@ -30,9 +33,9 @@ public static class TeamThreatBoard
     }
 
     // 적을 발견했다고 알린다. 같은 적을 다시 알리는 것은 소식이 아니므로 버전을 올리지 않는다.
-    public static void Report(UnitTeam team, UnitController target)
+    public static void Report(UnitTeam team, TargetRef target)
     {
-        if (target == null || target.IsDead) return;
+        if (!target.Exists || !target.IsAlive) return;
 
         int index = IndexOf(team);
         if (entries[index].Target == target) return;
@@ -43,9 +46,9 @@ public static class TeamThreatBoard
 
     // 아직 받아 가지 않은 소식이 있으면 꺼내 간다.
     // lastVersion은 부르는 쪽(유닛)이 들고 있는 값으로, 여기서 갱신해 준다.
-    public static bool TryConsume(UnitTeam team, ref int lastVersion, out UnitController target)
+    public static bool TryConsume(UnitTeam team, ref int lastVersion, out TargetRef target)
     {
-        target = null;
+        target = TargetRef.None;
 
         int index = IndexOf(team);
         Entry entry = entries[index];
@@ -54,8 +57,8 @@ public static class TeamThreatBoard
         // 소식을 확인한 것 자체는 기록한다. 대상이 이미 죽었더라도 다음 프레임에 또 묻지 않도록.
         lastVersion = entry.Version;
 
-        UnitController candidate = entry.Target;
-        if (candidate == null || candidate.IsDead || !candidate.isActiveAndEnabled) return false;
+        TargetRef candidate = entry.Target;
+        if (!candidate.Exists || !candidate.IsAlive) return false;
 
         target = candidate;
         return true;

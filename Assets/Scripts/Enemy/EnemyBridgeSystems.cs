@@ -135,6 +135,11 @@ public partial struct EnemyDamageSystem : ISystem
         var targetLookup = SystemAPI.GetComponentLookup<EnemyTarget>();
         var tacticsLookup = SystemAPI.GetComponentLookup<EnemyTactics>();
         var impactLookup = SystemAPI.GetComponentLookup<EnemyImpact>();
+        var emotionLookup = SystemAPI.GetComponentLookup<EnemyEmotion>();
+        var profileLookup = SystemAPI.GetComponentLookup<EnemyEmotionProfile>(true);
+
+        // 쓰러진 자리를 남길 곳. 감정 시스템이 없는 월드(테스트)에는 없다.
+        bool hasDeathLog = SystemAPI.TryGetSingleton(out EnemyDeathLog deathLog) && deathLog.positions.IsCreated;
 
         while (bridge.hitsOnEnemies.TryDequeue(out EnemyWorldBridge.HitOnEnemy hit))
         {
@@ -151,6 +156,10 @@ public partial struct EnemyDamageSystem : ISystem
             EnemyImpact impact = hasImpact ? impactLookup[hit.enemy] : default;
             bool hasTactics = tacticsLookup.HasComponent(hit.enemy);
             EnemyTactics tactics = hasTactics ? tacticsLookup[hit.enemy] : default;
+            bool hasEmotion = emotionLookup.HasComponent(hit.enemy) && profileLookup.HasComponent(hit.enemy) &&
+                              profileLookup[hit.enemy].enabled;
+            EnemyEmotion emotion = hasEmotion ? emotionLookup[hit.enemy] : default;
+            EnemyEmotionProfile profile = hasEmotion ? profileLookup[hit.enemy] : default;
 
             // 발을 묶는 것은 피해와 따로 온다(마법은 둘을 따로 건다). 더 센 쪽이 이기고,
             // 같은 세기면 더 오래 가는 쪽으로 늘린다 — 아군 쪽 ApplySlow와 같은 규칙이다.
@@ -183,27 +192,61 @@ public partial struct EnemyDamageSystem : ISystem
             bool struck = hit.damage > 0 || hit.poiseDamage > 0f || hit.forceStagger;
             if (!struck) continue;
 
+            LocalTransform transform = transformLookup[hit.enemy];
+
             // 뒤를 잡혔으면 더 아프다. 아군 쪽 backstabDamageMultiplier와 같은 규칙인데,
             // 여기서는 적이 맞는 쪽이라 아군의 배후 공격에 값이 붙는다.
-            LocalTransform transform = transformLookup[hit.enemy];
+            // 출혈은 흐르던 피라 어디서 맞았는지가 없다.
             float3 toAttacker = hit.fromPosition - transform.Position;
             toAttacker.y = 0f;
-            bool fromBehind = math.lengthsq(toAttacker) > 0.0001f &&
+            bool fromBehind = !hit.bleed && math.lengthsq(toAttacker) > 0.0001f &&
                               math.dot(math.normalizesafe(transform.Forward()), math.normalize(toAttacker)) < 0f;
 
             int damage = hit.damage;
             float poiseDamage = hit.poiseDamage;
-            if (fromBehind)
+            if (!hit.bleed)
             {
-                damage = (int)math.round(damage * 1.6f);
-                poiseDamage *= 2f;
+                float damageMultiplier = 1f;
+                if (fromBehind)
+                {
+                    damageMultiplier *= 1.6f;
+                    poiseDamage *= 2f;
+                }
+
+                // 무방비일 때 받는 배율. 게임오브젝트 고블린은 맞는 쪽 TakeDamage가 이 둘을 곱했는데
+                // 엔티티로 옮기면서 빠져, 칼을 거두는 틈에 받아쳐도 무너진 놈을 두들겨도 똑같이 아팠다.
+                //  · 칼을 내지르고 거두는 중(평타 회수, 도약 착지 뒤) — recoveryVulnerabilityMultiplier
+                //  · 자세가 무너져 있는 중 — staggerDamageMultiplier
+                if (IsRecovering(action)) damageMultiplier *= OrOne(stats.recoveryVulnerabilityMultiplier);
+                if (action.kind == EnemyActionKind.Stagger) damageMultiplier *= OrOne(stats.staggerDamageMultiplier);
+
+                damage = (int)math.round(damage * damageMultiplier);
             }
 
             health.current -= damage;
 
+            // 잃은 만큼 겁을 먹고, 때린 쪽 직군이 남긴 출혈이 걸린다(UnitEmotion.NotifyDamaged와
+            // UnitController.ApplyOnHitDebuffs). 급소 타격은 뒤에서 그었을 때 두 배로 잘 걸린다.
+            if (hasEmotion && !hit.bleed && damage > 0)
+            {
+                emotion.NotifyDamaged(profile, damage, stats.maxHp);
+
+                if (hasTactics && tactics.random.state != 0)
+                {
+                    if (hit.fromSkill && profile.bleedChanceOnSkillHit > 0f &&
+                        tactics.random.NextFloat() < profile.bleedChanceOnSkillHit)
+                    {
+                        emotion.ApplyBleeding(profile);
+                    }
+
+                    float chance = hit.bleedChance * (fromBehind ? 2f : 1f);
+                    if (chance > 0f && tactics.random.NextFloat() < chance) emotion.ApplyBleeding(profile);
+                }
+            }
+
             // 살에 닿았으면 피가 튄다. 흘려낸 타격(피해 0)에는 뿌리지 않는다 —
-            // 아군 쪽도 막아낸 공격에는 피를 뿌리지 않는다.
-            if (damage > 0 && bridge.bloodOnEnemies.IsCreated)
+            // 아군 쪽도 막아낸 공격에는 피를 뿌리지 않는다. 출혈 틱도 새로 벤 상처가 아니다.
+            if (damage > 0 && !hit.bleed && bridge.bloodOnEnemies.IsCreated)
             {
                 bridge.bloodOnEnemies.Enqueue(new EnemyWorldBridge.BloodOnEnemy
                 {
@@ -213,32 +256,19 @@ public partial struct EnemyDamageSystem : ISystem
             }
 
             // 마지막으로 때린 쪽을 남긴다. 이 적이 쓰러지면 그 아군의 처치가 된다.
-            // 흘려내기(피해 0)로는 갱신하지 않는다 — 쳐낸 것이 처치의 공은 아니다.
-            if (damage > 0) health.lastAttackerAllyIndex = hit.attackerAllyIndex;
+            // 흘려내기(피해 0)로는 갱신하지 않는다 — 쳐낸 것이 처치의 공은 아니다. 출혈은 걸어 둔 쪽이
+            // 이미 남아 있으므로 덮지 않는다.
+            if (damage > 0 && !hit.bleed) health.lastAttackerAllyIndex = hit.attackerAllyIndex;
 
-            // 맞았으면 때린 쪽을 돌아본다. 아직 아무도 겨누지 않고 있을 때만이다 —
-            // 이미 붙어 싸우는 상대가 있으면 뒤에서 한 대 맞았다고 그쪽으로 돌아서면 안 된다.
-            //
-            // 이게 없으면 등지고 서 있던 고블린이 영영 깨어나지 않는다. 표적이 없으면 움직이지도
-            // 돌지도 않는데(EnemyMovementSystem의 facing은 표적이 있어야 잡힌다), 표적을 고르는
-            // 쪽은 시야각 안만 보기 때문이다. 스폰 회전이 무작위라 그냥 두면 상당수가 그렇게 굳는다.
-            if (damage > 0 && hit.attackerAllyIndex >= 0 && bridge.allies.IsCreated &&
-                targetLookup.HasComponent(hit.enemy))
-            {
-                EnemyTarget target = targetLookup[hit.enemy];
-                bool hasTarget = target.allyIndex >= 0 && target.allyIndex < bridge.allies.Length &&
-                                 bridge.allies[target.allyIndex].alive != 0;
-                if (!hasTarget)
-                {
-                    target.allyIndex = hit.attackerAllyIndex;
-                    targetLookup[hit.enemy] = target;
-                }
-            }
+            if (damage > 0 && !hit.bleed) Retaliate(ref targetLookup, hit, bridge);
 
             if (health.current <= 0)
             {
                 health.current = 0;
                 action.kind = EnemyActionKind.Dead;
+
+                // 곁에 있던 동료가 이걸 보고 겁을 먹는다(EnemyEmotionSystem).
+                if (hasDeathLog) deathLog.positions.Add(transform.Position);
 
                 // 처치를 알린다. 실제 귀속은 메인 스레드가 큐를 비우며 한다(DrainKills).
                 bridge.kills.Enqueue(new EnemyWorldBridge.EnemyKill
@@ -255,14 +285,22 @@ public partial struct EnemyDamageSystem : ISystem
                 // 그 한 프레임 동안 자리가 차 있으면 기다리던 놈의 판단 박자가 그대로 헛돈다.
                 if (hasTactics) tactics.ReleaseSlot(now, 0f);
 
-                // 마무리 일격은 조금 더 멀리 밀려 쓰러진다.
-                if (hasImpact) ApplyImpact(ref impact, hit, stats, transform, now, 1.2f, false);
+                // 마무리 일격은 조금 더 멀리 밀려 쓰러진다. 피를 흘리다 쓰러진 놈은 제자리에 무너진다.
+                if (hasImpact && !hit.bleed) ApplyImpact(ref impact, hit, stats, transform, now, 1.2f, false);
 
                 healthLookup[hit.enemy] = health;
                 actionLookup[hit.enemy] = action;
                 animationLookup[hit.enemy] = animation;
                 if (hasTactics) tacticsLookup[hit.enemy] = tactics;
                 if (hasImpact) impactLookup[hit.enemy] = impact;
+                if (hasEmotion) emotionLookup[hit.enemy] = emotion;
+                continue;
+            }
+
+            // 출혈 틱은 HP만 깎는다. 움찔·넉백·멈칫이 없다 — 아군 쪽 TakeBleedDamage와 같다.
+            if (hit.bleed)
+            {
+                healthLookup[hit.enemy] = health;
                 continue;
             }
 
@@ -329,7 +367,58 @@ public partial struct EnemyDamageSystem : ISystem
             animationLookup[hit.enemy] = animation;
             if (hasTactics) tacticsLookup[hit.enemy] = tactics;
             if (hasImpact) impactLookup[hit.enemy] = impact;
+            if (hasEmotion) emotionLookup[hit.enemy] = emotion;
         }
+    }
+
+    // 칼을 내지르고 거두는 중인가. 평타의 회수 구간과, 도약이 내려앉아 칼을 거두는 뒷부분이다.
+    private static bool IsRecovering(in EnemyAction action)
+    {
+        return action.kind == EnemyActionKind.Recover ||
+               (action.kind == EnemyActionKind.Leap && action.struckThisSwing);
+    }
+
+    // 굽기 전 원본·테스트처럼 배율을 비워 둔 개체는 1로 본다.
+    private static float OrOne(float multiplier) => multiplier > 0f ? multiplier : 1f;
+
+    // 때린 쪽을 돌아본다.
+    //
+    // 아무도 겨누지 않고 있었으면 곧바로 그쪽이다. 이게 없으면 등지고 서 있던 고블린이 영영 깨어나지
+    // 않는다 — 표적이 없으면 움직이지도 돌지도 않는데(EnemyMovementSystem의 facing은 표적이 있어야
+    // 잡힌다), 표적을 고르는 쪽은 시야각 안만 보기 때문이다.
+    //
+    // 이미 겨누는 상대가 있으면 때린 쪽의 어그로가 그 상대보다 크거나 같을 때만 돌아선다
+    // (게임오브젝트 고블린의 ShouldSwitchAggroTo). 탱커(3.2)가 사제(0.3)를 물고 있는 놈을 치면 끌려오고,
+    // 사제가 탱커와 싸우는 놈을 쳐도 끌려오지 않는다. 옮기는 것은 손이 빌 때다(EnemyTarget.retaliate 주석).
+    private static void Retaliate(ref ComponentLookup<EnemyTarget> targetLookup, in EnemyWorldBridge.HitOnEnemy hit,
+        in EnemyWorldBridge.BridgeData bridge)
+    {
+        int attacker = hit.attackerAllyIndex;
+        if (attacker < 0 || !bridge.allies.IsCreated || attacker >= bridge.allies.Length) return;
+        if (bridge.allies[attacker].alive == 0) return;
+        if (!targetLookup.HasComponent(hit.enemy)) return;
+
+        EnemyTarget target = targetLookup[hit.enemy];
+        int current = target.allyIndex;
+        bool hasTarget = current >= 0 && current < bridge.allies.Length && bridge.allies[current].alive != 0;
+
+        if (!hasTarget)
+        {
+            target.allyIndex = attacker;
+            target.retaliate = false;
+        }
+        else if (current != attacker &&
+                 bridge.allies[attacker].threatWeight >= bridge.allies[current].threatWeight)
+        {
+            target.retaliate = true;
+            target.retaliateAllyIndex = attacker;
+        }
+        else
+        {
+            return;
+        }
+
+        targetLookup[hit.enemy] = target;
     }
 
     // 한 대의 무게를 몸에 남긴다 — 멈칫(히트스톱), 밀려남(넉백), 무거워진 발(피격 둔화).

@@ -28,6 +28,10 @@ public class EnemyEcsTests
     private SystemHandle movementSystem;
     private SystemHandle damageSystem;
 
+    // 감정은 켠 테스트에서만 돈다(UseEmotion). 나머지 테스트는 감정 없이 예전 규칙 그대로 돈다.
+    private SystemHandle emotionSystem;
+    private bool emotionEnabled;
+
     private static EnemyStats DefaultStats() => new EnemyStats
     {
         maxHp = 100,
@@ -87,6 +91,7 @@ public class EnemyEcsTests
     {
         if (world != null && world.IsCreated) world.Dispose();
         EnemyWorldBridge.Dispose();
+        emotionEnabled = false;
 
         // 구간표는 월드가 내려가도 따라 사라지지 않는다. 실제로는 렌더 시스템이 치우는데
         // (EnemyAnimationRenderSystem.OnDestroy) 여기서는 그 시스템을 세우지 않는다.
@@ -158,6 +163,7 @@ public class EnemyEcsTests
 
             // 실제 그룹의 순서와 같게 돌린다(EnemySimulationSystems 머리 주석).
             damageSystem.Update(world.Unmanaged);
+            if (emotionEnabled) emotionSystem.Update(world.Unmanaged);
             hashSystem.Update(world.Unmanaged);
             thinkSystem.Update(world.Unmanaged);
             targetingSystem.Update(world.Unmanaged);
@@ -499,8 +505,12 @@ public class EnemyEcsTests
     // 끝에서 처음으로 이어 붙여 도는 클립(EnemyCombatSystem.IsLooping과 같은 셋).
     private static bool Loops(EnemyClip clip)
     {
-        return clip == EnemyClip.Idle || clip == EnemyClip.Walk || clip == EnemyClip.Run;
+        return clip == EnemyClip.Idle || clip == EnemyClip.GuardIdle ||
+               clip == EnemyClip.Walk || clip == EnemyClip.Run;
     }
+
+    // 발놀림으로 본 자세. 서 있는 두 자세(두리번·노려보기)는 하나로 친다.
+    private static EnemyClip Stance(EnemyClip clip) => clip == EnemyClip.GuardIdle ? EnemyClip.Idle : clip;
 
     private Entity[] SpawnCrowd(int count, uint seed, float near, float far, EnemyStats stats)
     {
@@ -553,7 +563,9 @@ public class EnemyEcsTests
 
                 if (bothLooping && anim.clip != previousClip[i])
                 {
-                    loopSwitches++;
+                    // 서 있는 자세 둘(두리번 ↔ 노려보기)은 표적을 잡고 놓을 때 한 번 바뀌는 것이라 들썩임으로
+                    // 세지 않는다. 진행도가 이어지는지는 똑같이 본다.
+                    if (Stance(anim.clip) != Stance(previousClip[i])) loopSwitches++;
 
                     float jump = math.abs(anim.normalizedTime - previousPhase[i]);
                     if (jump > 0.05f)
@@ -695,8 +707,8 @@ public class EnemyEcsTests
                 Translation(range.startFrame),
                 Translation(range.startFrame + range.frameCount - 1));
 
-            bool loops = range.clip == EnemyClip.Idle || range.clip == EnemyClip.Walk ||
-                         range.clip == EnemyClip.Run;
+            bool loops = range.clip == EnemyClip.Idle || range.clip == EnemyClip.GuardIdle ||
+                         range.clip == EnemyClip.Walk || range.clip == EnemyClip.Run;
 
             if (loops)
             {
@@ -715,7 +727,7 @@ public class EnemyEcsTests
             }
         }
 
-        Assert.AreEqual(3, checkedLooping, "제자리걸음·걷기·달리기 셋 다 구워져 있어야 한다");
+        Assert.AreEqual(4, checkedLooping, "두리번·노려보기·걷기·달리기 넷 다 구워져 있어야 한다");
     }
 
     // ---------------------------------------------------------------- 아군이 엔티티를 읽는 쪽
@@ -878,7 +890,7 @@ public class EnemyEcsTests
     {
         EnemyStats stats = DefaultStats();
         stats.leapRange = 3f;
-        stats.leapDuration = 0.3f;
+        stats.leapDuration = 0.8f;   // 착지 직후(0.5)에 끝나므로 0.4초 동안 뛴다
 
         Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
         AddAlly(new float3(0f, 0f, 2.5f));
@@ -886,9 +898,76 @@ public class EnemyEcsTests
         Tick(0.05f, 4);
         Assert.AreEqual(EnemyActionKind.Leap, manager.GetComponentData<EnemyAction>(enemy).kind);
 
-        Tick(0.05f, 8);   // 0.3초를 넘긴다
+        Tick(0.05f, 10);  // 0.5초 — 착지해 끝났다
         Assert.AreNotEqual(EnemyActionKind.Leap, manager.GetComponentData<EnemyAction>(enemy).kind,
             "도약이 영영 끝나지 않으면 그 자리에 떠 있게 된다");
+    }
+
+    [Test]
+    public void 도약은_착지하는_순간에_때린다()
+    {
+        // 예전에는 클립이 끝나는 1.0에서 때려서, 칼을 다 거둔 뒤 0.6초가 지나서야 피해와 멈칫이 들어갔다.
+        EnemyStats stats = DefaultStats();
+        stats.leapRange = 3f;
+        stats.leapDuration = 1.1f;
+
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        AddAlly(new float3(0f, 0f, 2.5f));
+
+        Tick(0.05f, 4);
+        Assert.AreEqual(EnemyActionKind.Leap, manager.GetComponentData<EnemyAction>(enemy).kind);
+
+        // 피해가 들어가는 순간을 잡는다. 그때 아직 도약 중이어야 한다(도약은 착지 직후 0.5에서 끝난다).
+        EnemyAction atHit = default;
+        bool struck = false;
+        for (int i = 0; i < 30 && !struck; i++)
+        {
+            Tick(0.05f);
+            struck = EnemyWorldBridge.HitsOnAllies.Count > 0;
+            if (struck) atHit = manager.GetComponentData<EnemyAction>(enemy);
+        }
+
+        Assert.IsTrue(struck, "내려앉는 순간에 피해가 들어가야 한다");
+        Assert.AreEqual(EnemyActionKind.Leap, atHit.kind, "피해는 도약 도중(착지하는 프레임)에 들어간다");
+    }
+
+    [Test]
+    public void 도약은_착지한_직후에_끝난다()
+    {
+        // 클립의 뒷부분은 공중에서 칼을 거두는 동작이라, 끝까지 틀면 착지한 뒤에도 공중 자세로 떠 있다.
+        EnemyStats stats = DefaultStats();
+        stats.leapRange = 3f;
+        stats.leapDuration = 1.1f;
+
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        AddAlly(new float3(0f, 0f, 2.5f));
+
+        Tick(0.05f, 4);
+        Assert.AreEqual(EnemyActionKind.Leap, manager.GetComponentData<EnemyAction>(enemy).kind);
+
+        Tick(0.05f, 13);   // 0.65초 — 클립(1.1초)의 60%. 0.5에서 끝났어야 한다
+        Assert.AreNotEqual(EnemyActionKind.Leap, manager.GetComponentData<EnemyAction>(enemy).kind);
+    }
+
+    [Test]
+    public void 도약을_마치면_굳어_서_있지_않는다()
+    {
+        // 칼을 거두는 동작은 클립 뒷부분이 이미 보여 준다. 평타처럼 회수 구간(0.35초)과 재사용 대기(1.1초)를
+        // 또 걸면 마지막 프레임에 굳은 채 서 있다가 한참 뒤에야 움직였다.
+        EnemyStats stats = DefaultStats();
+        stats.leapRange = 3f;
+        stats.leapDuration = 0.8f;   // 착지 직후(0.5)에 끝나므로 0.4초 동안 뛴다
+
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        AddAlly(new float3(0f, 0f, 2.5f));
+
+        Tick(0.05f, 4);
+        Assert.AreEqual(EnemyActionKind.Leap, manager.GetComponentData<EnemyAction>(enemy).kind);
+
+        Tick(0.05f, 10);  // 0.5초 — 착지해 끝나고 두어 프레임 더
+        EnemyAction action = manager.GetComponentData<EnemyAction>(enemy);
+        Assert.AreNotEqual(EnemyActionKind.Recover, action.kind, "도약 뒤에 회수 구간으로 서 있으면 안 된다");
+        Assert.LessOrEqual(action.nextAttackTime, world.Time.ElapsedTime, "도약이 평타 재사용 대기를 걸면 착지 뒤 1초 넘게 서 있는다");
     }
 
     [Test]
@@ -1191,6 +1270,341 @@ public class EnemyEcsTests
     //  - 판단 박자가 마리마다 흩어져 있다
     // 자리가 한 번 새면(돌려주지 않은 자리가 쌓이면) 그 아군에게는 영영 아무도 칼을 못 든다.
     // 눈으로는 "고블린이 멍하니 서 있다"로만 보여서 원인을 찾기 어려운 자리다.
+
+    // ---------------------------------------------------------------- 게임오브젝트 고블린에게서 옮겨 온 규칙
+
+    // 감정을 켠다. 게임오브젝트 고블린이 달고 있던 UnitEmotion의 기본값 그대로다.
+    private void UseEmotion(params Entity[] enemies)
+    {
+        if (!emotionEnabled)
+        {
+            emotionSystem = world.CreateSystem<EnemyEmotionSystem>();
+            emotionEnabled = true;
+        }
+
+        EnemyEmotionProfile profile = EnemyEmotionProfile.From(new EmotionProfile(), false);
+        foreach (Entity enemy in enemies)
+        {
+            manager.AddComponentData(enemy, profile);
+            manager.AddComponentData(enemy, new EnemyEmotion());
+        }
+    }
+
+    private void HitEnemy(Entity enemy, int damage, float3 from, int attackerAllyIndex = -1, float bleedChance = 0f)
+    {
+        EnemyWorldBridge.HitsOnEnemies.Enqueue(new EnemyWorldBridge.HitOnEnemy
+        {
+            enemy = enemy,
+            damage = damage,
+            fromPosition = from,
+            attackerAllyIndex = attackerAllyIndex,
+            bleedChance = bleedChance,
+            impactWeight = 1f,
+        });
+    }
+
+    private void HoldAction(Entity enemy, EnemyActionKind kind)
+    {
+        EnemyAction action = manager.GetComponentData<EnemyAction>(enemy);
+        action.kind = kind;
+        action.timer = 10f;
+        action.animationLength = 10f;
+        manager.SetComponentData(enemy, action);
+    }
+
+    [Test]
+    public void 칼을_거두는_중에_맞으면_더_아프다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.maxHp = 1000;
+        stats.recoveryVulnerabilityMultiplier = 1.35f;
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        HoldAction(enemy, EnemyActionKind.Recover);
+
+        HitEnemy(enemy, 100, new float3(0f, 0f, 5f));   // 정면
+        Tick(0.02f);
+
+        Assert.AreEqual(1000 - 135, manager.GetComponentData<EnemyHealth>(enemy).current);
+    }
+
+    [Test]
+    public void 무너져_있는_동안_맞으면_더_아프다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.maxHp = 1000;
+        stats.staggerDamageMultiplier = 1.4f;
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        HoldAction(enemy, EnemyActionKind.Stagger);
+
+        HitEnemy(enemy, 100, new float3(0f, 0f, 5f));
+        Tick(0.02f);
+
+        Assert.AreEqual(1000 - 140, manager.GetComponentData<EnemyHealth>(enemy).current);
+    }
+
+    [Test]
+    public void 어그로가_더_높은_아군이_때리면_그쪽으로_돌아선다()
+    {
+        // 탱커가 고블린을 끌어오는 수단이다(게임오브젝트 고블린의 ShouldSwitchAggroTo).
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), DefaultStats());
+        AddAlly(new float3(0f, 0f, 1f));                          // 0번: 코앞의 평범한 아군(점수 1.0)
+        AddAlly(new float3(7f, 0f, 0f), threatWeight: 3.2f);       // 1번: 옆의 탱커(점수 7/3.2 = 2.2)
+
+        Tick(0.05f, 2);
+        Assert.AreEqual(0, manager.GetComponentData<EnemyTarget>(enemy).allyIndex);
+
+        HitEnemy(enemy, 5, new float3(7f, 0f, 0f), attackerAllyIndex: 1);
+        Tick(0.05f, 20);   // 휘두르던 중이면 그 스윙을 마친 뒤에 돌아선다
+
+        Assert.AreEqual(1, manager.GetComponentData<EnemyTarget>(enemy).allyIndex);
+    }
+
+    [Test]
+    public void 어그로가_낮은_아군이_때리면_돌아서지_않는다()
+    {
+        // 탱커와 맞붙은 놈은 뒤에서 궁수가 쏴도 돌아서지 않는다 — "때리고 어그로를 탱커에게 넘긴다"가 여기서 성립한다.
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), DefaultStats());
+        AddAlly(new float3(0f, 0f, 1f), threatWeight: 3.2f);       // 0번: 탱커
+        AddAlly(new float3(7f, 0f, 0f), threatWeight: 0.4f);       // 1번: 궁수
+
+        Tick(0.05f, 2);
+        Assert.AreEqual(0, manager.GetComponentData<EnemyTarget>(enemy).allyIndex);
+
+        HitEnemy(enemy, 5, new float3(7f, 0f, 0f), attackerAllyIndex: 1);
+        Tick(0.05f, 20);
+
+        Assert.AreEqual(0, manager.GetComponentData<EnemyTarget>(enemy).allyIndex);
+    }
+
+    [Test]
+    public void 은신한_아군은_들킬_거리_밖이면_노리지_않는다()
+    {
+        Entity far = CreateEnemy(new float3(0f, 0f, 0f), DefaultStats());
+        Entity near = CreateEnemy(new float3(10f, 0f, 0f), DefaultStats());
+        AddAlly(new float3(0f, 0f, 4f));
+        AddAlly(new float3(10f, 0f, 1.5f));
+
+        for (int i = 0; i < 2; i++)
+        {
+            EnemyWorldBridge.AllyState ally = EnemyWorldBridge.AllyStates[i];
+            ally.hidden = 1;
+            ally.revealRange = 2.2f;
+            EnemyWorldBridge.AllyStates[i] = ally;
+        }
+
+        Tick(0.05f, 3);
+
+        Assert.AreEqual(EnemyTarget.None, manager.GetComponentData<EnemyTarget>(far).allyIndex,
+            "4m 밖의 은신한 아군은 보이지 않아야 한다");
+        Assert.AreEqual(1, manager.GetComponentData<EnemyTarget>(near).allyIndex,
+            "코앞(1.5m)까지 오면 들킨다");
+    }
+
+    [Test]
+    public void 물기는_붙은_지_얼마_안_됐으면_하지_않고_한_전투에_정한_횟수만_한다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.biteDamage = 24;
+        stats.biteDuration = 0.3f;
+        stats.biteCooldown = 0.2f;
+        stats.biteUsesPerBattle = 1;
+        stats.biteEngageDelay = 1f;
+
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        AddAlly(new float3(0f, 0f, 1f));
+
+        Tick(0.05f, 10);   // 0.5초 — 붙은 지 1초가 안 됐다
+        Assert.AreEqual(0, manager.GetComponentData<EnemyAction>(enemy).biteUsesSpent);
+
+        Tick(0.05f, 100);  // 5초 — 재사용 대기(0.2초)는 수십 번 돌았다
+        Assert.AreEqual(1, manager.GetComponentData<EnemyAction>(enemy).biteUsesSpent,
+            "한 전투에 한 번으로 정했으면 한 번만 물어야 한다");
+    }
+
+    [Test]
+    public void 도약하면_몸이_떴다가_땅으로_돌아온다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.leapRange = 3f;
+        stats.leapDuration = 1.1f;
+        stats.leapHeight = 0.5f;
+
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        AddAlly(new float3(0f, 0f, 2.5f));
+
+        Tick(0.05f, 4);
+        Assert.AreEqual(EnemyActionKind.Leap, manager.GetComponentData<EnemyAction>(enemy).kind);
+
+        float peak = 0f;
+        for (int i = 0; i < 30; i++)
+        {
+            Tick(0.05f);
+            peak = math.max(peak, manager.GetComponentData<LocalTransform>(enemy).Position.y);
+        }
+
+        Assert.Greater(peak, 0.3f, "발이 뜬 구간에서 몸이 올라가야 한다");
+        Assert.AreEqual(0f, manager.GetComponentData<LocalTransform>(enemy).Position.y, 0.001f,
+            "도약이 끝나면 땅에 붙어 있어야 한다");
+    }
+
+    [Test]
+    public void 도약_클립이_떠_있는_만큼_착지할_때_눌러_내린다()
+    {
+        // 공중 공격 클립이라 발끝이 땅에서 떠 있다. 착지하는 순간 몸을 그만큼 내려 발을 땅에 디디게 한다.
+        EnemyStats stats = DefaultStats();
+        stats.leapRange = 3f;
+        stats.leapDuration = 1.1f;
+        stats.leapHeight = 0.5f;
+        stats.leapClipFloat = 0.1f;
+
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        AddAlly(new float3(0f, 0f, 2.5f));
+
+        Tick(0.05f, 4);
+
+        // 피해가 들어가는 프레임(착지)의 높이.
+        float atLanding = float.NaN;
+        for (int i = 0; i < 30 && float.IsNaN(atLanding); i++)
+        {
+            Tick(0.05f);
+            if (EnemyWorldBridge.HitsOnAllies.Count > 0) atLanding = manager.GetComponentData<LocalTransform>(enemy).Position.y;
+        }
+
+        Assert.AreEqual(-0.1f, atLanding, 0.08f, "착지 순간에는 클립이 떠 있는 만큼 눌려 있어야 한다");
+
+        Tick(0.05f, 20);
+        Assert.AreEqual(0f, manager.GetComponentData<LocalTransform>(enemy).Position.y, 0.001f,
+            "도약이 끝나면 누른 만큼도 되돌려 땅 높이로 돌아온다");
+    }
+
+    [Test]
+    public void 도약이_끊겨도_땅으로_내려온다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.leapRange = 3f;
+        stats.leapDuration = 1.1f;
+        stats.leapHeight = 0.5f;
+        stats.maxPoise = 10f;
+
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        AddAlly(new float3(0f, 0f, 2.5f));
+
+        Tick(0.05f, 4);
+
+        // 한창 떠 있을 때까지 민다. 도약이 시작되는 프레임은 판단 박자에 따라 한두 프레임 흔들린다.
+        float height = 0f;
+        for (int i = 0; i < 20 && height < 0.3f; i++)
+        {
+            Tick(0.05f);
+            height = manager.GetComponentData<LocalTransform>(enemy).Position.y;
+        }
+        Assert.Greater(height, 0.3f);
+        Assert.AreEqual(EnemyActionKind.Leap, manager.GetComponentData<EnemyAction>(enemy).kind);
+
+        EnemyWorldBridge.DamageEnemy(enemy, 1, 50f, new float3(0f, 0f, 2.5f));   // 강인도가 깨져 무너진다
+        Tick(0.05f);
+        float falling = manager.GetComponentData<LocalTransform>(enemy).Position.y;
+        Assert.Less(falling, height, "끊긴 순간부터 내려와야 한다");
+        Assert.Greater(falling, 0f, "한 프레임에 땅으로 튀지 않고 내려온다");
+
+        Tick(0.05f, 10);   // 0.5초 — 1m/s로 최대 0.4m를 내려온다
+        Assert.AreEqual(0f, manager.GetComponentData<LocalTransform>(enemy).Position.y, 0.001f);
+    }
+
+    [Test]
+    public void 공포가_넘치면_굳어서_아무것도_못_한다()
+    {
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), DefaultStats());
+        UseEmotion(enemy);
+        AddAlly(new float3(0f, 0f, 1f));
+
+        // 공포는 매 프레임 먼저 식고 나서 패닉을 잰다(UnitEmotion과 같은 순서). 그래서 실제로 넘치는 것은
+        // HP가 바닥(30% 이하)이라 식지 않고 차오르는 동안이다.
+        EnemyHealth health = manager.GetComponentData<EnemyHealth>(enemy);
+        health.current = 20;
+        manager.SetComponentData(enemy, health);
+        manager.SetComponentData(enemy, new EnemyEmotion { fear = 85f });
+        Tick(0.05f, 20);   // 1초 — 패닉은 2.5초
+
+        Assert.AreEqual(EnemyActionKind.Panic, manager.GetComponentData<EnemyAction>(enemy).kind);
+        Assert.AreEqual(0, EnemyWorldBridge.HitsOnAllies.Count, "굳어 있는 동안에는 코앞의 아군도 때리지 못한다");
+
+        Tick(0.05f, 40);   // 3초 뒤
+        Assert.AreNotEqual(EnemyActionKind.Panic, manager.GetComponentData<EnemyAction>(enemy).kind,
+            "패닉은 시간이 지나면 풀려야 한다");
+    }
+
+    [Test]
+    public void 공포에_빠지면_때리는_힘이_약해진다()
+    {
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), DefaultStats());
+        UseEmotion(enemy);
+        AddAlly(new float3(0f, 0f, 1f));
+
+        // 공포(40) 이상, 패닉(85) 미만. 식는 속도(초당 8.4)보다 넉넉하게 둔다.
+        manager.SetComponentData(enemy, new EnemyEmotion { fear = 80f, fearful = true });
+        Tick(0.05f, 30);
+
+        Assert.IsTrue(EnemyWorldBridge.HitsOnAllies.TryDequeue(out var hit), "휘둘렀어야 한다");
+        Assert.AreEqual(28, hit.damage, "공포에 빠지면 공격력이 30% 떨어진다(40 → 28)");
+    }
+
+    [Test]
+    public void 급소를_베이면_피를_흘린다()
+    {
+        EnemyStats stats = DefaultStats();
+        stats.maxHp = 1000;
+        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        UseEmotion(enemy);
+
+        Tick(0.05f, 2);   // 판단 박자가 개체의 난수를 채운다
+        HitEnemy(enemy, 10, new float3(0f, 0f, 5f), bleedChance: 1f);
+        Tick(0.05f);
+        Assert.IsTrue(manager.GetComponentData<EnemyEmotion>(enemy).IsBleeding);
+
+        int before = manager.GetComponentData<EnemyHealth>(enemy).current;
+        Tick(0.05f, 50);   // 2.5초 — 1초마다 최대 HP의 3%
+
+        Assert.LessOrEqual(manager.GetComponentData<EnemyHealth>(enemy).current, before - 60);
+    }
+
+    [Test]
+    public void 곁에서_동료가_쓰러지면_겁을_먹는다()
+    {
+        Entity victim = CreateEnemy(new float3(0f, 0f, 0f), DefaultStats());
+        Entity witness = CreateEnemy(new float3(3f, 0f, 0f), DefaultStats());
+        Entity faraway = CreateEnemy(new float3(40f, 0f, 0f), DefaultStats());
+        UseEmotion(victim, witness, faraway);
+
+        HitEnemy(victim, 1000, new float3(0f, 0f, 5f));
+        Tick(0.02f);
+
+        Assert.Greater(manager.GetComponentData<EnemyEmotion>(witness).fear, 10f, "12m 안에서 본 죽음은 공포를 올린다");
+        Assert.AreEqual(0f, manager.GetComponentData<EnemyEmotion>(faraway).fear, 0.001f);
+    }
+
+    [Test]
+    public void 표적이_있으면_서서_노려보고_없으면_두리번거린다()
+    {
+        // 두리번거리는 대기 자세(Idle)는 몸통이 좌우로 160도 돈다. 겨눈 상대가 있는 동안은 정면만 보는
+        // 자세(GuardIdle)로 서야 한다 — 몸은 표적을 보는데 자세가 옆을 둘러보면 딴 데를 보는 것처럼 보인다.
+        PublishClipSpeeds(1.5f, 2.3f);
+
+        EnemyStats stats = DefaultStats();
+        stats.moveSpeed = 0f;   // 붙으러 가지 못하게 세워 둔다
+
+        Entity watcher = CreateEnemy(new float3(0f, 0f, 0f), stats);
+        Entity searcher = CreateEnemy(new float3(40f, 0f, 0f), stats);
+        AddAlly(new float3(0f, 0f, 5f));
+
+        Tick(0.05f, 10);
+
+        Assert.AreEqual(0, manager.GetComponentData<EnemyTarget>(watcher).allyIndex);
+        Assert.AreEqual(EnemyClip.GuardIdle, manager.GetComponentData<EnemyAnimation>(watcher).clip,
+            "겨눈 상대가 있으면 노려보며 선다");
+        Assert.AreEqual(EnemyClip.Idle, manager.GetComponentData<EnemyAnimation>(searcher).clip,
+            "겨눌 상대가 없으면 두리번거린다");
+    }
 
     private Entity CreateEnemyFacing(float3 position, float3 lookAt, EnemyStats stats)
     {

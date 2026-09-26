@@ -79,6 +79,12 @@ public struct EnemyStats : IComponentData
     public float hitReactionDuration;
     public float knockbackDistance;
 
+    // 무방비일 때 받는 피해 배율. 0이면 1로 친다. 게임오브젝트 고블린의 recoveryVulnerabilityMultiplier(1.35)·
+    // staggerDamageMultiplier(1.4)와 같은 값이다 — 칼을 내지르고 거두는 틈과 무너진 몇 초가 진짜 빈틈이어야
+    // 아군의 "먼저 받아치기"와 퍼펙트 가드에 값이 붙는다.
+    public float recoveryVulnerabilityMultiplier;
+    public float staggerDamageMultiplier;
+
     // 아군이 표적을 고를 때 쓰는 가중치. 아군 쪽 UnitStats.threatWeight와 같은 뜻이다.
     public float threatWeight;
 
@@ -89,6 +95,17 @@ public struct EnemyStats : IComponentData
     public float leapRange;
     public float leapDuration;
     public float leapCooldown;
+
+    // 도약의 정점 높이(미터). 0이면 땅에 붙은 채로 덤빈다. 게임오브젝트 고블린의 leapAttackHeight(0.5)와 같다 —
+    // 이 한 줄이 "달려든다"와 "뛰어서 덤벼든다"를 가른다. 판정과 이동은 여전히 땅에서 잰다(Flat).
+    public float leapHeight;
+
+    // 도약 클립이 제 스스로 떠 있는 높이(미터). 발이 땅을 디뎌야 하는 웅크림과 착지 순간에 이만큼 눌러 내린다.
+    //
+    // 클립이 팩의 공중 공격(Armed-Air-Attack-R1)이라 처음부터 끝까지 공중 자세다 — 고블린에 샘플링하면 골반이
+    // 서 있을 때보다 10cm 높고(0.74 vs 0.64m) 가장 낮은 발끝도 땅에서 7~21cm 떠 있다. 누르지 않으면 포물선이 0으로
+    // 돌아온 착지 순간에도 발이 허공에 있어 "공중에 머무는" 것처럼 보였다.
+    public float leapClipFloat;
 
     // 물어뜯기. 0이면 물지 않는다. 붙어 있는 동안 상대를 따라다니다가 끝에 한 번 문다.
     public int biteDamage;
@@ -102,6 +119,14 @@ public struct EnemyStats : IComponentData
     // 않는다. 둘 다 넣으면 그 한 방으로 강인도가 먼저 깨지면서 면역 시간이 켜지고, 정작 경직이
     // 그 면역에 막힌다(아군 쪽 UnitController.ResolveSkillHit 주석과 같은 이유다).
     public float biteStaggerDuration;
+
+    // 한 전투에 물 수 있는 횟수. 0 이하면 제한이 없다. 게임오브젝트 고블린의 skillUseCount(2)와 같다 —
+    // 재사용 대기(5초)만 두면 긴 전투에서 같은 놈이 열 번 넘게 한 명씩 판에서 빼낸다.
+    public int biteUsesPerBattle;
+
+    // 사거리 안에 이만큼(초) 붙어 있어야 물 수 있다. 0이면 기다리지 않는다. 게임오브젝트 고블린의
+    // skillEngageDelay(1초)와 같다 — 달려오는 동안 시간을 세면 도착한 그 순간 곧바로 물어뜯는다.
+    public float biteEngageDelay;
 
     // 이 리그가 가진 콤보 단수. 굽힌 클립 수에서 나오므로 스포너가 아니라 EnemyHorde가 채운다 —
     // 리그마다 단수가 다르고, 없는 클립을 가리키면 그 스윙만 서 있는 그림이 된다.
@@ -392,6 +417,15 @@ public struct EnemyTarget : IComponentData
     public int allyIndex;
     public double nextRetargetTime;
 
+    // 맞받아칠 상대. 맞은 순간 정하지만 손이 비었을 때 옮긴다(EnemyTargetingSystem).
+    //
+    // 게임오브젝트 고블린은 맞으면 때린 쪽의 어그로가 지금 상대보다 크거나 같을 때 그쪽으로 돌아섰다
+    // (UnitController.ShouldSwitchAggroTo). 탱커가 고블린을 끌어오는 수단이 이것이다 — 없으면 탱커가
+    // 옆에서 아무리 때려도 사제를 물고 있던 놈이 놓지 않는다. 휘두르는 도중에 곧바로 바꾸면 이미 나간
+    // 칼이 엉뚱한 쪽으로 가고 쥐고 있던 칼 들 자리도 풀리므로(EnemyAttackSlotSystem) 미뤄 둔다.
+    public bool retaliate;
+    public int retaliateAllyIndex;
+
     public const int None = -1;
 }
 
@@ -436,6 +470,12 @@ public enum EnemyActionKind : byte
 
     // 쓰러졌다.
     Dead,
+
+    // 공포에 질려(패닉) 또는 빈사라 아무것도 못 한다(EnemyEmotion). 게임오브젝트 고블린의 PanicBehavior와 같다 —
+    // 이동도 공격도 하지 않고 선 채로 맞는다. 풀리면 그 프레임에 다음 수를 고른다.
+    //
+    // 맨 끝에 둔다. 값이 곧 순서라 중간에 끼우면 앞의 비교(kind <= ...)를 쓰는 곳이 생겼을 때 조용히 틀어진다.
+    Panic,
 }
 
 public struct EnemyAction : IComponentData
@@ -467,6 +507,17 @@ public struct EnemyAction : IComponentData
     public float3 leapDirection;
     public float leapDistance;
     public float leapTravelled;
+
+    // 도약으로 지금 몸을 띄워 둔 높이. 매 프레임 차이만큼만 옮기고, 도약이 끊기면(피격·사망) 이만큼 내려놓는다.
+    public float leapLift;
+
+    // 이번 전투에서 문 횟수(EnemyStats.biteUsesPerBattle과 비교). 0부터 세야 기본값 그대로 "아직 안 물었다"가 된다.
+    public byte biteUsesSpent;
+
+    // 지금 표적의 사거리 안에 붙어 있은 시간(초)과, 그 시간을 세고 있는 표적. 표적이 바뀌거나 사거리 밖으로
+    // 떨어지면 0부터 다시 센다(EnemyStats.biteEngageDelay).
+    public float engageDwell;
+    public int engageAllyIndex;
 
     // 이번 스윙의 타격을 이미 넣었는가. windup이 끝나는 프레임에 한 번만 넣기 위한 것.
     public bool struckThisSwing;
@@ -523,12 +574,47 @@ public enum EnemyClip : byte
     // 이게 없던 동안은 느린 이동도 전부 Run을 재생 배속 바닥에 눌러 돌렸다. 다리는 아무리
     // 느려도 제 속도의 0.5배로 땅을 미는데 몸이 그보다 느리면 그 차이가 그대로 미끄러짐이다.
     Walk,
+
+    // 겨눈 상대를 노려보며 선 자세. 표적이 있을 때 제자리에 서면 이걸 튼다.
+    //
+    // Idle(애니메이터의 CombatIdle 상태 = 팩의 Armed-Idle-Alert1)은 경계하며 두리번거리는 동작이라 한 바퀴에
+    // 몸통이 좌우로 160도, 고개가 240도 넘게 돈다. 몸은 표적을 보고 있어도(EnemyMovementSystem.TickFacing)
+    // 자세가 옆을 둘러봐서, 칼 들 차례를 기다리는 놈들이 전부 딴 데를 보는 것처럼 보였다. 이건 같은 자세
+    // (Armed-Idle)로 서서 정면만 본다. 두리번은 표적이 없을 때(찾는 중)만 남긴다.
+    //
+    // Walk와 같은 이유로 맨 끝이다.
+    GuardIdle,
 }
 
 public struct EnemyAnimation : IComponentData
 {
     public EnemyClip clip;
     public float normalizedTime;
+}
+
+// 클립이 바뀌는 순간 앞 클립에서 넘어오는 몇 프레임을 섞기 위한 기억.
+//
+// 시뮬레이션은 클립을 바꿀 때 한 줄만 고쳐 쓴다(EnemyAnimation.clip). 게임오브젝트 고블린은 그 순간
+// Animator가 0.08초 크로스페이드를 해 줬는데 엔티티에는 그게 없어, 제자리걸음 ↔ 걷기 ↔ 달리기가
+// 바뀔 때마다 자세가 한 프레임에 뚝 끊겼다(고블린 30마리 12초에 230번). 그리는 쪽이
+// (EnemyAnimationRenderSystem) 바뀐 것을 알아채 이전 클립을 잠깐 더 돌리며 섞는다 —
+// 시뮬레이션은 이 컴포넌트를 모른다.
+public struct EnemyAnimationFade : IComponentData
+{
+    // 지난 프레임에 그렸던 클립과 그 진행도, 그리고 그 클립이 초당 얼마씩 나아가고 있었는지.
+    public EnemyClip lastClip;
+    public float lastTime;
+    public float lastRate;
+
+    // 지금 빠져나가는 중인 클립. fadeRemaining이 0이면 섞지 않는다.
+    public EnemyClip fromClip;
+    public float fromTime;
+    public float fromRate;
+    public float fadeRemaining;
+    public float fadeDuration;
+
+    // 첫 프레임에는 비교할 지난 값이 없다. 그때 섞으면 스폰 순간 T포즈에서 넘어온다.
+    public bool initialized;
 }
 
 // 스폰 요청. 층마다 마리 수가 달라지므로 값으로 받는다.

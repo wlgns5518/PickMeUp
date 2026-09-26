@@ -95,3 +95,12 @@ public struct EnemyAnimationMaterial : IComponentData
 {
     public float4 Value;
 }
+
+// 빠져나가는 중인 앞 클립. 클립이 바뀐 직후 잠깐만 쓰인다(EnemyAnimationFade).
+//
+// x = 클립 시작 프레임, y = 클립 프레임 수, z = 진행도(0~1), w = 이 클립이 섞이는 비율(0이면 안 섞는다).
+[MaterialProperty("_EnemyAnimFade")]
+public struct EnemyAnimationFadeMaterial : IComponentData
+{
+    public float4 Value;
+}

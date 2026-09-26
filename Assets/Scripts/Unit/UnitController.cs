@@ -804,10 +804,10 @@ public partial class UnitController : MonoBehaviour
     //
     // 대신 지켜야 할 것은 지킨다: 휘두르는 중이거나 영창 중에는 바꾸지 않고,
     // 최소 전환 간격(targetChangeInterval)도 그대로 건다.
-    public bool TryRetarget(UnitController target)
+    public bool TryRetarget(TargetRef target)
     {
-        if (target == null || target == CurrentTarget) return false;
-        if (target.IsDead || !target.isActiveAndEnabled || !UnitRegistry.AreEnemies(this, target)) return false;
+        if (!target.Exists || target == CurrentTarget) return false;
+        if (!target.IsAlive || !IsHostileTo(target)) return false;
 
         // 스윙 도중에 노리는 상대가 바뀌면 이미 나간 칼이 엉뚱한 곳을 향한다.
         // 스윙과 스윙 사이의 틈에서만 갈아탄다.
@@ -858,9 +858,9 @@ public partial class UnitController : MonoBehaviour
         return false;
     }
 
-    public void ReceiveSharedTarget(UnitController target)
+    public void ReceiveSharedTarget(TargetRef target)
     {
-        if (IsDead || target == null || target.IsDead || !UnitRegistry.AreEnemies(this, target)) return;
+        if (IsDead || !target.Exists || !target.IsAlive || !IsHostileTo(target)) return;
         if (IsTargetChangeLocked()) return;
         if (IsCommandBlockingRetarget(target)) return;
 
@@ -1613,8 +1613,7 @@ public partial class UnitController : MonoBehaviour
     // 엔티티가 된 적이 때렸다(EnemyWorldBridge.DrainHitsOnAllies가 부른다).
     //
     // 때린 쪽이 UnitController가 아니므로 참조 대신 위치와 Entity만 온다. 방어 각도, 배후 판정,
-    // 강인도, 퍼펙트 가드, 넉백까지 규칙은 전부 같은 경로를 탄다 — 다른 것은 딱 둘이다:
-    //  - 반격 표적 지정(ForceSetAttackTarget)은 하지 않는다. 위협 가중치 비교가 UnitController를 전제로 한다.
+    // 강인도, 퍼펙트 가드, 넉백, 반격 표적 지정까지 규칙은 전부 같은 경로를 탄다 — 다른 것은 하나다:
     //  - 때린 쪽의 멈칫은 여기서 걸지 않는다. 엔티티는 타격 프레임에 스스로 건다(EnemyCombatSystem).
     //
     // 넉백은 켜서 보낸다. 예전에는 꺼져 있었고 즉시 밀림도 때린 UnitController가 있어야만 걸려서,
@@ -1705,10 +1704,10 @@ public partial class UnitController : MonoBehaviour
         if (hasAttackerPosition && applyKnockback) SetKnockbackDirection(attackerPosition);
         else ClearKnockback();
 
-        if (attacker != null && !attacker.IsDead && attacker.isActiveAndEnabled && UnitRegistry.AreEnemies(this, attacker))
-        {
-            ForceSetAttackTarget(attacker);
-        }
+        // 때린 쪽으로 돌아설지 본다. 엔티티에게 맞았어도 같다 — 예전에는 게임오브젝트 공격자만 봐서
+        // 고블린에게 뒤를 물린 아군이 멀리 있는 처음 표적만 계속 쫓았다.
+        if (attacker != null) ForceSetAttackTarget(attacker);
+        else if (attackerEntity != Unity.Entities.Entity.Null) ForceSetAttackTarget(new TargetRef(attackerEntity));
 
         if (stats.IsDead)
         {
@@ -2809,8 +2808,9 @@ public partial class UnitController : MonoBehaviour
     //    "공격 후 어그로를 탱커에게 넘기고 빠진다"가 여기서 성립한다.
     //  - 반대로 후방을 물고 있는 몬스터는 탱커가 한 대 치면 곧바로 탱커에게 끌려온다(도발).
     //  - 역할이 없는 유닛끼리는 가중치가 모두 1이라 항상 성립한다 — 예전 동작 그대로다.
-    private void ForceSetAttackTarget(UnitController attacker)
+    private void ForceSetAttackTarget(TargetRef attacker)
     {
+        if (!attacker.Exists || !attacker.IsAlive || !IsHostileTo(attacker)) return;
         if (attacker == CurrentTarget && IsTargetValid()) return;
         if (IsCommandBlockingRetarget(attacker)) return;
         if (!ShouldSwitchAggroTo(attacker)) return;
@@ -2819,7 +2819,7 @@ public partial class UnitController : MonoBehaviour
         ClearMoveDestination();
     }
 
-    private bool ShouldSwitchAggroTo(UnitController attacker)
+    private bool ShouldSwitchAggroTo(TargetRef attacker)
     {
         // 붙들고 있는 상대가 없으면 때린 쪽을 본다. 판단할 다른 근거가 없다.
         if (!IsTargetValid()) return true;
@@ -2839,7 +2839,7 @@ public partial class UnitController : MonoBehaviour
             return false;
         }
 
-        return attacker.Stats.threatWeight >= CurrentTarget.ThreatWeight;
+        return attacker.ThreatWeight >= CurrentTarget.ThreatWeight;
     }
 
     private void SetKnockbackDirection(Vector3 attackerPosition)

@@ -221,7 +221,7 @@ public readonly struct TargetRef : IEquatable<TargetRef>
         // 잡이 전부 무효가 되므로, 큐에 넣고 ECS 쪽 시스템이 꺼내 적용한다.
         // 맞은 놈의 멈칫과 밀려남도 같은 줄에 실려 간다.
         Vector3 from = attacker != null ? attacker.transform.position : Position;
-        EnemyWorldBridge.DamageEnemy(Entity, damage, poiseDamage, from, attacker, impactWeight);
+        EnemyWorldBridge.DamageEnemy(Entity, damage, poiseDamage, from, attacker, impactWeight, fromSkill);
 
         if (attacker == null) return;
 

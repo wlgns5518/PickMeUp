@@ -3,10 +3,11 @@
 // Animator 없이 애니메이션을 재생하는 방법이다. 클립을 미리 샘플링해 "몇 번 프레임의 몇 번
 // 뼈가 어떤 행렬인가"를 텍스처 한 장에 구워 두고(EnemyAnimationBaker), 정점 셰이더가 그것을
 // 읽어 정점을 옮긴다. 1000마리가 전부 같은 텍스처를 보므로 마리 수가 늘어도 텍스처 비용은
-// 그대로이고, 마리마다 다른 것은 "지금 어느 클립의 몇 퍼센트인가" 네 값뿐이다.
+// 그대로이고, 마리마다 다른 것은 "지금 어느 클립의 몇 퍼센트인가"와, 클립이 막 바뀌었다면
+// "빠져나가는 앞 클립의 몇 퍼센트를 얼마나 섞는가"뿐이다.
 //
-// 그 네 값이 _EnemyAnimData이고, 엔티티마다 다른 값을 넣기 위해 DOTS 인스턴싱을 쓴다
-// (EnemyAnimationMaterial의 [MaterialProperty] 특성이 이 이름과 연결된다).
+// 그 값이 _EnemyAnimData와 _EnemyAnimFade이고, 엔티티마다 다른 값을 넣기 위해 DOTS 인스턴싱을 쓴다
+// (EnemyAnimationMaterial·EnemyAnimationFadeMaterial의 [MaterialProperty] 특성이 이 이름과 연결된다).
 //
 // 조명은 메인 라이트 + 앰비언트(SH)까지만 한다. URP Lit의 전체 기능(스페큘러, 노멀맵,
 // 추가 라이트)은 넣지 않았다 — 화면을 채우는 것은 멀리 있는 잡몹이고, 그 거리에서
@@ -23,6 +24,9 @@ Shader "PickMeUp/Enemy GPU Skin"
 
         // x = 클립 시작 줄, y = 클립 프레임 수, z = 진행도(0~1), w = 텍스처 세로 크기.
         _EnemyAnimData ("Animation Data", Vector) = (0, 1, 0, 1)
+
+        // 빠져나가는 중인 앞 클립. x·y·z는 위와 같고 w = 섞이는 비율(0이면 안 섞는다).
+        _EnemyAnimFade ("Animation Fade", Vector) = (0, 1, 0, 0)
     }
 
     SubShader
@@ -40,6 +44,7 @@ Shader "PickMeUp/Enemy GPU Skin"
             float4 _BaseMap_ST;
             float4 _BaseColor;
             float4 _EnemyAnimData;
+            float4 _EnemyAnimFade;
         CBUFFER_END
 
         // 엔티티마다 다른 값을 받는 자리. 이게 없으면 1000마리가 한 몸처럼 같은 동작을 한다.
@@ -47,22 +52,27 @@ Shader "PickMeUp/Enemy GPU Skin"
         UNITY_DOTS_INSTANCING_START(MaterialPropertyMetadata)
             UNITY_DOTS_INSTANCED_PROP(float4, _BaseColor)
             UNITY_DOTS_INSTANCED_PROP(float4, _EnemyAnimData)
+            UNITY_DOTS_INSTANCED_PROP(float4, _EnemyAnimFade)
         UNITY_DOTS_INSTANCING_END(MaterialPropertyMetadata)
 
         #define _BaseColor UNITY_ACCESS_DOTS_INSTANCED_PROP_WITH_DEFAULT(float4, _BaseColor)
         #define _EnemyAnimData UNITY_ACCESS_DOTS_INSTANCED_PROP_WITH_DEFAULT(float4, _EnemyAnimData)
+        #define _EnemyAnimFade UNITY_ACCESS_DOTS_INSTANCED_PROP_WITH_DEFAULT(float4, _EnemyAnimFade)
         #endif
 
-        // 이번에 읽을 줄(프레임) 번호.
+        // 이번에 읽을 두 줄(프레임)과 그 사이에서 얼마나 나아갔는지.
         //
-        // 진행도를 프레임 수에 걸쳐 편 뒤 내림한다. 보간은 하지 않는다 — 30fps로 구운 클립을
-        // 60fps로 재생해도 잡몹 거리에서는 차이가 보이지 않고, 보간하려면 텍스처를 두 번
-        // 읽어야 해서 정점 셰이더 비용이 그대로 두 배가 된다.
-        float EnemyAnimRow(float4 animData)
+        // 진행도를 프레임 수에 걸쳐 편 뒤 앞뒤 두 줄을 섞는다. 예전에는 내림해서 한 줄만 읽었는데,
+        // 클립을 느리게 돌리는 동안(걷기 0.5배속, 히트스톱, 게임플레이 시간에 늘어난 스윙) 같은 줄이
+        // 몇 프레임씩 이어져 모션이 계단처럼 끊겼다 — 전투 중 그려진 프레임의 11%가 앞 프레임과 같은 줄이었다.
+        void EnemyAnimRows(float4 animData, out int row0, out int row1, out float blend)
         {
             float frames = max(animData.y, 1.0);
-            float local = floor(saturate(animData.z) * (frames - 1.0));
-            return animData.x + local;
+            float local = saturate(animData.z) * (frames - 1.0);
+            float first = floor(local);
+            blend = local - first;
+            row0 = (int)(animData.x + first);
+            row1 = (int)(animData.x + min(first + 1.0, frames - 1.0));
         }
 
         // 뼈 하나의 3x4 행렬을 읽는다. 한 줄에 뼈마다 텍셀 셋이 나란히 놓여 있다.
@@ -74,11 +84,32 @@ Shader "PickMeUp/Enemy GPU Skin"
             r2 = LOAD_TEXTURE2D(_BoneTexture, int2(x + 2, row));
         }
 
+        // 한 클립의 한 순간에서 뼈 하나의 행렬. 앞뒤 두 프레임을 섞는다.
+        void ReadPose(int bone, float4 animData, out float4 r0, out float4 r1, out float4 r2)
+        {
+            int row0, row1;
+            float blend;
+            EnemyAnimRows(animData, row0, row1, blend);
+
+            float4 a0, a1, a2, b0, b1, b2;
+            ReadBone(bone, row0, a0, a1, a2);
+            ReadBone(bone, row1, b0, b1, b2);
+            r0 = lerp(a0, b0, blend);
+            r1 = lerp(a1, b1, blend);
+            r2 = lerp(a2, b2, blend);
+        }
+
         // 뼈 넷을 가중치로 섞어 정점과 노멀을 옮긴다. Unity의 스키닝과 같은 계산이다.
+        //
+        // 클립이 막 바뀌었으면 앞 클립의 자세를 같은 뼈에서 한 번 더 읽어 섞는다(크로스페이드).
+        // 섞는 동안만 읽기가 두 배가 되고, 나머지 시간은 분기에서 건너뛴다 — 값이 마리마다 같은
+        // 인스턴스 상수라 한 마리 안의 정점들은 모두 같은 쪽으로 간다.
         void SkinVertex(float3 positionOS, float3 normalOS, float4 indices, float4 weights,
                         out float3 skinnedPosition, out float3 skinnedNormal)
         {
-            int row = (int)EnemyAnimRow(_EnemyAnimData);
+            float4 animData = _EnemyAnimData;
+            float4 fadeData = _EnemyAnimFade;
+            bool fading = fadeData.w > 0.001;
 
             skinnedPosition = float3(0, 0, 0);
             skinnedNormal = float3(0, 0, 0);
@@ -91,8 +122,18 @@ Shader "PickMeUp/Enemy GPU Skin"
                 float weight = weights[i];
                 if (weight <= 0.0) continue;
 
+                int bone = (int)indices[i];
                 float4 r0, r1, r2;
-                ReadBone((int)indices[i], row, r0, r1, r2);
+                ReadPose(bone, animData, r0, r1, r2);
+
+                if (fading)
+                {
+                    float4 f0, f1, f2;
+                    ReadPose(bone, fadeData, f0, f1, f2);
+                    r0 = lerp(r0, f0, fadeData.w);
+                    r1 = lerp(r1, f1, fadeData.w);
+                    r2 = lerp(r2, f2, fadeData.w);
+                }
 
                 skinnedPosition += weight * float3(dot(r0, position4), dot(r1, position4), dot(r2, position4));
                 skinnedNormal += weight * float3(dot(r0.xyz, normalOS), dot(r1.xyz, normalOS), dot(r2.xyz, normalOS));

@@ -200,6 +200,9 @@ public partial struct EnemyTargetingSystem : ISystem
     // 아군 쪽 targetChangeInterval과 같은 이유다.
     private const float RetargetInterval = 0.75f;
 
+    // 맞받아쳐 돌아선 상대를 붙드는 시간. 게임오브젝트 고블린의 어그로 재평가 간격(TargetScanner.aggroReviewInterval)과 같다.
+    private const double RetaliationHold = 2.5;
+
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
@@ -234,12 +237,31 @@ public partial struct EnemyTargetingSystem : ISystem
             if (action.kind == EnemyActionKind.Windup || action.kind == EnemyActionKind.Recover ||
                 action.kind == EnemyActionKind.Leap || action.kind == EnemyActionKind.Bite) return;
 
+            // 맞받아칠 상대가 정해져 있으면 손이 빈 지금 돌아선다(EnemyDamageSystem.Retaliate).
+            // 판단 박자를 기다리지 않는다 — 맞은 것은 사건이라 게임오브젝트 고블린도 그 자리에서 돌아섰다.
+            if (target.retaliate)
+            {
+                target.retaliate = false;
+                int attacker = target.retaliateAllyIndex;
+                if (IsUsable(attacker, transform.Position) && attacker != target.allyIndex)
+                {
+                    // 돌아선 상대는 한동안 붙든다. 평소 재평가(0.75초)에 맡기면 곧바로 가까운 쪽으로 되돌아가
+                    // 끌려온 것이 무효가 된다. 게임오브젝트 고블린도 한 번 돌아서면 어그로 재평가(2.5초) 전까지 붙들었다.
+                    target.allyIndex = attacker;
+                    target.nextRetargetTime = now + RetaliationHold;
+                    return;
+                }
+            }
+
             // 표적은 판단 박자에만 다시 고른다. 겨누던 아군이 쓰러진 순간에도 마찬가지다 —
             // 둘레의 전원이 같은 프레임에 새 표적으로 돌아서는 것보다, 저마다 한 박자씩 두리번거리는 편이 낫다.
             if (!tactics.thinking) return;
 
             // 들고 있던 표적이 아직 쓸 만하면 그대로 둔다.
-            if (IsUsable(target.allyIndex) && now < target.nextRetargetTime) return;
+            // 은신해 들킬 거리 밖으로 빠진 표적은 쓸 수 없는 표적이다 — 은신이 곧 이탈이 되는 셈이다
+            // (게임오브젝트 쪽 UnitRegistry.IsHiddenFrom 주석과 같다).
+            bool usable = IsUsable(target.allyIndex, transform.Position);
+            if (usable && now < target.nextRetargetTime) return;
 
             // 지금 아무도 겨누고 있지 않다면 시야각을 따지지 않는다.
             //
@@ -248,7 +270,7 @@ public partial struct EnemyTargetingSystem : ISystem
             // 그래서 등지고 선 고블린은 영영 아무도 못 찾고 그 자리에서 맞고만 있었다.
             // 서 있는 동안 주위를 둘러본다고 보는 편이 맞다 — 한 번 붙고 나면 아래 규칙대로
             // 다시 시야각이 걸린다.
-            bool blind = !IsUsable(target.allyIndex);
+            bool blind = !usable;
 
             int best = EnemyTarget.None;
             float bestScore = float.MaxValue;
@@ -264,6 +286,7 @@ public partial struct EnemyTargetingSystem : ISystem
                 toAlly.y = 0f;
                 float distance = math.length(toAlly);
                 if (distance > stats.detectRange) continue;
+                if (IsHidden(ally, distance)) continue;
 
                 // 이미 겨누고 있던 상대는 시야각을 따지지 않는다. 등을 돌린 순간
                 // 표적을 놓아 버리면 쫓아가다 말고 멈춰 선다.
@@ -294,10 +317,24 @@ public partial struct EnemyTargetingSystem : ISystem
             target.nextRetargetTime = now + retargetInterval * tactics.random.NextFloat(0.8f, 1.25f);
         }
 
-        private bool IsUsable(int index)
+        private bool IsUsable(int index, float3 from)
         {
             if (index < 0 || index >= allies.Length) return false;
-            return allies[index].alive != 0;
+
+            EnemyWorldBridge.AllyState ally = allies[index];
+            if (ally.alive == 0) return false;
+
+            float3 offset = ally.position - from;
+            offset.y = 0f;
+            return !IsHidden(ally, math.length(offset));
+        }
+
+        // 은신한 아군은 들킬 거리(revealRange) 밖이면 보이지 않는다. 코앞까지 오면 들킨다 —
+        // 붙어도 안 보이면 게릴라가 아니라 유령이 된다(UnitRegistry.IsHiddenFrom).
+        private static bool IsHidden(in EnemyWorldBridge.AllyState ally, float distance)
+        {
+            if (ally.hidden == 0) return false;
+            return ally.revealRange <= 0f || distance > ally.revealRange;
         }
     }
 }
@@ -625,6 +662,8 @@ public partial struct EnemyCombatSystem : ISystem
             allies = bridge.allies.AsArray(),
             hits = bridge.hitsOnAllies.AsParallelWriter(),
             clipRanges = clipRanges,
+            emotions = SystemAPI.GetComponentLookup<EnemyEmotion>(true),
+            emotionProfiles = SystemAPI.GetComponentLookup<EnemyEmotionProfile>(true),
             deltaTime = SystemAPI.Time.DeltaTime,
             now = SystemAPI.Time.ElapsedTime,
         };
@@ -641,6 +680,11 @@ public partial struct EnemyCombatSystem : ISystem
         // 여기서는 z(클립을 한 칸 미는 데)와 w(재생 배속을 맞추는 데)를 쓴다. 줄 번호 둘은
         // 그리는 쪽이 읽는다(EnemyAnimationRenderSystem).
         [ReadOnly] public NativeArray<float4> clipRanges;
+
+        // 감정(EnemyEmotion). 붙어 있지 않은 개체(테스트, 굽기 전의 원본)도 있어서 질의에 넣지 않고 찾아 읽는다.
+        [ReadOnly] public ComponentLookup<EnemyEmotion> emotions;
+        [ReadOnly] public ComponentLookup<EnemyEmotionProfile> emotionProfiles;
+
         public float deltaTime;
         public double now;
 
@@ -648,6 +692,18 @@ public partial struct EnemyCombatSystem : ISystem
             ref EnemyTactics tactics, ref EnemyImpact impact,
             in EnemyTarget target, in EnemyStats stats, in EnemyMotion motion, ref LocalTransform transform)
         {
+            // 도약이 끝났거나 도중에 끊겼으면(피격·사망) 옮겨 둔 높이를 땅으로 되돌린다. 쓰러진 놈도 되돌려야
+            // 하므로 사망 검사보다 앞이다 — 아군 쪽 EndLeap이 LeapAttackBehavior.Exit과 ResetCombatRuntime
+            // 양쪽에 있는 것과 같다. 한 번에 되돌리지 않는다: 자세는 0.1초에 걸쳐 섞여 넘어가는데 높이만
+            // 그 프레임에 튀면 발이 순간 떴다가 가라앉는다.
+            if (action.kind != EnemyActionKind.Leap && action.leapLift != 0f)
+            {
+                float back = LeapSettleSpeed * deltaTime;
+                float next = action.leapLift > 0f ? math.max(0f, action.leapLift - back) : math.min(0f, action.leapLift + back);
+                transform.Position.y += next - action.leapLift;
+                action.leapLift = next;
+            }
+
             if (action.kind == EnemyActionKind.Dead) return;
 
             // 히트스톱. 시간을 누르면 구간 타이머·클립 진행도·도약 궤적이 같은 배율로 멈칫한다 —
@@ -655,8 +711,30 @@ public partial struct EnemyCombatSystem : ISystem
             float dt = deltaTime * impact.TimeScale(now);
             action.timer -= dt;
 
+            TrackEngageDwell(ref action, target, stats, transform, dt);
+
+            // 패닉·빈사·붕괴. 스스로 아무것도 못 한다(게임오브젝트 고블린의 PanicBehavior).
+            //
+            // 들어가는 것은 손이 빌 때다 — 이미 몸이 떠 있는 도약과 붙잡은 물기, 맞아서 움찔하거나 무너진
+            // 동작은 끝까지 간다. 칼을 들어올린 중(준비·회수)이면 그 자리에서 내려놓는다: 겁에 질린 놈의 칼은
+            // 내려오지 않는다(아군 쪽 PanicBehavior도 InterruptCurrentAction으로 스윙을 끊는다).
+            bool blocked = EnemyEmotion.IsBlocked(entity, emotions);
+            if (blocked && action.kind != EnemyActionKind.Panic && CanFreezeFrom(action.kind))
+            {
+                action.kind = EnemyActionKind.Panic;
+                action.timer = 0f;
+                action.comboIndex = 0;
+                // 굳어 있는 동안 칼 들 자리를 쥐고 있으면 곁에서 기다리던 놈이 그 틈을 못 쓴다.
+                tactics.ReleaseSlot(now, stats.slotYieldDelay);
+            }
+
             switch (action.kind)
             {
+                case EnemyActionKind.Panic:
+                    // 선 채로 떤다. 풀리면 이 프레임에 바로 다음 수를 고른다.
+                    if (blocked) { Loop(ref animation, EnemyClip.Idle, dt); return; }
+                    break;
+
                 case EnemyActionKind.Leap:
                     TickLeap(entity, ref action, ref animation, ref transform, ref tactics, ref impact, target, stats);
                     return;
@@ -705,7 +783,8 @@ public partial struct EnemyCombatSystem : ISystem
 
                 // 표적이 없어도 걸을 수 있다 — 정찰을 돌거나(EnemyPatrolSystem) 무리에 밀린다. 예전처럼
                 // 제자리 모션을 고정해 두면 정찰하는 놈이 선 채로 미끄러진다. 서 있으면 여기서도 제자리다.
-                TickLocomotion(ref animation, motion.smoothedSpeed, stats, dt);
+                // 겨눌 상대가 없으니 서 있을 때는 두리번거린다(찾는 중이다).
+                TickLocomotion(ref animation, motion.smoothedSpeed, stats, dt, false);
                 return;
             }
 
@@ -723,14 +802,21 @@ public partial struct EnemyCombatSystem : ISystem
             //
             // 이미 물린 아군은 다시 물지 않는다(canBeBitten). 그게 없으면 한 명에게 여럿이
             // 동시에 물고 늘어져 그 자리에서 녹는다.
+            //
+            // 한 전투에 물 수 있는 횟수와, 붙어 선 채로 기다려야 하는 시간도 게임오브젝트 고블린 그대로다
+            // (skillUseCount 2, skillEngageDelay 1초). 그게 빠져 있던 동안 긴 전투에서는 같은 놈이
+            // 5초마다 한 명씩 판에서 빼냈고, 달려와 닿는 순간 곧바로 물어뜯었다.
+            bool biteLeft = stats.biteUsesPerBattle <= 0 || action.biteUsesSpent < stats.biteUsesPerBattle;
+            bool engagedLongEnough = action.engageDwell >= stats.biteEngageDelay;
             if (mayStrike && inRange && stats.biteDamage > 0 && stats.biteDuration > 0f &&
-                now >= action.nextBiteTime && ally.canBeBitten != 0)
+                now >= action.nextBiteTime && ally.canBeBitten != 0 && biteLeft && engagedLongEnough)
             {
                 action.kind = EnemyActionKind.Bite;
                 action.timer = stats.biteDuration;
                 action.animationLength = stats.biteDuration;
                 action.struckThisSwing = false;
                 action.nextBiteTime = now + stats.biteCooldown;
+                if (action.biteUsesSpent < byte.MaxValue) action.biteUsesSpent++;
                 animation.clip = EnemyClip.Bite;
                 animation.normalizedTime = 0f;
                 CommitSlot(ref tactics, stats);
@@ -783,7 +869,8 @@ public partial struct EnemyCombatSystem : ISystem
             // 멈춰 서는 거리(1.0m)와 사거리(1.2m)가 달라서 그 사이 20cm 구간에서는 미끄러지며
             // 제자리걸음을 했고, 상대가 그 경계에서 오가면 두 클립이 매 프레임 뒤바뀌었다.
             // 날것의 속도가 아니라 한 박자 눌러 따라간 값을 본다(EnemyMotion.smoothedSpeed).
-            TickLocomotion(ref animation, motion.smoothedSpeed, stats, dt);
+            // 겨눈 상대가 있으니 서 있을 때는 그쪽을 노려본다.
+            TickLocomotion(ref animation, motion.smoothedSpeed, stats, dt, true);
         }
 
         // 서 있기 · 걷기 · 달리기 중 하나를 고르고 한 칸 민다.
@@ -796,9 +883,13 @@ public partial struct EnemyCombatSystem : ISystem
         // 문턱은 켤 때와 끌 때가 다르다(이력). 무리 속에서는 이웃에게 밀리고 겹침이 풀리며 속도가
         // 문턱 언저리에서 계속 흔들리는데, 하나로 두면 그때마다 클립이 뒤바뀐다. 실측(고블린
         // 30마리가 한 사람에게 몰린 10초): 문턱 하나였을 때 마리당 초당 0.57회 뒤바뀌었다.
-        private void TickLocomotion(ref EnemyAnimation animation, float speed, in EnemyStats stats, float dt)
+        //
+        // 서 있을 때의 자세는 겨눈 상대가 있는지로 가른다(StandClip). 있으면 노려보고, 없으면 두리번거린다.
+        private void TickLocomotion(ref EnemyAnimation animation, float speed, in EnemyStats stats, float dt,
+            bool hasTarget)
         {
             float walkSpeed = ClipGroundSpeed(EnemyClip.Walk);
+            EnemyClip stand = StandClip(hasTarget);
 
             // 걷기를 굽지 않은 리그는 예전처럼 둘로만 나눈다. 구간표에 없는 클립을 가리키면
             // 그 줄이 통째로 비어 몸이 사라진다.
@@ -808,7 +899,7 @@ public partial struct EnemyCombatSystem : ISystem
                 float onlyRun = stats.moveSpeed * (wasRunning ? RunStopRatio : RunStartRatio);
 
                 if (speed > onlyRun) Loop(ref animation, EnemyClip.Run, dt * PlaybackRate(speed, RunGroundSpeed(stats)));
-                else Loop(ref animation, EnemyClip.Idle, dt);
+                else Loop(ref animation, stand, dt);
                 return;
             }
 
@@ -833,7 +924,21 @@ public partial struct EnemyCombatSystem : ISystem
                 return;
             }
 
-            Loop(ref animation, EnemyClip.Idle, dt);
+            Loop(ref animation, stand, dt);
+        }
+
+        // 제자리에 설 때의 자세. 겨눈 상대가 있으면 정면을 노려보는 자세(GuardIdle), 없으면 두리번거리는
+        // 자세(Idle)다. 노려보는 자세를 굽지 않은 리그는 예전처럼 두리번거린다 — 구간표에 없는 클립을
+        // 가리키면 그 줄이 통째로 비어 몸이 사라진다.
+        private EnemyClip StandClip(bool hasTarget)
+        {
+            return hasTarget && HasClip(EnemyClip.GuardIdle) ? EnemyClip.GuardIdle : EnemyClip.Idle;
+        }
+
+        private bool HasClip(EnemyClip clip)
+        {
+            int index = (int)clip;
+            return clipRanges.IsCreated && index >= 0 && index < clipRanges.Length && clipRanges[index].y > 0f;
         }
 
         // 걷기 클립이 없을 때만 쓰는 문턱(제 걸음 속도에 대한 비율).
@@ -910,7 +1015,8 @@ public partial struct EnemyCombatSystem : ISystem
         // (EnemyAnimationBaker.Wanted의 loops).
         private static bool IsLooping(EnemyClip clip)
         {
-            return clip == EnemyClip.Idle || clip == EnemyClip.Walk || clip == EnemyClip.Run;
+            return clip == EnemyClip.Idle || clip == EnemyClip.GuardIdle ||
+                   clip == EnemyClip.Walk || clip == EnemyClip.Run;
         }
 
         // 구워 둔 클립 길이(초). 구간표가 아직 없으면 1초로 본다.
@@ -936,7 +1042,10 @@ public partial struct EnemyCombatSystem : ISystem
             float progress = math.saturate(1f - action.timer / length);
             animation.normalizedTime = progress;
 
-            float wanted = action.leapDistance * progress;
+            // 몸은 발이 땅을 떠나서 내려앉을 때까지만 나아간다. 예전에는 클립 전체(웅크림과 착지 뒤
+            // 칼을 거두는 동작까지)에 걸쳐 미끄러졌다. 게임오브젝트 고블린의 UpdateLeap과 같은 구간이다.
+            float airborne = math.saturate((progress - LeapLaunchRatio) / (LeapLandRatio - LeapLaunchRatio));
+            float wanted = action.leapDistance * airborne;
             float step = wanted - action.leapTravelled;
             if (step > 0f)
             {
@@ -944,34 +1053,114 @@ public partial struct EnemyCombatSystem : ISystem
                 transform.Position += action.leapDirection * step;
             }
 
-            if (action.timer > 0f) return;
+            // 높이. 발이 뜬 구간에만 포물선으로 올렸다 내리고, 클립이 스스로 떠 있는 만큼(leapClipFloat)은
+            // 눌러 내려 웅크림과 착지 순간에 발이 땅을 디디게 한다. 누르는 것은 도약 모션이 섞여 들어오는
+            // 동안(LeapPoseBlend) 천천히 건다 — 한 번에 누르면 앞 동작(달리기)의 발이 그 프레임에 땅에 박힌다.
+            // 지난 프레임에 옮겨 둔 만큼과의 차이만 옮기므로 수평 이동·넉백과 섞여도 높이가 쌓이지 않는다.
+            // 판정과 거리는 전부 땅에서 잰다(Flat).
+            float elapsed = length - action.timer;
+            float lift = stats.leapHeight > 0f ? math.sin(airborne * math.PI) * stats.leapHeight : 0f;
+            lift -= stats.leapClipFloat * math.saturate(elapsed / LeapPoseBlend);
+            transform.Position.y += lift - action.leapLift;
+            action.leapLift = lift;
 
-            // 착지. 닿았으면 한 대 넣고, 아니면 헛뛴 것으로 끝난다 — 스윙과 같은 규칙이다.
-            if (!action.struckThisSwing)
-            {
-                action.struckThisSwing = true;
-                if (TryGetAlly(target.allyIndex, out EnemyWorldBridge.AllyState ally))
-                {
-                    float3 toAlly = Flat(ally.position - transform.Position);
-                    float distance = math.length(toAlly);
-                    if (distance <= stats.attackRange + stats.attackHitTolerance)
-                    {
-                        hits.Enqueue(new EnemyWorldBridge.HitOnAlly
-                        {
-                            allyIndex = target.allyIndex,
-                            damage = stats.attackDamage,
-                            poiseDamage = stats.poiseDamagePerHit,
-                            fromPosition = transform.Position,
-                            source = self,
-                        });
+            // 착지하는 프레임에 때린다. 예전에는 클립이 끝나는 1.0에서 때려서, 칼을 이미 거둔 뒤에
+            // 피해와 히트스톱이 들어갔다 — 내려앉고 0.6초 동안 아무 일도 없다가 멈칫하는 그림이었다.
+            if (!action.struckThisSwing && progress >= LeapLandRatio) StrikeOnLanding(self, ref action, ref impact, transform, target, stats);
 
-                        // 몸을 실어 떨어진 한 방이라 평타보다 오래 멈칫한다.
-                        impact.ApplyHitStop(now, stats.hitStopDuration * 1.5f, stats.hitStopScale);
-                    }
-                }
-            }
+            // 내려앉아 칼이 박힌 직후에 끝낸다. 클립의 나머지(0.5~1.0)는 공중에서 칼을 거둬 처음 자세로
+            // 돌아가는 동작이라, 끝까지 틀면 착지한 뒤에도 0.5초 넘게 공중 자세로 떠 있었다. 여기서 끊고
+            // 땅을 딛은 다음 동작으로 섞여 넘어간다(EnemyAnimationRenderSystem의 크로스페이드). 떠 있던
+            // 높이(누른 만큼)는 그 크로스페이드와 같은 박자로 땅에 되돌린다(Execute 맨 앞).
+            if (action.timer > 0f && progress < LeapEndRatio) return;
 
             EnterRecover(ref action, ref tactics, stats);
+            action.timer = 0f;
+
+            // 도약은 평타의 재사용 대기를 걸지 않는다(도약은 따로 leapCooldown이 있다). 게임오브젝트 고블린도
+            // 도약 뒤 곧바로 휘둘렀다. 걸면 착지해 칼을 다 거둔 뒤에도 1.1초를 제자리에 서서 기다린다.
+            action.nextAttackTime = now;
+        }
+
+        // 도약 클립(팩의 Armed-Air-Attack-R1을 2.2배로 늘인 1.1초)에서 발이 땅을 떠나는 지점과
+        // 칼이 닿으며 내려앉는 지점. 클립을 샘플링해 보면 0~0.15가 웅크림, 0.30~0.42가 내리치기,
+        // 그 뒤가 칼을 거두는 동작이다. 게임오브젝트 고블린의 leapLaunchRatio(0.15)와 타격 이벤트(0.42)와 같다.
+        private const float LeapLaunchRatio = 0.15f;
+        private const float LeapLandRatio = 0.42f;
+
+        // 도약을 끝내는 지점. 착지(0.42) 뒤 칼이 박힌 자세를 한 박자(0.09초) 보여 주고 끊는다 —
+        // 그 뒤로는 발끝이 다시 떠오르기 시작한다(샘플링: 0.50에서 13cm, 0.55에서 20cm).
+        private const float LeapEndRatio = 0.5f;
+
+        // 도약 모션이 섞여 들어오고 나가는 시간(초). 렌더러의 동작 크로스페이드(EnemyAnimationRenderSystem.ActionFade)와
+        // 같아야 몸을 누르는 높이와 자세가 같은 박자로 바뀐다.
+        private const float LeapPoseBlend = 0.1f;
+
+        // 도약이 끝나거나 끊긴 뒤 몸을 땅으로 되돌리는 속도(m/s). 착지 뒤 눌러 둔 10cm는 크로스페이드와 같은
+        // 0.1초에, 공중에서 끊긴 경우(최대 0.4m)는 0.4초에 걸쳐 내려온다.
+        private const float LeapSettleSpeed = 1f;
+
+        // 공포에 빠진 놈의 한 대는 30% 약하다(UnitEmotion.StatMultiplier). 아군 쪽과 같이 1 아래로는 깎지 않는다.
+        private int ScaledDamage(Entity self, int damage)
+        {
+            if (damage <= 0) return damage;
+            float multiplier = EnemyEmotion.StatMultiplier(self, emotions, emotionProfiles);
+            return multiplier >= 1f ? damage : math.max(1, (int)math.round(damage * multiplier));
+        }
+
+        // 겁에 질려 굳을 수 있는 동작인가. 몸이 떠 있거나(도약) 붙잡고 있거나(물기) 맞아서 흔들리는 중
+        // (움찔·무너짐)이면 그 동작이 끝난 뒤에 굳는다.
+        private static bool CanFreezeFrom(EnemyActionKind kind)
+        {
+            return kind == EnemyActionKind.Idle || kind == EnemyActionKind.Approach ||
+                   kind == EnemyActionKind.Windup || kind == EnemyActionKind.Recover;
+        }
+
+        // 지금 표적의 사거리 안에 붙어 있은 시간을 센다(물기를 내기 전 기다리는 시간, EnemyStats.biteEngageDelay).
+        //
+        // 휘두르는 중에도 센다 — 게임오브젝트 고블린도 무엇을 하든 매 프레임 셌다(TickEngageDwell).
+        // 사거리 밖으로 떨어지거나 표적이 바뀌면 처음부터다.
+        private void TrackEngageDwell(ref EnemyAction action, in EnemyTarget target, in EnemyStats stats,
+            in LocalTransform transform, float dt)
+        {
+            if (target.allyIndex != action.engageAllyIndex)
+            {
+                action.engageAllyIndex = target.allyIndex;
+                action.engageDwell = 0f;
+            }
+
+            if (!TryGetAlly(target.allyIndex, out EnemyWorldBridge.AllyState ally) ||
+                math.distance(Flat(ally.position), Flat(transform.Position)) > stats.attackRange)
+            {
+                action.engageDwell = 0f;
+                return;
+            }
+
+            action.engageDwell += dt;
+        }
+
+        private void StrikeOnLanding(Entity self, ref EnemyAction action, ref EnemyImpact impact,
+            in LocalTransform transform, in EnemyTarget target, in EnemyStats stats)
+        {
+            // 착지. 닿았으면 한 대 넣고, 아니면 헛뛴 것으로 끝난다 — 스윙과 같은 규칙이다.
+            action.struckThisSwing = true;
+            if (!TryGetAlly(target.allyIndex, out EnemyWorldBridge.AllyState ally)) return;
+
+            float3 toAlly = Flat(ally.position - transform.Position);
+            float distance = math.length(toAlly);
+            if (distance > stats.attackRange + stats.attackHitTolerance) return;
+
+            hits.Enqueue(new EnemyWorldBridge.HitOnAlly
+            {
+                allyIndex = target.allyIndex,
+                damage = ScaledDamage(self, stats.attackDamage),
+                poiseDamage = stats.poiseDamagePerHit,
+                fromPosition = transform.Position,
+                source = self,
+            });
+
+            // 몸을 실어 떨어진 한 방이라 평타보다 오래 멈칫한다.
+            impact.ApplyHitStop(now, stats.hitStopDuration * 1.5f, stats.hitStopScale);
         }
 
         // 물고 늘어지는 구간. 붙잡은 아군을 따라다니다가 끝에 한 번 크게 문다.
@@ -1019,7 +1208,7 @@ public partial struct EnemyCombatSystem : ISystem
                         hits.Enqueue(new EnemyWorldBridge.HitOnAlly
                         {
                             allyIndex = target.allyIndex,
-                            damage = stats.biteDamage,
+                            damage = ScaledDamage(self, stats.biteDamage),
                             // 강인도 피해는 일부러 0이다. 무는 수의 강인도 효과는 아래 경직 그 자체이고,
                             // 둘 다 넣으면 이 한 방으로 강인도가 먼저 깨지면서 면역 시간이 켜져
                             // 정작 경직이 그 면역에 막힌다(아군 쪽 ResolveSkillHit와 같은 규칙).
@@ -1083,7 +1272,7 @@ public partial struct EnemyCombatSystem : ISystem
                     hits.Enqueue(new EnemyWorldBridge.HitOnAlly
                     {
                         allyIndex = target.allyIndex,
-                        damage = stats.attackDamage,
+                        damage = ScaledDamage(self, stats.attackDamage),
                         poiseDamage = stats.poiseDamagePerHit,
                         fromPosition = transform.Position,
                         source = self,
@@ -1249,6 +1438,8 @@ public partial struct EnemyMovementSystem : ISystem
         {
             allies = bridge.allies.AsArray(),
             hash = hash.map,
+            emotions = SystemAPI.GetComponentLookup<EnemyEmotion>(true),
+            emotionProfiles = SystemAPI.GetComponentLookup<EnemyEmotionProfile>(true),
             cellSize = hash.cellSize,
             deltaTime = SystemAPI.Time.DeltaTime,
             now = SystemAPI.Time.ElapsedTime,
@@ -1262,6 +1453,8 @@ public partial struct EnemyMovementSystem : ISystem
     {
         [ReadOnly] public NativeArray<EnemyWorldBridge.AllyState> allies;
         [ReadOnly] public NativeParallelMultiHashMap<int, EnemyNeighbor> hash;
+        [ReadOnly] public ComponentLookup<EnemyEmotion> emotions;
+        [ReadOnly] public ComponentLookup<EnemyEmotionProfile> emotionProfiles;
         public float cellSize;
         public float deltaTime;
         public double now;
@@ -1282,6 +1475,7 @@ public partial struct EnemyMovementSystem : ISystem
                                action.kind == EnemyActionKind.HitReact ||
                                action.kind == EnemyActionKind.Leap ||
                                action.kind == EnemyActionKind.Bite ||
+                               action.kind == EnemyActionKind.Panic ||
                                action.kind == EnemyActionKind.Dead;
 
             bool hasTarget = target.allyIndex >= 0 && target.allyIndex < allies.Length &&
@@ -1414,7 +1608,9 @@ public partial struct EnemyMovementSystem : ISystem
             // 가속에는 걸지 않는다 — 묶인 것은 다리이지 반응이 아니다.
             // 방금 맞은 놈은 발이 무겁다(피격 둔화). 움찔 모션이 끝나자마자 제 속도로 달려들면
             // 맞은 것이 몸에 남지 않는다.
-            float moveSpeed = speedLimit * motion.SlowFactor(now) * impact.FlinchFactor(now);
+            // 공포에 빠진 놈은 발도 30% 무겁다(UnitController.MoveMultiplier = 감정 × 둔화 × 피격 둔화).
+            float moveSpeed = speedLimit * motion.SlowFactor(now) * impact.FlinchFactor(now) *
+                              EnemyEmotion.StatMultiplier(entity, emotions, emotionProfiles);
 
             // 속도는 미는 힘의 크기를 따른다(1에서 자른다).
             //
@@ -1495,7 +1691,9 @@ public partial struct EnemyMovementSystem : ISystem
         private static void TickFacing(ref LocalTransform transform, in EnemyMotion motion, in EnemyStats stats,
             in EnemyAction action, bool hasTarget, float3 toTarget, float dt)
         {
-            if (action.kind == EnemyActionKind.Stagger || action.kind == EnemyActionKind.Dead) return;
+            // 무너졌거나 쓰러졌거나 겁에 질려 굳은 동안은 돌지 않는다.
+            if (action.kind == EnemyActionKind.Stagger || action.kind == EnemyActionKind.Dead ||
+                action.kind == EnemyActionKind.Panic) return;
 
             float3 facing = hasTarget ? toTarget : motion.velocity;
             facing.y = 0f;

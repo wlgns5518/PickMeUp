@@ -77,6 +77,11 @@ public class EnemyHordeSpawner : MonoBehaviour
              "이 값과 클립 길이가 어긋나면 뛰는 도중에 발이 미끄러진다.")]
     [SerializeField] private float leapDuration = 1.1f;
     [SerializeField] private float leapCooldown = 6f;
+    [Tooltip("도약의 정점 높이(미터). 게임오브젝트 고블린의 leapAttackHeight가 0.5라 같은 값으로 둔다. 0이면 땅에 붙어 덤빈다.")]
+    [SerializeField, Min(0f)] private float leapHeight = 0.5f;
+    [Tooltip("도약 클립이 제 스스로 떠 있는 높이(미터). 공중 공격 클립이라 발끝이 땅에서 7~21cm 떠 있어서, " +
+             "웅크림과 착지 순간에 이만큼 눌러 내려 발을 땅에 디디게 한다. 클립을 바꾸면 다시 잴 것.")]
+    [SerializeField, Min(0f)] private float leapClipFloat = 0.1f;
 
     [Header("물어뜯기 (붙잡는 한 방)")]
     [Tooltip("붙잡고 늘어져 무는 피해. 0이면 물지 않는다.\n" +
@@ -92,6 +97,11 @@ public class EnemyHordeSpawner : MonoBehaviour
              "이게 이 동작의 전부다 — 물어뜯기는 피해로 잡는 수가 아니라 한 명을 판에서 빼는 수다. " +
              "그래서 무는 순간에는 강인도 피해를 넘기지 않는다(그쪽으로 깨지면 면역이 켜져 경직이 막힌다).")]
     [SerializeField] private float biteStaggerDuration = 1.5f;
+    [Tooltip("한 전투에 물 수 있는 횟수. 0이면 제한이 없다. 게임오브젝트 고블린의 skillUseCount가 2라 같은 값으로 둔다.")]
+    [SerializeField, Min(0)] private int biteUsesPerBattle = 2;
+    [Tooltip("표적의 사거리 안에 이만큼(초) 붙어 있어야 문다. 게임오브젝트 고블린의 skillEngageDelay가 1이라 같은 값으로 둔다 — " +
+             "달려오는 동안 시간을 세면 닿는 순간 곧바로 물어뜯는다.")]
+    [SerializeField, Min(0f)] private float biteEngageDelay = 1f;
 
     [Header("강인도와 무너짐")]
     [Tooltip("이 적의 한 대가 아군의 강인도를 얼마나 깎는가. 아군의 maxPoise가 100이므로 " +
@@ -102,6 +112,16 @@ public class EnemyHordeSpawner : MonoBehaviour
     [SerializeField] private float staggerDuration = 1.2f;
     [SerializeField] private float hitReactionDuration = 0.3f;
     [SerializeField] private float knockbackDistance = 0.6f;
+    [Tooltip("칼을 내지르고 거두는 중(평타 회수·도약 착지 뒤)에 받는 피해 배율. 게임오브젝트 고블린의 " +
+             "recoveryVulnerabilityMultiplier와 같다.")]
+    [SerializeField, Min(0f)] private float recoveryVulnerabilityMultiplier = 1.35f;
+    [Tooltip("무너져 있는 동안 받는 피해 배율. 게임오브젝트 고블린의 staggerDamageMultiplier와 같다.")]
+    [SerializeField, Min(0f)] private float staggerDamageMultiplier = 1.4f;
+
+    [Header("감정 (공포·패닉·빈사·출혈)")]
+    [Tooltip("게임오브젝트 고블린이 달고 있던 UnitEmotion의 값 그대로다. 맞아서 HP를 잃고, 곁에서 동료가 쓰러지고, " +
+             "HP가 바닥이면 공포가 차오른다 — 공포(40)면 공격력·이동속도 30% 감소, 패닉(85)이면 2.5초 행동불가.")]
+    [SerializeField] private EmotionProfile emotion = new EmotionProfile { stressPerPanic = 12f, stressPerAllyDeath = 8f };
 
     [Header("어그로")]
     [SerializeField] private float threatWeight = 1f;
@@ -185,11 +205,15 @@ public class EnemyHordeSpawner : MonoBehaviour
             leapRange = leapRange,
             leapDuration = leapDuration,
             leapCooldown = leapCooldown,
+            leapHeight = leapHeight,
+            leapClipFloat = leapClipFloat,
 
             biteDamage = Mathf.Max(0, Mathf.RoundToInt(biteDamage * (1f + damagePerLevel * steps))),
             biteDuration = biteDuration,
             biteCooldown = biteCooldown,
             biteStaggerDuration = biteStaggerDuration,
+            biteUsesPerBattle = biteUsesPerBattle,
+            biteEngageDelay = biteEngageDelay,
 
             attackWindup = attackWindup,
             attackRecovery = attackRecovery,
@@ -212,6 +236,8 @@ public class EnemyHordeSpawner : MonoBehaviour
             staggerDuration = staggerDuration,
             hitReactionDuration = hitReactionDuration,
             knockbackDistance = knockbackDistance,
+            recoveryVulnerabilityMultiplier = recoveryVulnerabilityMultiplier,
+            staggerDamageMultiplier = staggerDamageMultiplier,
 
             threatWeight = threatWeight,
 
@@ -287,6 +313,9 @@ public class EnemyHordeSpawner : MonoBehaviour
             stats.patrolHalfExtents = patrolHalfExtents;
         }
 
-        return EnemyHorde.Spawn(stats, count, center, spread, seed);
+        // 스트레스 누적은 아군과 같은 스위치를 따른다(테스트 중에는 꺼 둔다).
+        EnemyEmotionProfile emotionProfile = EnemyEmotionProfile.From(emotion, CharacterStress.AccumulationEnabled);
+
+        return EnemyHorde.Spawn(stats, count, center, spread, seed, emotionProfile);
     }
 }

@@ -46,6 +46,11 @@ public static class EnemyWorldBridge
         // 이 아군에게 동시에 칼을 들 수 있는 적 수(공격 슬롯). 0이면 기본값을 쓴다
         // (EnemyAttackSlotSystem.DefaultSlotsPerAlly). 몸으로 막는 직군일수록 넓다(UnitStats.enemyAttackSlots).
         public byte attackSlots;
+
+        // 그림자 속에 있는가(암살자 은신)와, 그래도 들키는 거리. 적은 이 거리 밖의 은신한 아군을 겨누지 못하고
+        // 겨누던 것도 놓는다 — 아군 쪽 UnitRegistry.IsHiddenFrom과 같은 규칙이다. 0이면 코앞에서도 안 보인다.
+        public byte hidden;
+        public float revealRange;
     }
 
     public struct EnemyState
@@ -142,6 +147,18 @@ public static class EnemyWorldBridge
         // 이 한 방의 무게. 1이 평타이고 콤보 마무리·스킬·실드 배시가 더 크다. 0은 1로 친다.
         // 넉백 거리에 곱해진다(히트스톱 시간에는 보내는 쪽이 이미 곱해서 싣는다).
         public float impactWeight;
+
+        // 때린 아군의 급소 타격 확률(암살자, UnitStats.bleedChanceOnHit). 뒤에서 그었으면 두 배다 —
+        // 게임오브젝트 적은 맞는 쪽(ApplyOnHitDebuffs)이 때린 쪽 스탯을 직접 읽었는데, 엔티티는 때린
+        // UnitController를 볼 수 없어서 보내는 쪽이 실어 온다.
+        public float bleedChance;
+
+        // 스킬(강타)로 맞았는가. 강타에는 맞는 쪽의 출혈 확률(EnemyEmotionProfile.bleedChanceOnSkillHit)이 따로 붙는다.
+        public bool fromSkill;
+
+        // 출혈 한 틱이다(EnemyEmotionSystem). 살에 새로 닿은 것이 아니라 흐르던 피라서 움찔·넉백·멈칫·
+        // 피 튀김·맞받아치기·공포가 전부 없고 HP만 깎인다 — 아군 쪽 TakeBleedDamage와 같다.
+        public bool bleed;
     }
 
     // 잡에서 볼 수 있는 손잡이.
@@ -285,6 +302,8 @@ public static class EnemyWorldBridge
                 alive = (byte)(ally.IsDead ? 0 : 1),
                 canBeBitten = (byte)(ally.CanBeSkillVictim ? 1 : 0),
                 attackSlots = stats != null ? (byte)Mathf.Clamp(stats.enemyAttackSlots, 0, 255) : (byte)0,
+                hidden = (byte)(ally.IsStealthed ? 1 : 0),
+                revealRange = stats != null ? stats.stealthRevealRange : 0f,
             });
         }
     }
@@ -576,6 +595,66 @@ public static class EnemyWorldBridge
         }
     }
 
+    // 파티 집중 표적의 후보(UnitRegistry.PickFocusTarget). 아군이 이미 붙어 있는 적 중 가장 많이 깎인 놈과,
+    // 전선에서 가장 가까운 놈. 같은 누적값을 받아 더 나은 후보가 있을 때만 덮는다.
+    public static void AccumulateFocusCandidates(Vector3 origin, ref Entity engaged, ref float bestRatio,
+        ref Entity nearest, ref float nearestSqr)
+    {
+        if (!IsReady) return;
+
+        for (int i = 0; i < EnemyStates.Length; i++)
+        {
+            EnemyState enemy = EnemyStates[i];
+            if (!enemy.IsAlive) continue;
+
+            float sqr = math.distancesq(enemy.position, (float3)origin);
+            if (sqr < nearestSqr)
+            {
+                nearestSqr = sqr;
+                nearest = enemy.entity;
+            }
+
+            if (AllyAttackersOn(enemy.entity) <= 0) continue;
+
+            float ratio = enemy.maxHp > 0 ? enemy.hp / (float)enemy.maxHp : 0f;
+            if (ratio >= bestRatio) continue;
+
+            bestRatio = ratio;
+            engaged = enemy.entity;
+        }
+    }
+
+    // 이 아군의 간격 안까지 들어온 적(TargetScanner.ClosestPressuringEnemy). 이 아군을 노리고 쫓아온 놈과,
+    // 그냥 가장 가까운 놈을 따로 남긴다 — 둘 다 이미 들어온 최단거리보다 가까울 때만 덮는다.
+    public static void AccumulatePressure(Vector3 origin, float radius, int allyIndex,
+        ref Entity chasing, ref float chasingSqr, ref Entity nearest, ref float nearestSqr)
+    {
+        if (!IsReady) return;
+
+        float radiusSqr = radius * radius;
+        for (int i = 0; i < EnemyStates.Length; i++)
+        {
+            EnemyState enemy = EnemyStates[i];
+            if (!enemy.IsAlive) continue;
+
+            float3 offset = enemy.position - (float3)origin;
+            offset.y = 0f;
+            float sqr = math.lengthsq(offset);
+            if (sqr > radiusSqr) continue;
+
+            if (sqr < nearestSqr)
+            {
+                nearestSqr = sqr;
+                nearest = enemy.entity;
+            }
+
+            if (allyIndex < 0 || enemy.targetAllyIndex != allyIndex || sqr >= chasingSqr) continue;
+
+            chasingSqr = sqr;
+            chasing = enemy.entity;
+        }
+    }
+
     // 나를 향해 칼을 들어올린 적. 아군의 방어 판단이 이걸 읽는다
     // (예전 UnitRegistry.FindTelegraphingAttacker).
     public static bool TryFindTelegraphingAttacker(int allyIndex, float3 allyPosition, float reach, out int index)
@@ -619,12 +698,17 @@ public static class EnemyWorldBridge
     // ---------------------------------------------------------------- 피해 전달
 
     // 아군이 적을 때렸다. 실제 적용은 ECS 쪽 시스템이 한다.
+    //
+    // 때린 쪽 직군이 남기는 흔적(출혈·부위 억제)도 여기서 함께 싣는다. 게임오브젝트 적은 맞는 쪽이
+    // 때린 UnitController의 스탯을 직접 읽어 걸었는데(UnitController.ApplyOnHitDebuffs), 엔티티는 그
+    // 참조를 볼 수 없어서 이 둘이 통째로 빠져 있었다 — 암살자의 출혈도 창수의 발 묶기도 고블린에게는 없었다.
     public static void DamageEnemy(Entity enemy, int damage, float poiseDamage, float3 fromPosition,
-        UnitController attacker = null, float impactWeight = 1f)
+        UnitController attacker = null, float impactWeight = 1f, bool fromSkill = false)
     {
         if (!IsReady || enemy == Entity.Null) return;
 
         UnitStats stats = attacker != null ? attacker.Stats : null;
+        bool slows = stats != null && stats.slowOnHitDuration > 0f && stats.slowOnHitMultiplier < 1f;
 
         HitsOnEnemies.Enqueue(new HitOnEnemy
         {
@@ -636,7 +720,18 @@ public static class EnemyWorldBridge
             hitStopDuration = stats != null ? stats.hitStopDuration * impactWeight : 0f,
             hitStopScale = stats != null ? stats.hitStopScale : 1f,
             impactWeight = impactWeight,
+            slowDuration = slows ? stats.slowOnHitDuration : 0f,
+            slowMultiplier = slows ? stats.slowOnHitMultiplier : 1f,
+            bleedChance = stats != null ? stats.bleedChanceOnHit : 0f,
+            fromSkill = fromSkill,
         });
+    }
+
+    // 이 아군을 겨누고 있는 엔티티 적 수(지난 프레임 집계). 사제가 보호막 걸 사람을 고를 때
+    // 게임오브젝트 적 수(AttackersFrom)와 더해 쓴다.
+    public static int EntityAttackersOnAlly(UnitController ally)
+    {
+        return ally != null ? EntityAttackersOn(ally) : 0;
     }
 
     // 쓰러진 적을 때린 아군에게 처치로 얹는다. 메인 스레드에서만 부른다.

@@ -165,14 +165,14 @@ public static class UnitBehaviorTree
 
         if (unit.Scanner != null)
         {
-            UnitController target = unit.Scanner.Target;
-            if (target == null && engage.IsRunning) target = unit.Scanner.FindTargetNow();
+            TargetRef target = unit.Scanner.Target;
+            if (!target.Exists && engage.IsRunning) target = unit.Scanner.FindTargetNow();
 
-            if (target != null && unit.TrySetTarget(target)) return true;
+            if (target.Exists && unit.TrySetTarget(target)) return true;
         }
 
-        // 게임오브젝트 적을 못 찾았으면 엔티티 쪽에서 고른다. 스캐너가 훑지 않는 세계라
-        // 여기서 따로 물어봐야 한다(UnitController.TryAcquireEntityTarget 주석 참조).
+        // 스캐너가 없는 유닛(스캐너를 붙이지 않은 프리팹)도 엔티티 적은 찾아 겨눈다.
+        // 스캐너가 있으면 이미 엔티티까지 편향을 얹어 훑었으므로, 여기는 그마저 비었을 때의 대비다.
         return unit.TryAcquireEntityTarget();
     }
 
