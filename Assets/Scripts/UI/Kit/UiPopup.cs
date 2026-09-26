@@ -84,6 +84,27 @@ public class UiPopup : MonoBehaviour
         return button;
     }
 
+    /// 아래 줄 버튼을 가운데로 모은다. 넣은 순서(먼저 넣은 것이 오른쪽)는 그대로 둔다.
+    /// 확인 팝업처럼 버튼만 있는 판은 오른쪽에 몰면 판 왼쪽이 비어 한쪽으로 쏠려 보인다.
+    public void CenterFooter()
+    {
+        if (footer == null) return;
+
+        float total = 0f;
+        for (int i = 0; i < footer.childCount; i++)
+            total += ((RectTransform)footer.GetChild(i)).sizeDelta.x + (i > 0 ? UiTheme.Space3 : 0f);
+
+        // 오른쪽 끝(먼저 넣은 버튼)부터 왼쪽으로 놓는다. x는 줄 가운데에서 버튼 가운데까지의 거리다.
+        float right = total * 0.5f;
+        for (int i = 0; i < footer.childCount; i++)
+        {
+            var rect = (RectTransform)footer.GetChild(i);
+            float width = rect.sizeDelta.x;
+            UiKit.Center(rect, right - width * 0.5f, 0f, width, UiTheme.ButtonMedium);
+            right -= width + UiTheme.Space3;
+        }
+    }
+
     public void Show()
     {
         gameObject.SetActive(true);
@@ -117,6 +138,8 @@ public class UiConfirm
 
         confirm = popup.AddFooterButton("확인", UiButtonStyle.Primary, Confirm);
         popup.AddFooterButton("취소", UiButtonStyle.Ghost, popup.Hide);
+        // 문구도 가운데 정렬이라 버튼도 가운데로 모은다.
+        popup.CenterFooter();
     }
 
     /// danger면 확인 버튼이 경고색이 된다(재료가 사라지는 확인 등).
