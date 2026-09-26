@@ -25156,9 +25156,9 @@ MonoBehaviour:
     width: 6
   - label: "\uC785\uAD6C \xB7 \uBE44\uD589\uC120\uCC29\uC7A5"
     points:
-    - {x: 52.49275, y: -60.43463}
-    - {x: 51.49275, y: -58.70258}
-    - {x: 51.55366, y: -57.00096}
+    - {x: 55.220222, y: -57.158752}
+    - {x: 54.220222, y: -55.4267}
+    - {x: 54.87836, y: -57.951496}
     width: 6
   - label: "\uC785\uAD6C \xB7 \uBB34\uAE30\uCC3D\uACE0"
     points:

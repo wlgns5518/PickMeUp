@@ -639,11 +639,7 @@ private static void BuildTraining(Builder b)
             b.PointLight(new Vector3(s * 22f, 2.4f, 9f), new Color(1f, 0.6f, 0.3f), 11f, 2.2f, Lv3);
         }
 
-        // 교관 단.
-        Placed stand = b.Put(Slot.UpgradeModule, "kit_plinth", new Vector3(19f, Yard, 11f), 0f, b.Fit("kit_plinth", 8f, 1.4f, 8f), All, true);
-        Placed stairs = b.Put(Slot.Stairs, "kit_stairs", Vector3.zero, 0f, b.Fit("kit_stairs", 3.4f, 1.4f, float.NaN), All);
-        b.Move(stairs, new Vector3(19f, Yard, 11f + stand.Reach(0f, Yard, Yard + 1.4f, 1f) + stairs.Depth * 0.5f - 0.15f));
-        b.Put(Slot.Decoration, "kit_banner", new Vector3(21.5f, stand.Top - 0.05f, 9f), 0f, b.Uniform("kit_banner", 0.8f), From2);
+        // 교관 단(기단·계단·단 위 깃발)은 두지 않는다 — 2026-09-26 사용자가 씬에서 지웠다.
 
         b.Put(Slot.SideModule, "kit_tower", new Vector3(-21f, Yard, 3.5f), 150f, b.Uniform("kit_tower", 22f / b.Shape("kit_tower").Height), Lv3, true);
     }
@@ -662,7 +658,8 @@ private static void BuildTraining(Builder b)
         }
         Placed deck = b.Put(Slot.MainBody, "kit_plinth", new Vector3(0f, deckY - 0.1f, -16f), 0f, b.Fit("kit_plinth", 21f, 1.3f, 38f), All, true);
 
-        b.Put(Slot.Stairs, "kit_tower", new Vector3(7f, 0f, 4.4f), 0f, b.Uniform("kit_tower", 15f / b.Shape("kit_tower").Height), All, true);
+        // 갑판으로 오르는 탑. 2026-09-26 사용자가 씬에서 옮기고 키운 자리 — 갑판 오른쪽 모서리 앞, 원래 크기 그대로.
+        b.Put(Slot.Stairs, "kit_tower", new Vector3(11f, 0f, 5f), 0f, b.Uniform("kit_tower", 1f), All, true);
 
         float top = deck.Top - 0.05f;
         b.Put(Slot.Lighting, "kit_lantern", new Vector3(-8.5f, top, 0f), 0f, b.Uniform("kit_lantern", 1f), All);
