@@ -104,6 +104,10 @@ public class FacilityGate : MonoBehaviour, IPointerClickHandler, IPointerEnterHa
 
     public void OnPointerClick(PointerEventData eventData)
     {
+        // 건물 위에서 끌기 시작해 같은 건물 위에서 손을 떼면 EventSystem은 클릭으로 친다.
+        // 화면을 끌거나 줌한 손짓이었으면 창을 열지 않는다.
+        if (VillageCameraController.GestureMovedCamera) return;
+
         // 열려 있을 때 다시 누르면 닫는다. 창을 닫을 방법이 닫기 버튼 하나뿐이면 답답하다.
         window?.Toggle();
     }
