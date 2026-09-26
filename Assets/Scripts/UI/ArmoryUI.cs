@@ -474,6 +474,18 @@ public class ArmoryUI : UiScreen
             return;
         }
 
+        // 무기창고 레벨이 막은 단계. 다음 칸 자리에 필요한 레벨을 적는다.
+        if (EquipmentEnhancement.IsCapped(item))
+        {
+            enhanceAfter.SetLocked("잠김");
+            enhanceAfterText.text = UiTheme.Paint(EquipmentEnhancement.CapRequirement(item), UiTheme.Warning);
+            enhanceChances.text = string.Empty;
+            enhanceGold.text = string.Empty;
+            enhanceButton.ClearCost();
+            enhanceButton.interactable = false;
+            return;
+        }
+
         UiSlotContent next = UiSlotContents.Equipment(item);
         next.Corner = "+" + (level + 1);
         enhanceAfter.SetContent(next);

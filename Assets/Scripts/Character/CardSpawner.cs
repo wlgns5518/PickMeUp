@@ -55,7 +55,9 @@ public class CardSpawner : MonoBehaviour
     /// 이름은 한 번에 몰아 받는다(제미나이 RPM 제한). 등급은 장마다 따로 굴린다.
     /// onSummoned에는 만들어진 카드와 굴려 나온 별 등급이 함께 넘어간다 —
     /// 카드의 Character는 생성이 끝나야 채워지므로 결과 요약을 여기서 세지 못한다.
-    public IEnumerator SummonBatch(SummonKind kind, int count, Action<CharacterCard, int> onSummoned = null)
+    /// guaranteedStars가 1 이상이면(소환소 3레벨의 고급 10회 소환) 그 별 이상이 한 장도 안 나왔을 때 마지막 장을
+    /// 그 별 이상으로 굴린다. 등급은 카드를 만들기 전에 전부 정해 둔다 — 마지막 장에 가서야 알 수 있으므로.
+    public IEnumerator SummonBatch(SummonKind kind, int count, Action<CharacterCard, int> onSummoned = null, int guaranteedStars = 0)
     {
         if (count <= 0) yield break;
         if (!IsReady()) yield break;
@@ -71,10 +73,19 @@ public class CardSpawner : MonoBehaviour
             List<string> names = null;
             yield return generator.GenerateNames(count, list => names = list);
 
+            var rolled = new int[count];
+            bool met = guaranteedStars <= 0;
+            for (int i = 0; i < count; i++)
+            {
+                rolled[i] = SummonTable.RollStars(kind);
+                if (rolled[i] >= guaranteedStars) met = true;
+            }
+            if (!met) rolled[count - 1] = SummonTable.RollStarsAtLeast(kind, guaranteedStars);
+
             for (int i = 0; i < count; i++)
             {
                 string preset = (names != null && i < names.Count) ? names[i] : null;
-                int stars = SummonTable.RollStars(kind);
+                int stars = rolled[i];
 
                 CharacterCard card = Spawn(preset, stars);
                 onSummoned?.Invoke(card, stars);

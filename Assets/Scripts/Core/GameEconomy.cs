@@ -58,4 +58,22 @@ public static class GameEconomy
     // 캐릭터 합성 한 번. 재료 등급과 무관하게 같은 값이다 — 스킬은 성급으로 나누지 않으므로
     // 높은 등급을 태운다고 더 좋은 스킬이 나오지 않는다(SkillCatalog). 값까지 등급을 따라가면 손해만 남는다.
     public const long CharacterSynthesisGold = 300;
+
+    // 시설 업그레이드(2026-09-26 사용자 결정) — 젬만 받는다. 1→2레벨 500, 2→3레벨 1,500.
+    // 한 곳을 끝까지 올리면 2,000(고급 소환 1회가 300), 여섯 곳 전부 12,000.
+    public const long FacilityUpgradeGemsLv2 = 500;
+    public const long FacilityUpgradeGemsLv3 = 1500;
+
+    public const Currency FacilityUpgradeCurrency = Currency.Gem;
+
+    /// toLevel로 올리는 값. 1 이하나 최대 레벨을 넘는 값은 0.
+    public static long FacilityUpgradeCost(int toLevel)
+    {
+        switch (toLevel)
+        {
+            case 2: return FacilityUpgradeGemsLv2;
+            case 3: return FacilityUpgradeGemsLv3;
+            default: return 0;
+        }
+    }
 }

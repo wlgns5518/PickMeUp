@@ -36,6 +36,12 @@ public static class CharacterSynthesis
             reason = $"스킬은 최대 {SkillCatalog.MaxSkillsPerCharacter}개까지 배울 수 있습니다.";
             return false;
         }
+        // 합성으로 배울 수 있는 수는 합성소 레벨이 정한다(Lv.1 2개 · Lv.2 3개 · Lv.3 4개, FacilityUnlocks).
+        if (main.SkillCount >= FacilityUnlocks.SynthesisSkillCap)
+        {
+            reason = FacilityUnlocks.Requirement(VillageBlockout.Kind.Synthesis, FacilityLevels.Get(VillageBlockout.Kind.Synthesis) + 1);
+            return false;
+        }
         if (!SkillCatalog.HasCandidate(main))
         {
             reason = "이 영웅이 더 배울 스킬이 없습니다.";

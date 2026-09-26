@@ -2,7 +2,8 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 
-// 파티 편성 — 내보낼 파티를 짜 둔다. 마을의 훈련소(FacilityGate)를 누르면 열린다.
+// 파티 편성 — 내보낼 파티를 짜 둔다. 마을 왼쪽 아래 편성 버튼(PartyBarHud)과 층 선택의 "파티 변경"으로 연다.
+// 쓸 수 있는 파티 수는 훈련소 레벨이 정한다(FacilityUnlocks.PartySlots) — 잠긴 파티 탭은 자물쇠를 단다.
 //
 //   ┌ [ 1파티 | 2파티 | 3파티 ] ───────────┐   ┌ 보유 영웅 ──────────── 8명 ┐
 //   ┌ 출전 파티 ────────────────── 3 / 5 ┐   │ [ 등급순 | 레벨순 ]         │
@@ -130,6 +131,9 @@ public class DeckBuildUI : UiScreen, ICardDragHost
         partyTabs = UiTabs.Create(root, "PartyTabs", tabLabels);
         UiKit.TopLeft(partyTabs.Rect, 0f, 0f, LeftWidth, UiTheme.TabHeight);
         partyTabs.Changed += PartyDeck.SetActive;
+        // 2·3파티는 훈련소 레벨로 연다(FacilityUnlocks.PartySlots).
+        partyTabs.LockedClicked += index => toast.Show(
+            FacilityUnlocks.Requirement(VillageBlockout.Kind.Training, index + 1), UiToastKind.Warning);
 
         float y = UiTheme.TabHeight + UiTheme.Space4;
         float partyHeight = PartyPanelHeader + UiTile.HeightOf(PartySlotSize) + UiTheme.Space5;
@@ -326,8 +330,10 @@ public class DeckBuildUI : UiScreen, ICardDragHost
         partyTabs.Select(PartyDeck.ActiveIndex, false);
         for (int i = 0; i < PartyDeck.PartyCount; i++)
         {
+            bool usable = FacilityUnlocks.IsPartyUsable(i);
             int count = PartyDeck.CountOf(i);
-            partyTabs.SetLabel(i, count > 0 ? $"{i + 1}파티 · {count}명" : $"{i + 1}파티");
+            partyTabs.SetLabel(i, usable && count > 0 ? $"{i + 1}파티 · {count}명" : $"{i + 1}파티");
+            partyTabs.SetLocked(i, !usable);
         }
     }
 
@@ -426,7 +432,8 @@ public class DeckBuildUI : UiScreen, ICardDragHost
 
         bool fallen = PartyRoster.IsFallen(hero);
         int order = PartyDeck.IndexOf(hero);
-        int otherParty = order >= 0 ? -1 : PartyDeck.PartyIndexOf(hero);
+        // 잠긴 파티(훈련소 레벨)에 든 영웅은 흐리게 두지 않는다 — 넣으면 그 파티에서 옮겨 온다(PartyDeck).
+        int otherParty = order >= 0 || !PartyDeck.IsInOtherParty(hero) ? -1 : PartyDeck.PartyIndexOf(hero);
 
         UiSlotContent content = UiSlotContents.Hero(hero);
         if (order >= 0) { content.Tag = (order + 1).ToString(); content.TagColor = UiTheme.Selection; }

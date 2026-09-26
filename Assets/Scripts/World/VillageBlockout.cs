@@ -238,15 +238,18 @@ public class VillageBlockout : MonoBehaviour
             return;
         }
 #endif
+        FacilityLevels.Changed -= OnFacilityLevelChanged;
+        FacilityLevels.Changed += OnFacilityLevelChanged;
         Rebuild();
     }
 
-#if UNITY_EDITOR
     private void OnDisable()
     {
+#if UNITY_EDITOR
         UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= ClearGenerated;
-    }
 #endif
+        FacilityLevels.Changed -= OnFacilityLevelChanged;
+    }
 
     private void OnDestroy()
     {
@@ -470,7 +473,7 @@ public class VillageBlockout : MonoBehaviour
             if (building != null)
             {
                 root.localScale = Vector3.one * (district.size / building.DesignRadius);
-                building.SetLevel(Mathf.Max(1, district.level));
+                building.SetLevel(LevelOf(district));
             }
 
             MarkTree(instance);
@@ -495,6 +498,27 @@ public class VillageBlockout : MonoBehaviour
             case Kind.Training:  BuildTraining(root); break;
             case Kind.Workshop:  BuildWorkshop(root); break;
             case Kind.EquipmentWorkshop: BuildWorkshop(root); break; // 도형은 공방시설과 같다.
+        }
+    }
+
+    // 건물을 몇 레벨 모양으로 세울지. 실행 중에는 세이브의 시설 레벨(FacilityLevels)을 따르고, 편집 중에는
+    // 목록의 level(미리보기)을 쓴다 — 편집 중에 세이브 파일을 읽으면 씬을 열 때마다 개발자 세이브가 모양을 바꾼다.
+    private static int LevelOf(District district)
+    {
+        if (Application.isPlaying && FacilityUnlocks.IsUpgradeable(district.kind)) return FacilityLevels.Get(district.kind);
+        return Mathf.Max(1, district.level);
+    }
+
+    // 영지 관리 화면에서 시설을 올렸다. 마을을 다시 짓지 않고 그 건물의 레벨 파츠만 켜고 끈다.
+    private void OnFacilityLevelChanged(Kind kind, int level)
+    {
+        foreach (Transform child in transform)
+        {
+            var facility = child.GetComponent<VillageFacility>();
+            if (facility == null || facility.kind != kind) continue;
+
+            FacilityBuilding building = child.GetComponentInChildren<FacilityBuilding>(true);
+            if (building != null) building.SetLevel(level);
         }
     }
 

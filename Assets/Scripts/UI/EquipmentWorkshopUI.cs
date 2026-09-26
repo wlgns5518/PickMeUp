@@ -131,6 +131,9 @@ public class EquipmentWorkshopUI : UiScreen
         pageTabs = UiTabs.Create(root, "PageTabs", PageTabs, UiTheme.FontHeading);
         UiKit.TopLeft(pageTabs.Rect, 0f, 0f, PageTabWidth, UiTheme.TabHeight + 4f);
         pageTabs.Changed += index => { page = (Page)index; Refresh(); };
+        // 장비 합성은 장비제작소 3레벨부터(FacilityUnlocks).
+        pageTabs.LockedClicked += _ => toast.Show(
+            FacilityUnlocks.Requirement(VillageBlockout.Kind.EquipmentWorkshop, FacilityUnlocks.EquipmentSynthesisLevel), UiToastKind.Warning);
 
         float pageTop = UiTheme.TabHeight + 4f + UiTheme.Space4;
         var pageSize = new Vector2(size.x, size.y - pageTop);
@@ -167,6 +170,9 @@ public class EquipmentWorkshopUI : UiScreen
         modeTabs = UiTabs.Create(craftFlow.Options, "Mode", ModeTabs, UiTheme.FontLabel);
         UiKit.TopLeft(modeTabs.Rect, 0f, 0f, 440f, UiTheme.TabHeight);
         modeTabs.Changed += index => { manual = index == 1; Refresh(); };
+        // 수동 제작(퍼즐)은 장비제작소 2레벨부터.
+        modeTabs.LockedClicked += _ => toast.Show(
+            FacilityUnlocks.Requirement(VillageBlockout.Kind.EquipmentWorkshop, FacilityUnlocks.ManualCraftLevel), UiToastKind.Warning);
 
         difficultyTabs = UiTabs.Create(craftFlow.Options, "Difficulty", DifficultyTabs, UiTheme.FontLabel);
         UiKit.TopRight(difficultyTabs.Rect, 0f, 0f, FlowWidth - 440f - UiTheme.Space4, UiTheme.TabHeight);
@@ -454,6 +460,14 @@ public class EquipmentWorkshopUI : UiScreen
     private void Refresh()
     {
         if (craftFlow == null || synthFlow == null || resultPopup == null) return;
+
+        // 시설 레벨로 여는 탭. 잠긴 쪽에 머물러 있으면(레벨이 낮은 세이브를 불러왔을 때) 열린 쪽으로 돌린다.
+        bool canSynthesize = FacilityUnlocks.CanSynthesizeEquipment;
+        bool canManual = FacilityUnlocks.CanCraftManually;
+        pageTabs.SetLocked((int)Page.Synthesis, !canSynthesize);
+        modeTabs.SetLocked(1, !canManual);
+        if (!canSynthesize) page = Page.Craft;
+        if (!canManual) manual = false;
 
         pageTabs.Select((int)page, false);
         craftPage.gameObject.SetActive(page == Page.Craft);

@@ -14,7 +14,12 @@ public class UiCurrencyChip : MonoBehaviour
 
     public RectTransform Rect => (RectTransform)transform;
 
-    public static UiCurrencyChip Create(RectTransform parent, string name, Currency currency, float width = 240f)
+    // + 버튼(재화 사기) 지름. 알약 안 오른쪽 끝에 들어간다.
+    private const float BuyButtonSize = Height - 12f;
+
+    /// onBuy를 주면 알약 오른쪽 끝에 + 버튼을 단다(젬 사기 — GemShop).
+    public static UiCurrencyChip Create(RectTransform parent, string name, Currency currency, float width = 240f,
+        System.Action onBuy = null)
     {
         RectTransform rect = UiKit.Node(parent, name);
         rect.sizeDelta = new Vector2(width, Height);
@@ -30,7 +35,15 @@ public class UiCurrencyChip : MonoBehaviour
         var chip = rect.gameObject.AddComponent<UiCurrencyChip>();
         chip.currency = currency;
         chip.amount = UiKit.Text(rect, "Amount", string.Empty, UiTheme.FontBody, UiTheme.TextPrimary, TextAlignmentOptions.Right);
-        UiKit.Fill(chip.amount.rectTransform, iconSize - 12f + 6f, 0f, 22f, 0f);
+        float amountRight = 22f;
+        if (onBuy != null)
+        {
+            UiButton buy = UiButton.CreateIcon(rect, "Buy", UiSprites.Icon(UiSprites.Glyph.Plus), true, BuyButtonSize,
+                UiButtonStyle.Primary, () => onBuy());
+            UiKit.RightMiddle(buy.Rect, 6f, BuyButtonSize, BuyButtonSize);
+            amountRight = 6f + BuyButtonSize + 12f;
+        }
+        UiKit.Fill(chip.amount.rectTransform, iconSize - 12f + 6f, 0f, amountRight, 0f);
         chip.Refresh();
         return chip;
     }

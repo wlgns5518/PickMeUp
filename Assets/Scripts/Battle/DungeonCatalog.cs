@@ -3,12 +3,12 @@ using System.Collections.Generic;
 // 시공의 틈에 걸리는 콘텐츠와 그 해금 조건.
 //
 //   메인 던전   — 조건 없음. 1층부터 한 층씩 오르는 탑이고, 이 게임의 기본 진행이다(FloorProgress).
-//   요일 던전   — 메인 던전 10층 클리어.
-//   탐험 던전   — 메인 던전 20층 클리어.
+//   요일 던전   — 메인 던전 10층 클리어 + 시공의 틈 Lv.2.
+//   탐험 던전   — 메인 던전 20층 클리어 + 시공의 틈 Lv.3.
 //
-// 해금 상태를 따로 저장하지 않는다. 조건이 전부 "메인 던전 몇 층까지 깼는가"이고, 그 값(FloorProgress.HighestCleared)은
-// 세이브에 남으며 줄어들지 않는다(MarkCleared는 Max로만 올린다). 그래서 한 번 열린 콘텐츠는 게임을 껐다 켜도,
-// 낮은 층을 다시 깨도 잠기지 않는다 — 저장할 것이 하나 더 늘면 그 둘이 어긋날 자리만 생긴다.
+// 해금 상태를 따로 저장하지 않는다. 조건이 "메인 던전 몇 층까지 깼는가"와 "시공의 틈이 몇 레벨인가"이고, 두 값
+// (FloorProgress.HighestCleared, FacilityLevels)은 세이브에 남으며 줄어들지 않는다. 그래서 한 번 열린 콘텐츠는
+// 게임을 껐다 켜도, 낮은 층을 다시 깨도 잠기지 않는다 — 저장할 것이 하나 더 늘면 그 둘이 어긋날 자리만 생긴다.
 public enum DungeonKind
 {
     Main,       // 메인 던전 — 탑
@@ -55,13 +55,21 @@ public static class DungeonCatalog
         }
     }
 
-    public static bool IsUnlocked(DungeonKind kind) => FloorProgress.HighestCleared >= UnlockFloor(kind);
+    // 층 조건과 시공의 틈 레벨(요일 Lv.2 · 탐험 Lv.3, FacilityUnlocks)을 둘 다 채워야 열린다.
+    // 둘 다 줄지 않는 값이라 한 번 열리면 다시 잠기지 않는다.
+    public static bool IsUnlocked(DungeonKind kind) => IsFloorMet(kind) && FacilityUnlocks.IsDungeonOpen(kind);
 
-    // 잠긴 칸에 적는 조건. 메인 던전은 조건이 없어 빈 문자열이다.
+    public static bool IsFloorMet(DungeonKind kind) => FloorProgress.HighestCleared >= UnlockFloor(kind);
+
+    // 잠긴 칸에 적는 조건. 아직 못 채운 것만 한 줄씩 적는다. 메인 던전은 조건이 없어 빈 문자열이다.
     public static string UnlockText(DungeonKind kind)
     {
-        int floor = UnlockFloor(kind);
-        return floor <= 0 ? string.Empty : $"{Korean(DungeonKind.Main)} {floor}층 클리어 시 해금";
+        var lines = new List<string>(2);
+        if (!FacilityUnlocks.IsDungeonOpen(kind))
+            lines.Add(FacilityUnlocks.Requirement(VillageBlockout.Kind.Rift, FacilityUnlocks.RiftLevelFor(kind)));
+        if (!IsFloorMet(kind))
+            lines.Add($"{Korean(DungeonKind.Main)} {UnlockFloor(kind)}층 클리어");
+        return string.Join("\n", lines);
     }
 
     /// before층까지 깼던 상태에서 after층까지 깨면서 새로 열린 콘텐츠를 모은다.
@@ -73,7 +81,8 @@ public static class DungeonCatalog
         for (int i = 0; i < All.Length; i++)
         {
             int floor = UnlockFloor(All[i]);
-            if (floor > 0 && before < floor && after >= floor) results.Add(All[i]);
+            // 층은 채웠어도 시공의 틈 레벨이 모자라면 아직 열린 것이 아니다.
+            if (floor > 0 && before < floor && after >= floor && FacilityUnlocks.IsDungeonOpen(All[i])) results.Add(All[i]);
         }
     }
 }

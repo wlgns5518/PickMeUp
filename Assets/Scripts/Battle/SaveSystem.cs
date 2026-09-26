@@ -10,7 +10,7 @@ using UnityEngine;
 // 결과적으로 "영구"라는 말이 실제로는 성립하지 않았다.
 //
 // 로스터 상태와 층 해금 상태, 무기창고(제작한 장비와 누가 무엇을 들었는지), 모아 둔 제작 재료,
-// 플레이어 이름과 재화, 파티 편성(세 파티와 고른 파티)을 함께 남긴다.
+// 플레이어 이름과 재화, 파티 편성(세 파티와 고른 파티), 시설 레벨을 함께 남긴다.
 // 캐릭터 식별은 에셋 이름(CharacterSO.name)을 쓴다. GUID는 에디터 전용이라 빌드에서 못 쓴다.
 public static class SaveSystem
 {
@@ -64,6 +64,15 @@ public static class SaveSystem
         public List<PartyRecord> parties = new List<PartyRecord>();
     }
 
+    // 시설 레벨 한 칸(FacilityLevels). 시설은 enum 순번이 아니라 이름으로 적는다 — 순번으로 적으면
+    // VillageBlockout.Kind에 항목이 끼어들 때 옛 세이브가 엉뚱한 시설을 가리킨다.
+    [Serializable]
+    private class FacilityRecord
+    {
+        public string kind;
+        public int level;
+    }
+
     [Serializable]
     private class CharacterRecord
     {
@@ -103,6 +112,8 @@ public static class SaveSystem
         public AccountRecord account = new AccountRecord();
         // 없던 시절의 세이브는 세 파티가 비어 있는 것으로 읽힌다.
         public PartyDeckRecord party = new PartyDeckRecord();
+        // 없던 시절의 세이브는 모든 시설이 1레벨로 읽힌다.
+        public List<FacilityRecord> facilities = new List<FacilityRecord>();
     }
 
     public static string SavePath => Path.Combine(Application.persistentDataPath, FileName);
@@ -157,6 +168,7 @@ public static class SaveSystem
         WriteMaterials(data);
         WriteAccount(data);
         WriteParty(data);
+        WriteFacilities(data);
         Write(data);
     }
 
@@ -173,6 +185,38 @@ public static class SaveSystem
     // 파티 편성만 저장한다. 편성은 마을의 훈련소에서 바뀌므로 이유는 SaveEquipment와 같다.
     // PartyDeck이 바뀔 때마다 스스로 부른다.
     public static void SaveParty() => Patch(WriteParty);
+
+    // 시설 레벨만 저장한다. 업그레이드는 마을에서 일어나므로 이유는 SaveEquipment와 같다.
+    public static void SaveFacilities() => Patch(WriteFacilities);
+
+    // FacilityLevels가 처음 쓰일 때 스스로 부른다. 세이브가 없거나 깨졌으면 모든 시설이 1레벨이다.
+    public static void LoadFacilities()
+    {
+        var restored = new List<KeyValuePair<VillageBlockout.Kind, int>>();
+
+        SaveData data;
+        if (HasSave && TryRead(out data) && data.facilities != null)
+        {
+            for (int i = 0; i < data.facilities.Count; i++)
+            {
+                FacilityRecord record = data.facilities[i];
+                if (record == null || !Enum.TryParse(record.kind, out VillageBlockout.Kind kind)) continue;
+                restored.Add(new KeyValuePair<VillageBlockout.Kind, int>(kind, record.level));
+            }
+        }
+
+        FacilityLevels.Restore(restored);
+    }
+
+    private static void WriteFacilities(SaveData data)
+    {
+        var levels = new List<KeyValuePair<VillageBlockout.Kind, int>>();
+        FacilityLevels.Snapshot(levels);
+
+        data.facilities = new List<FacilityRecord>();
+        for (int i = 0; i < levels.Count; i++)
+            data.facilities.Add(new FacilityRecord { kind = levels[i].Key.ToString(), level = levels[i].Value });
+    }
 
     // 세이브의 편성을 PartyDeck에 얹는다. 세션마다 한 번, 보유 명단을 세운 뒤에 부른다(RosterBootstrap).
     //
@@ -441,6 +485,7 @@ public static class SaveSystem
             EquipmentInventory.Forget();
             MaterialInventory.Forget();
             PlayerAccount.Forget();
+            FacilityLevels.Forget();
         }
         catch (Exception e)
         {

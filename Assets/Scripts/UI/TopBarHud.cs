@@ -40,7 +40,7 @@ public class TopBarHud : MonoBehaviour
     private const float ButtonSize = 84f;
     private const float ButtonGap = 12f;
     private const float GoldChipWidth = 290f;
-    private const float GemChipWidth = 230f;
+    private const float GemChipWidth = 280f;   // + 버튼(젬 사기)이 오른쪽 끝에 들어간다
     // 칩 아이콘은 칩 왼쪽 끝 밖으로 조금 나온다. 그만큼 옆 칸과 간격을 더 둔다.
     private const float ChipGap = 40f;
 
@@ -133,7 +133,7 @@ public class TopBarHud : MonoBehaviour
 
         float chipTop = ButtonTop + (ButtonSize - UiCurrencyChip.Height) * 0.5f;
 
-        UiCurrencyChip gem = UiCurrencyChip.Create(canvasRect, "Gem", Currency.Gem, GemChipWidth);
+        UiCurrencyChip gem = UiCurrencyChip.Create(canvasRect, "Gem", Currency.Gem, GemChipWidth, () => GemShop.Open(toast));
         UiKit.TopRight(gem.Rect, right, chipTop, GemChipWidth, UiCurrencyChip.Height);
         right += GemChipWidth + ChipGap;
 

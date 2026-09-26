@@ -11,7 +11,7 @@ using UnityEngine.UI;
 //   │ │ 다음 13층    │ │ 10층 클리어  │ │ 20층 클리어  │              │
 //   │ │ [ 입장 ]     │ │ [ 잠김 ]     │ │ [ 잠김 ]     │              │
 //
-// 해금 조건은 DungeonCatalog가 들고 있고, 그 조건은 전부 메인 던전 진행도(FloorProgress)를 본다 —
+// 해금 조건은 DungeonCatalog가 들고 있고, 그 조건은 메인 던전 진행도(FloorProgress)와 시공의 틈 레벨을 본다 —
 // 이 화면은 지금 열렸는지 묻고 그리기만 한다.
 //
 // 메인 던전으로 들어가면 지금 짜 둔 파티 그대로 층 선택(FloorSelectUI)으로 간다 — 편성은 마을의 훈련소에서 한다.
@@ -104,7 +104,7 @@ public class DungeonSelectUI : UiScreen
 
         // 가운데 — 열려 있으면 진행 상황, 잠겨 있으면 자물쇠와 조건. 칸은 세로로 다 채우되 이 상자는 내용만큼만
         // 두고 남는 자리의 가운데에 놓는다. 상자까지 늘리면 칸 안이 빈 상자 하나로 보인다.
-        const float ConditionHeight = 56f;
+        const float ConditionHeight = 100f;   // 조건 두 줄(시공의 틈 레벨 · 층)까지
         float bodyHeight = UiTheme.Space5 * 2f + LockGlyphSize + UiTheme.Space4 + ConditionHeight;
         float free = height - 188f - UiTheme.ButtonLarge - pad * 2f;
 

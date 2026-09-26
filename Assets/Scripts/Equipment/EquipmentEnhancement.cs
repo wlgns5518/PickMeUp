@@ -32,6 +32,14 @@ public static class EquipmentEnhancement
 
     public static bool IsMaxed(OwnedEquipment item) => item != null && item.Level >= MaxLevel;
 
+    /// 끝까지 오르지는 않았지만 지금 무기창고 레벨로는 더 못 올린다.
+    public static bool IsCapped(OwnedEquipment item) =>
+        item != null && !IsMaxed(item) && item.Level >= FacilityUnlocks.EnhanceCap;
+
+    /// 더 올리려면 필요한 무기창고 레벨("무기창고 Lv.2 필요").
+    public static string CapRequirement(OwnedEquipment item) =>
+        FacilityUnlocks.Requirement(VillageBlockout.Kind.Armory, FacilityUnlocks.EnhanceLevelFor(item != null ? item.Level : 0));
+
     // level에서 한 단계 올릴 확률(0~1). 이미 끝까지 올랐으면 0.
     public static float SuccessChance(int level)
     {
@@ -77,6 +85,13 @@ public static class EquipmentEnhancement
         if (IsMaxed(item))
         {
             reason = $"이미 +{MaxLevel}까지 강화했습니다.";
+            return false;
+        }
+
+        // 어디까지 올릴 수 있는지는 무기창고 레벨이 정한다(Lv.1 강화 없음 · Lv.2 +5 · Lv.3 +10, FacilityUnlocks).
+        if (IsCapped(item))
+        {
+            reason = CapRequirement(item);
             return false;
         }
 

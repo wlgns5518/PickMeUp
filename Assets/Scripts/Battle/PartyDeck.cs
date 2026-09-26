@@ -90,7 +90,8 @@ public static class PartyDeck
             }
         }
 
-        ActiveIndex = Clamp(activeIndex);
+        // 고른 파티가 훈련소 레벨로 잠겨 있으면 1파티로 나간다(편성은 지우지 않는다).
+        ActiveIndex = FacilityUnlocks.IsPartyUsable(Clamp(activeIndex)) ? Clamp(activeIndex) : 0;
         IsRestored = true;
         Changed?.Invoke();
     }
@@ -111,6 +112,8 @@ public static class PartyDeck
     {
         int clamped = Clamp(index);
         if (clamped == ActiveIndex) return;
+        // 쓸 수 있는 파티 수는 훈련소 레벨이 정한다(FacilityUnlocks.PartySlots).
+        if (!FacilityUnlocks.IsPartyUsable(clamped)) return;
 
         ActiveIndex = clamped;
         Commit();
@@ -128,10 +131,18 @@ public static class PartyDeck
     }
 
     // 활성 파티가 아닌 다른 파티에 이미 들어 있는지. UI가 "왜 안 들어가는지" 알려줄 때 쓴다.
+    // 훈련소 레벨로 잠긴 파티는 치지 않는다 — 거기 든 영웅은 꺼낼 길이 없으므로, 지금 파티에 넣으면 옮겨 온다(TakeFromLockedParty).
     public static bool IsInOtherParty(CharacterSO character)
     {
         int party = PartyIndexOf(character);
-        return party >= 0 && party != ActiveIndex;
+        return party >= 0 && party != ActiveIndex && FacilityUnlocks.IsPartyUsable(party);
+    }
+
+    // 잠긴 파티에 든 영웅을 그 파티에서 뺀다. 저장은 부르는 쪽의 Commit이 한다.
+    private static void TakeFromLockedParty(CharacterSO character)
+    {
+        int party = PartyIndexOf(character);
+        if (party >= 0 && party != ActiveIndex && !FacilityUnlocks.IsPartyUsable(party)) parties[party].Remove(character);
     }
 
     public static void SetCapacity(int capacity)
@@ -167,6 +178,7 @@ public static class PartyDeck
         // 다른 파티에 있으면 받지 않는다. 그 파티에서 직접 빼야 한다.
         if (IsInOtherParty(character)) return false;
 
+        TakeFromLockedParty(character);
         parties[ActiveIndex].Add(character);
         Commit();
         return true;
@@ -208,6 +220,7 @@ public static class PartyDeck
         // 다른 파티에 있으면 받지 않는다. 그 파티에서 직접 빼야 한다.
         if (IsInOtherParty(character)) return false;
 
+        TakeFromLockedParty(character);
         party.Insert(Mathf.Clamp(index, 0, party.Count), character);
         Commit();
         return true;

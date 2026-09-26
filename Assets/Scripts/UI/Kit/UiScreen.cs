@@ -92,7 +92,9 @@ public abstract class UiScreen : FacilityWindow
         Currency[] currencies = HeaderCurrencies;
         for (int i = currencies.Length - 1; i >= 0; i--)
         {
-            UiCurrencyChip chip = UiCurrencyChip.Create(bar, "Chip_" + currencies[i], currencies[i]);
+            // 젬 칩에는 + 버튼(젬 사기)을 단다. 알림(toast)은 머리줄 뒤에 만들어지지만 누를 때 읽으므로 괜찮다.
+            System.Action buy = currencies[i] == Currency.Gem ? () => GemShop.Open(toast) : (System.Action)null;
+            UiCurrencyChip chip = UiCurrencyChip.Create(bar, "Chip_" + currencies[i], currencies[i], buy != null ? 280f : 240f, buy);
             UiKit.RightMiddle(chip.Rect, right, chip.Rect.sizeDelta.x, UiCurrencyChip.Height);
             right += chip.Rect.sizeDelta.x + UiTheme.Space5 + 12f;
         }

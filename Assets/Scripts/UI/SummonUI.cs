@@ -322,6 +322,13 @@ public class SummonUI : UiScreen
     {
         if (summoning) return;
 
+        // 10회 소환은 소환소 2레벨부터(FacilityUnlocks).
+        if (count >= 10 && !FacilityUnlocks.CanSummonTen)
+        {
+            toast.Show(FacilityUnlocks.Requirement(VillageBlockout.Kind.Summoning, FacilityUnlocks.TenSummonLevel), UiToastKind.Warning);
+            return;
+        }
+
         if (cardSpawner == null || !cardSpawner.isActiveAndEnabled)
         {
             toast.Show("소환기(CardSpawner)를 찾지 못했거나 꺼져 있습니다.", UiToastKind.Danger);
@@ -357,7 +364,7 @@ public class SummonUI : UiScreen
         {
             summoned++;
             if (stars >= 1 && stars < counts.Length) counts[stars]++;
-        });
+        }, FacilityUnlocks.GuaranteeFor(kind, count));
 
         // 한 장도 나오지 않았다면(소환기가 준비되지 않았거나 도중에 끊김) 낸 재화를 돌려준다.
         if (summoned == 0 && cost > 0) PlayerAccount.Add(currency, cost);
@@ -473,6 +480,20 @@ public class SummonUI : UiScreen
 
     private void ApplyCost(UiButton button, int count)
     {
+        // 잠긴 10회 소환은 값 대신 필요한 소환소 레벨을 적는다. 누르면 같은 말을 알림으로 띄운다.
+        if (count >= 10 && !FacilityUnlocks.CanSummonTen)
+        {
+            button.ClearCost();
+            button.SetLabel(FacilityUnlocks.Requirement(VillageBlockout.Kind.Summoning, FacilityUnlocks.TenSummonLevel));
+            button.SetStyle(UiButtonStyle.Ghost);
+            return;
+        }
+
+        if (count >= 10)
+        {
+            button.SetLabel($"{count}회 소환");
+            button.SetStyle(UiButtonStyle.Primary);
+        }
         button.SetCost(GameEconomy.SummonCurrency(selected), GameEconomy.SummonCost(selected, count));
     }
 

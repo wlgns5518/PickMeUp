@@ -234,7 +234,7 @@ public class SynthesisUI : UiScreen
         }
 
         int skills = main.SkillCount;
-        int max = SkillCatalog.MaxSkillsPerCharacter;
+        int max = FacilityUnlocks.SynthesisSkillCap;
         string grade = $"{UiTheme.Paint(UiKit.Stars(main.starCount), UiTheme.StarColor(main.starCount))} · Lv.{main.Level}";
 
         if (material == null)
@@ -311,6 +311,6 @@ public class SynthesisUI : UiScreen
         tile.Slot.SetContent(content);
         tile.Slot.SetSelected(isMain || isMaterial, isMaterial ? UiTheme.Danger : UiTheme.Selection);
         tile.Slot.SetDimmed(false);
-        tile.SetText(HeroLabel.Name(hero), $"스킬 {hero.SkillCount}/{SkillCatalog.MaxSkillsPerCharacter}");
+        tile.SetText(HeroLabel.Name(hero), $"스킬 {hero.SkillCount}/{FacilityUnlocks.SynthesisSkillCap}");
     }
 }

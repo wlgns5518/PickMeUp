@@ -20,6 +20,8 @@ public class EquipmentUpgradeTests
         hadSave = SaveSystem.HasSave;
         backup = hadSave ? File.ReadAllText(SaveSystem.SavePath) : null;
         SaveSystem.Delete();
+        // 강화 상한은 무기창고 레벨이 정한다. 여기서는 강화 규칙만 보므로 끝까지 열어 둔다(FacilityUpgradeTests).
+        FacilityTesting.UnlockAll();
 
         longSword = Weapon("Test_LongSword", WeaponType.SwordOneHand, EquipSlot.MainHand);
         shield = Weapon("Test_Shield", WeaponType.Shield, EquipSlot.OffHand);

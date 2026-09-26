@@ -14,7 +14,7 @@ public static class UiSprites
 
     private static readonly Dictionary<string, Sprite> Cache = new Dictionary<string, Sprite>();
 
-    public enum Glyph { ChevronLeft, ChevronRight, ChevronDown, Plus, Check, Close, Lock, Info, Party }
+    public enum Glyph { ChevronLeft, ChevronRight, ChevronDown, Plus, Check, Close, Lock, Info, Party, Castle }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetCache()
@@ -143,9 +143,35 @@ public static class UiSprites
                 return LockCoverage(u, v, size);
             case Glyph.Party:
                 return PartyCoverage(u, v, size);
+            case Glyph.Castle:
+                return CastleCoverage(u, v, size);
             default:
                 return 0f;
         }
+    }
+
+    // 성(영지): 가운데가 높은 탑 하나, 양옆 낮은 성벽. 위는 톱니(총안), 가운데 아래는 아치 문을 비운다.
+    private static float CastleCoverage(float u, float v, int size)
+    {
+        float wall = Box(u, v, 0.14f, 0.86f, 0.14f, 0.5f, size);
+        float keep = Box(u, v, 0.34f, 0.66f, 0.14f, 0.7f, size);
+
+        float teeth = 0f;
+        teeth = Mathf.Max(teeth, Box(u, v, 0.14f, 0.24f, 0.5f, 0.6f, size));
+        teeth = Mathf.Max(teeth, Box(u, v, 0.76f, 0.86f, 0.5f, 0.6f, size));
+        teeth = Mathf.Max(teeth, Box(u, v, 0.34f, 0.43f, 0.7f, 0.82f, size));
+        teeth = Mathf.Max(teeth, Box(u, v, 0.57f, 0.66f, 0.7f, 0.82f, size));
+
+        // 아치 문: 네모 위에 반원.
+        float door = Mathf.Max(Box(u, v, 0.43f, 0.57f, 0.1f, 0.32f, size), Dot(u, v, 0.5f, 0.32f, 0.07f, size));
+        return Mathf.Max(Mathf.Max(wall, keep), teeth) * (1f - door);
+    }
+
+    // 축에 맞춘 네모 칸(0~1 좌표).
+    private static float Box(float u, float v, float x0, float x1, float y0, float y1, int size)
+    {
+        float d = Mathf.Max(Mathf.Max(x0 - u, u - x1), Mathf.Max(y0 - v, v - y1));
+        return Mathf.Clamp01(0.5f - d * size);
     }
 
     // 자물쇠: 아래는 둥근 몸통, 위는 고리(반원 테두리 + 양쪽 기둥).

@@ -16,6 +16,8 @@ public class PartyDeckSaveTests
         hadSave = SaveSystem.HasSave;
         backup = hadSave ? File.ReadAllText(SaveSystem.SavePath) : null;
         SaveSystem.Delete();
+        // 2·3파티는 훈련소 레벨로 연다. 여기서는 저장만 보므로 끝까지 열어 둔다(LockedPartyTests).
+        FacilityTesting.UnlockAll();
 
         for (int i = 0; i < 4; i++)
         {

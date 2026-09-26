@@ -17,6 +17,8 @@ public class DungeonCatalogTests
         hadSave = SaveSystem.HasSave;
         backup = hadSave ? File.ReadAllText(SaveSystem.SavePath) : null;
         FloorProgress.RestoreCleared(0);
+        // 여기서는 층 조건만 본다. 시공의 틈 레벨 조건은 FacilityUpgradeTests가 본다.
+        FacilityTesting.UnlockAll();
     }
 
     [TearDown]

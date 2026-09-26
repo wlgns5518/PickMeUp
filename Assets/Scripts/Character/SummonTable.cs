@@ -62,5 +62,26 @@ public static class SummonTable
         return 1;
     }
 
+    /// minStars 이상만 남기고 굴린다(10회 소환 확정 칸, FacilityUnlocks.GuaranteeFor). 남은 등급끼리의 비율은 표 그대로다 —
+    /// 4성 확정이면 4성 95.1% / 5성 4.8% / 6성 0.1%. 그 등급이 이 소환에서 안 나오면 가장 높은 별로 굴린다.
+    public static int RollStarsAtLeast(SummonKind kind, int minStars)
+    {
+        int[] weights = Weights(kind);
+        int start = Mathf.Clamp(minStars, 1, weights.Length) - 1;
+
+        int total = 0;
+        for (int i = start; i < weights.Length; i++) total += weights[i];
+        if (total <= 0) return weights.Length;
+
+        int roll = Random.Range(0, total);
+        int acc = 0;
+        for (int i = start; i < weights.Length; i++)
+        {
+            acc += weights[i];
+            if (roll < acc) return i + 1;
+        }
+        return weights.Length;
+    }
+
     private static int[] Weights(SummonKind kind) => kind == SummonKind.Normal ? NormalWeights : PaidWeights;
 }
