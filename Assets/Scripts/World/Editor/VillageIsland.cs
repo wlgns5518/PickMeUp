@@ -78,7 +78,7 @@ public static class VillageIsland
     {
         // 섬 스크립트(FloatingIsland)는 걷은 뒤 지웠다 — 예전 씬에 남아 있을 때만 이름으로 찾는다.
         Component island = null;
-        foreach (MonoBehaviour behaviour in Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        foreach (MonoBehaviour behaviour in Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include))
             if (behaviour != null && behaviour.GetType().Name == "FloatingIsland") { island = behaviour; break; }
         if (island == null)
         {

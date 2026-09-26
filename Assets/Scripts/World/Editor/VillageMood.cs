@@ -161,7 +161,7 @@ public static class VillageMood
     private static void Volume()
     {
         Volume volume = null;
-        foreach (Volume v in Object.FindObjectsByType<Volume>(FindObjectsSortMode.None))
+        foreach (Volume v in Object.FindObjectsByType<Volume>())
             if (v.isGlobal) { volume = v; break; }
         if (volume == null)
         {
@@ -225,7 +225,7 @@ public static class VillageMood
 
     private static void Terrain()
     {
-        foreach (Terrain terrain in Object.FindObjectsByType<Terrain>(FindObjectsSortMode.None))
+        foreach (Terrain terrain in Object.FindObjectsByType<Terrain>())
         {
             TerrainData data = terrain.terrainData;
             DetailPrototype[] details = data.detailPrototypes;
