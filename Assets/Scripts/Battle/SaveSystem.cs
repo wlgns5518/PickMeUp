@@ -10,7 +10,7 @@ using UnityEngine;
 // 결과적으로 "영구"라는 말이 실제로는 성립하지 않았다.
 //
 // 로스터 상태와 층 해금 상태, 무기창고(제작한 장비와 누가 무엇을 들었는지), 모아 둔 제작 재료,
-// 플레이어 이름과 재화를 함께 남긴다.
+// 플레이어 이름과 재화, 파티 편성(세 파티와 고른 파티)을 함께 남긴다.
 // 캐릭터 식별은 에셋 이름(CharacterSO.name)을 쓴다. GUID는 에디터 전용이라 빌드에서 못 쓴다.
 public static class SaveSystem
 {
@@ -46,6 +46,22 @@ public static class SaveSystem
         public long gems;
         // 시작 젬(GameEconomy.StarterGems)을 이미 받았는지. 이 칸이 없던 세이브는 아직 안 받은 것으로 읽혀 한 번 받는다.
         public bool starterGranted;
+    }
+
+    // 파티 편성(PartyDeck). 파티마다 고른 순서대로 캐릭터를 CharacterSO.Id로 적는다 — 순서가 곧
+    // 스폰 지점 배정 순서라 그대로 남겨야 한다.
+    [Serializable]
+    private class PartyRecord
+    {
+        public List<string> members = new List<string>();
+    }
+
+    [Serializable]
+    private class PartyDeckRecord
+    {
+        // 편성 화면에서 마지막으로 고른 파티(층에 들어갈 때 출전하는 파티).
+        public int active;
+        public List<PartyRecord> parties = new List<PartyRecord>();
     }
 
     [Serializable]
@@ -85,6 +101,8 @@ public static class SaveSystem
         public List<MaterialRecord> materials = new List<MaterialRecord>();
         // 없던 시절의 세이브는 기본 이름에 재화 0으로 읽힌다.
         public AccountRecord account = new AccountRecord();
+        // 없던 시절의 세이브는 세 파티가 비어 있는 것으로 읽힌다.
+        public PartyDeckRecord party = new PartyDeckRecord();
     }
 
     public static string SavePath => Path.Combine(Application.persistentDataPath, FileName);
@@ -138,6 +156,7 @@ public static class SaveSystem
         WriteEquipment(data);
         WriteMaterials(data);
         WriteAccount(data);
+        WriteParty(data);
         Write(data);
     }
 
@@ -150,6 +169,88 @@ public static class SaveSystem
 
     // 이름과 재화만 저장한다. 이유는 SaveEquipment와 같다.
     public static void SaveAccount() => Patch(WriteAccount);
+
+    // 파티 편성만 저장한다. 편성은 마을의 훈련소에서 바뀌므로 이유는 SaveEquipment와 같다.
+    // PartyDeck이 바뀔 때마다 스스로 부른다.
+    public static void SaveParty() => Patch(WriteParty);
+
+    // 세이브의 편성을 PartyDeck에 얹는다. 세션마다 한 번, 보유 명단을 세운 뒤에 부른다(RosterBootstrap).
+    //
+    // 캐릭터는 보유 명단(owned)에서 Id로 찾는다. 합성 재료로 사라졌거나 명단에서 빠진 사람은 조용히 건너뛴다 —
+    // 없는 사람을 붙들고 있으면 편성에 빈칸이 생기고 전투에 끌려 나갈 사람이 없다.
+    // 세이브가 없거나 깨졌으면 빈 편성으로 시작한다.
+    public static void LoadParty(IReadOnlyList<CharacterSO> owned)
+    {
+        var restored = new List<IReadOnlyList<CharacterSO>>(PartyDeck.PartyCount);
+        int active = 0;
+
+        SaveData data;
+        PartyDeckRecord record = HasSave && TryRead(out data) ? data.party : null;
+        if (record != null && record.parties != null)
+        {
+            active = record.active;
+            for (int p = 0; p < record.parties.Count && p < PartyDeck.PartyCount; p++)
+            {
+                var members = new List<CharacterSO>();
+                PartyRecord party = record.parties[p];
+                if (party != null && party.members != null)
+                {
+                    for (int m = 0; m < party.members.Count; m++)
+                    {
+                        CharacterSO character = FindOwned(owned, party.members[m]);
+                        if (character != null) members.Add(character);
+                    }
+                }
+                restored.Add(members);
+            }
+        }
+
+        PartyDeck.Restore(restored, active);
+    }
+
+    private static CharacterSO FindOwned(IReadOnlyList<CharacterSO> owned, string id)
+    {
+        if (owned == null || string.IsNullOrEmpty(id)) return null;
+
+        for (int i = 0; i < owned.Count; i++)
+        {
+            CharacterSO character = owned[i];
+            if (character != null && character.Id == id) return character;
+        }
+
+        return null;
+    }
+
+    private static void WriteParty(SaveData data)
+    {
+        // 이번 세션에 편성을 아직 읽지 않았으면 파일에 있던 편성을 그대로 둔다. Patch는 파일에서 읽은 값을
+        // 들고 오므로 손대지 않으면 되고, 새로 짜는 Save는 파일의 편성을 옮겨 담는다(아래).
+        if (!PartyDeck.IsRestored)
+        {
+            if (data.party == null || data.party.parties == null || data.party.parties.Count == 0) CarryPartyFromFile(data);
+            return;
+        }
+
+        var record = new PartyDeckRecord { active = PartyDeck.ActiveIndex };
+        for (int p = 0; p < PartyDeck.PartyCount; p++)
+        {
+            var party = new PartyRecord();
+            IReadOnlyList<CharacterSO> members = PartyDeck.Party(p);
+            for (int m = 0; m < members.Count; m++)
+            {
+                if (members[m] != null) party.members.Add(members[m].Id);
+            }
+            record.parties.Add(party);
+        }
+
+        data.party = record;
+    }
+
+    private static void CarryPartyFromFile(SaveData data)
+    {
+        SaveData existing;
+        if (HasSave && TryRead(out existing) && existing.party != null) data.party = existing.party;
+    }
 
     // 파일에 이미 있는 것은 그대로 두고 한 칸만 갈아 끼운다.
     private static void Patch(Action<SaveData> write)

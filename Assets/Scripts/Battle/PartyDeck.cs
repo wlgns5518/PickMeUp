@@ -14,6 +14,10 @@ using UnityEngine;
 // 자동으로 옮겨 주면 2파티를 만지다가 1파티가 조용히 헐거워지고, 언제 빠졌는지 알 수 없다.
 //
 // 메인 씬에서 고른 결과를 전투 씬까지 들고 가야 하므로 FloorProgress와 같은 static으로 둔다.
+//
+// 편성은 세이브에 남는다(SaveSystem.SaveParty). 예전에는 런타임 목록뿐이라 게임을 껐다 켜면 세 파티가
+// 통째로 비어, 매번 훈련소에서 다시 짜야 했다. 바뀔 때마다 그 자리에서 저장하고(Commit),
+// 세션을 열 때 한 번 읽어 온다(RosterBootstrap → SaveSystem.LoadParty → Restore).
 public static class PartyDeck
 {
     public const int PartyCount = 3;
@@ -36,6 +40,10 @@ public static class PartyDeck
     // 편성이 바뀌면 카드 UI가 다시 그려야 한다.
     public static event Action Changed;
 
+    // 이번 세션에 세이브의 편성을 읽어 왔는가. 읽기 전에는 저장하지 않는다 — 비어 있는 런타임 목록으로
+    // 파일에 남은 편성을 덮으면, 편성 화면을 열기도 전에 저장한 세 파티가 사라진다.
+    public static bool IsRestored { get; private set; }
+
     private static List<CharacterSO>[] CreateParties()
     {
         var created = new List<CharacterSO>[PartyCount];
@@ -50,8 +58,48 @@ public static class PartyDeck
         for (int i = 0; i < parties.Length; i++) parties[i].Clear();
         ActiveIndex = 0;
         Capacity = DefaultCapacity;
+        IsRestored = false;
         // 씬과 함께 사라진 UI의 구독이 남아 있으면 죽은 참조를 계속 부르게 된다.
         Changed = null;
+    }
+
+    // 세이브에서 읽은 편성을 얹는다(SaveSystem.LoadParty). 저장을 다시 부르지 않는다.
+    //
+    // 세이브 뒤에 사정이 바뀐 사람은 여기서 걸러 낸다 — 영구 사망했거나, 다른 파티에 이미 들어갔거나
+    // (한 사람은 한 파티에만), 자리 수를 넘친 경우다. 빈칸은 두지 않고 앞으로 당긴다(PlaceAt 주석).
+    public static void Restore(IReadOnlyList<IReadOnlyList<CharacterSO>> saved, int activeIndex)
+    {
+        for (int i = 0; i < parties.Length; i++) parties[i].Clear();
+
+        if (saved != null)
+        {
+            for (int p = 0; p < parties.Length && p < saved.Count; p++)
+            {
+                IReadOnlyList<CharacterSO> source = saved[p];
+                if (source == null) continue;
+
+                for (int m = 0; m < source.Count; m++)
+                {
+                    CharacterSO character = source[m];
+                    if (character == null || PartyRoster.IsFallen(character)) continue;
+                    if (PartyIndexOf(character) >= 0) continue;
+                    if (parties[p].Count >= Capacity) break;
+
+                    parties[p].Add(character);
+                }
+            }
+        }
+
+        ActiveIndex = Clamp(activeIndex);
+        IsRestored = true;
+        Changed?.Invoke();
+    }
+
+    // 편성이 바뀌었다. 저장하고 알린다.
+    private static void Commit()
+    {
+        if (IsRestored) SaveSystem.SaveParty();
+        Changed?.Invoke();
     }
 
     // 1파티는 0, 2파티는 1 ... 화면에 보이는 번호는 +1이다.
@@ -65,7 +113,7 @@ public static class PartyDeck
         if (clamped == ActiveIndex) return;
 
         ActiveIndex = clamped;
-        Changed?.Invoke();
+        Commit();
     }
 
     // 이 캐릭터가 들어 있는 파티 번호. 어디에도 없으면 -1.
@@ -100,7 +148,7 @@ public static class PartyDeck
                 trimmed = true;
             }
         }
-        if (trimmed) Changed?.Invoke();
+        if (trimmed) Commit();
     }
 
     public static bool Contains(CharacterSO character) => character != null && parties[ActiveIndex].Contains(character);
@@ -120,7 +168,7 @@ public static class PartyDeck
         if (IsInOtherParty(character)) return false;
 
         parties[ActiveIndex].Add(character);
-        Changed?.Invoke();
+        Commit();
         return true;
     }
 
@@ -128,7 +176,7 @@ public static class PartyDeck
     {
         if (character == null || !parties[ActiveIndex].Remove(character)) return false;
 
-        Changed?.Invoke();
+        Commit();
         return true;
     }
 
@@ -151,7 +199,7 @@ public static class PartyDeck
 
             party.RemoveAt(current);
             party.Insert(target, character);
-            Changed?.Invoke();
+            Commit();
             return true;
         }
 
@@ -161,7 +209,7 @@ public static class PartyDeck
         if (IsInOtherParty(character)) return false;
 
         party.Insert(Mathf.Clamp(index, 0, party.Count), character);
-        Changed?.Invoke();
+        Commit();
         return true;
     }
 
@@ -171,7 +219,7 @@ public static class PartyDeck
         if (index < 0 || index >= party.Count) return false;
 
         party.RemoveAt(index);
-        Changed?.Invoke();
+        Commit();
         return true;
     }
 
@@ -181,7 +229,7 @@ public static class PartyDeck
         if (parties[ActiveIndex].Count == 0) return;
 
         parties[ActiveIndex].Clear();
-        Changed?.Invoke();
+        Commit();
     }
 
     // 어느 파티에 있든 통째로 뺀다. 합성 재료처럼 캐릭터 자체가 사라질 때 쓴다 —
@@ -194,7 +242,7 @@ public static class PartyDeck
         for (int i = 0; i < parties.Length; i++)
             removed |= parties[i].Remove(character);
 
-        if (removed) Changed?.Invoke();
+        if (removed) Commit();
         return removed;
     }
 
@@ -203,7 +251,7 @@ public static class PartyDeck
     {
         int removed = 0;
         for (int i = 0; i < parties.Length; i++) removed += parties[i].RemoveAll(PartyRoster.IsFallen);
-        if (removed > 0) Changed?.Invoke();
+        if (removed > 0) Commit();
     }
 
     private static int Clamp(int index) => Mathf.Clamp(index, 0, PartyCount - 1);
