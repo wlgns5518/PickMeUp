@@ -40,8 +40,8 @@ public class FacilityGate : MonoBehaviour, IPointerClickHandler, IPointerEnterHa
             case VillageBlockout.Kind.Rift:
             case VillageBlockout.Kind.EquipmentWorkshop:
             case VillageBlockout.Kind.Armory:
-            case VillageBlockout.Kind.Training:
                 return true;
+            // 훈련소는 누르지 않는다. 편성은 마을 왼쪽 아래 편성 버튼(PartyBarHud)과 층 선택의 "파티 변경"으로 연다.
             default:
                 return false;
         }
@@ -89,9 +89,6 @@ public class FacilityGate : MonoBehaviour, IPointerClickHandler, IPointerEnterHa
             // 시공의 틈은 원정을 떠나는 자리다. 어느 던전으로 갈지부터 고른다(DungeonSelectUI → 층 선택).
             case VillageBlockout.Kind.Rift:
                 return FindAnyObjectByType<DungeonSelectUI>(FindObjectsInactive.Include);
-            // 훈련소는 동료를 모아 두는 자리다. 출전할 파티는 원정을 떠나기 전에 여기서 짠다.
-            case VillageBlockout.Kind.Training:
-                return FindAnyObjectByType<DeckBuildUI>(FindObjectsInactive.Include);
             case VillageBlockout.Kind.EquipmentWorkshop:
                 return FindAnyObjectByType<EquipmentWorkshopUI>(FindObjectsInactive.Include);
             // 제작소에서 만든 장비를 영웅에게 들리는 자리.
