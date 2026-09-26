@@ -195,7 +195,7 @@ public class EnemyHordeSpawner : MonoBehaviour
 
         return new EnemyStats
         {
-            maxHp = Mathf.Max(1, Mathf.RoundToInt(maxHp * (1f + hpPerLevel * steps))),
+            maxHp = Mathf.Max(1, Mathf.RoundToInt(maxHp * (1f + hpPerLevel * steps))) * BattleTestTuning.HealthMultiplier,
             attackDamage = Mathf.Max(1, Mathf.RoundToInt(attackDamage * (1f + damagePerLevel * steps))),
 
             attackRange = attackRange,

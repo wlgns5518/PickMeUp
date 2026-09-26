@@ -321,7 +321,7 @@ public class CharacterBattleSpawner : MonoBehaviour
             attackDamage = baseAttackDamage + so.Strength * attackDamagePerStrength,
         };
 
-        stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * job.HpMultiplier));
+        stats.maxHp = Mathf.Max(1, Mathf.RoundToInt(stats.maxHp * job.HpMultiplier)) * BattleTestTuning.HealthMultiplier;
         stats.attackDamage = Mathf.Max(1, Mathf.RoundToInt(stats.attackDamage * job.AttackMultiplier * weapon.AttackMultiplier * weaponPower));
         stats.skillDamage = stats.attackDamage * 2;
 
