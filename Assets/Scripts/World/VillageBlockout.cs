@@ -503,11 +503,20 @@ public class VillageBlockout : MonoBehaviour
 
     // 건물을 몇 레벨 모양으로 세울지. 실행 중에는 세이브의 시설 레벨(FacilityLevels)을 따르고, 편집 중에는
     // 목록의 level(미리보기)을 쓴다 — 편집 중에 세이브 파일을 읽으면 씬을 열 때마다 개발자 세이브가 모양을 바꾼다.
+    //
+    // 시공의 틈은 올리지 않는 시설이라 늘 가장 큰 모습이다. 거리(집 묶음)는 숙소 레벨을 따른다 — 숙소를 올리면
+    // 마을의 집이 전부 함께 자란다(FacilityUnlocks, VillagePrefabAssembler.LevelHouse).
     private static int LevelOf(District district)
     {
-        if (Application.isPlaying && FacilityUnlocks.IsUpgradeable(district.kind)) return FacilityLevels.Get(district.kind);
-        return Mathf.Max(1, district.level);
+        if (district.kind == Kind.Rift) return FacilityBuilding.MaxLevel;
+        if (!Application.isPlaying) return Mathf.Max(1, district.level);
+
+        Kind levelKind = LevelKindOf(district.kind);
+        return FacilityUnlocks.IsUpgradeable(levelKind) ? FacilityLevels.Get(levelKind) : Mathf.Max(1, district.level);
     }
+
+    // 이 구역의 모습을 어느 시설 레벨이 정하는가. 거리는 숙소를 따른다.
+    private static Kind LevelKindOf(Kind kind) => kind == Kind.Street ? Kind.Housing : kind;
 
     // 영지 관리 화면에서 시설을 올렸다. 마을을 다시 짓지 않고 그 건물의 레벨 파츠만 켜고 끈다.
     private void OnFacilityLevelChanged(Kind kind, int level)
@@ -515,7 +524,7 @@ public class VillageBlockout : MonoBehaviour
         foreach (Transform child in transform)
         {
             var facility = child.GetComponent<VillageFacility>();
-            if (facility == null || facility.kind != kind) continue;
+            if (facility == null || LevelKindOf(facility.kind) != kind) continue;
 
             FacilityBuilding building = child.GetComponentInChildren<FacilityBuilding>(true);
             if (building != null) building.SetLevel(level);

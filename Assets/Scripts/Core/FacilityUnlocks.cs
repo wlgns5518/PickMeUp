@@ -13,16 +13,19 @@ using Kind = VillageBlockout.Kind;
 //   | 장비제작소 | 자동 제작       | 수동 제작(퍼즐)   | 장비 합성                     |
 //   | 무기창고   | 장착            | 강화 +5까지       | 강화 +10까지                  |
 //   | 훈련소     | 파티 1개        | 파티 2개          | 파티 3개                      |
-//   | 시공의 틈  | 메인 던전       | 요일 던전         | 탐험 던전                     |
+//   | 숙소       | 작은 집         | 곁채 증축         | 큰 집                         |
 //
 // 각 기능은 여기에 "지금 되는가 / 몇 레벨이 필요한가"만 묻는다. 표를 고칠 때는 이 파일만 고친다.
 // 일반 소환은 2성까지만 나와서 4성 확정은 고급 소환에만 건다(SummonTable).
 // 비행선착장은 하는 일이 없어 업그레이드 목록에서 뺐다 — 기능이 생기면 Upgradeable에 넣는다.
+// 숙소는 건물 한 채가 아니라 마을의 집 전부다(2026-09-26 사용자) — 올리면 모든 거리(Kind.Street)의 집이 함께 자란다.
+// 기능은 열지 않고 모습만 바뀐다(VillagePrefabAssembler.LevelHouse). 숙소 건물 자체는 2026-09-25에 없앴고 Kind.Housing만 남아 있다.
+// 시공의 틈은 올리지 않는다(2026-09-26 사용자) — 처음부터 3레벨 모습으로 세우고(VillageBlockout), 던전은 층 조건만 본다.
 public static class FacilityUnlocks
 {
     public static readonly Kind[] Upgradeable =
     {
-        Kind.Summoning, Kind.Synthesis, Kind.EquipmentWorkshop, Kind.Armory, Kind.Training, Kind.Rift,
+        Kind.Summoning, Kind.Synthesis, Kind.EquipmentWorkshop, Kind.Armory, Kind.Training, Kind.Housing,
     };
 
     public static bool IsUpgradeable(Kind kind) => System.Array.IndexOf(Upgradeable, kind) >= 0;
@@ -41,7 +44,7 @@ public static class FacilityUnlocks
             case Kind.EquipmentWorkshop: return "장비제작소";
             case Kind.Armory:            return "무기창고";
             case Kind.Training:          return "훈련소";
-            case Kind.Rift:              return "시공의 틈";
+            case Kind.Housing:           return "숙소";
             default:                     return kind.ToString();
         }
     }
@@ -61,8 +64,8 @@ public static class FacilityUnlocks
                 return level >= 2 ? $"강화 +{EnhanceCapAt(level)}까지" : "장착";
             case Kind.Training:
                 return $"파티 {PartySlotsAt(level)}개";
-            case Kind.Rift:
-                return level >= 3 ? "탐험 던전" : level == 2 ? "요일 던전" : "메인 던전";
+            case Kind.Housing:
+                return level >= 3 ? "큰 집" : level == 2 ? "곁채 증축" : "작은 집";
             default:
                 return string.Empty;
         }
@@ -122,18 +125,4 @@ public static class FacilityUnlocks
     public static int PartySlots => PartySlotsAt(Level(Kind.Training));
 
     public static bool IsPartyUsable(int index) => index >= 0 && index < PartySlots;
-
-    // ---- 시공의 틈 -----------------------------------------------------------
-
-    public static int RiftLevelFor(DungeonKind dungeon)
-    {
-        switch (dungeon)
-        {
-            case DungeonKind.Daily:      return 2;
-            case DungeonKind.Expedition: return 3;
-            default:                     return 1;
-        }
-    }
-
-    public static bool IsDungeonOpen(DungeonKind dungeon) => Level(Kind.Rift) >= RiftLevelFor(dungeon);
 }

@@ -95,15 +95,28 @@ public class FacilityUpgradeTests
     }
 
     [Test]
-    public void 최대_3레벨에서_멈추고_비행선착장은_올릴_수_없다()
+    public void 최대_3레벨에서_멈추고_비행선착장과_시공의_틈은_올릴_수_없다()
     {
         FacilityTesting.UnlockAll();
         SetGems(10000);
 
-        Assert.IsFalse(FacilityLevels.TryUpgrade(Kind.Rift, out _));
-        Assert.AreEqual(0, FacilityLevels.NextCost(Kind.Rift));
+        Assert.IsFalse(FacilityLevels.TryUpgrade(Kind.Housing, out _));
+        Assert.AreEqual(0, FacilityLevels.NextCost(Kind.Housing));
         Assert.IsFalse(FacilityLevels.TryUpgrade(Kind.Airdock, out _));
+        Assert.IsFalse(FacilityLevels.TryUpgrade(Kind.Rift, out _), "시공의 틈은 처음부터 가장 큰 모습이라 올리지 않는다");
         Assert.AreEqual(10000, PlayerAccount.Balance(Currency.Gem));
+    }
+
+    [Test]
+    public void 숙소는_업그레이드_목록에_있고_레벨마다_집_모습이_다르다()
+    {
+        Assert.IsTrue(FacilityUnlocks.IsUpgradeable(Kind.Housing));
+        Assert.AreEqual("숙소", FacilityUnlocks.Name(Kind.Housing));
+        Assert.AreNotEqual(FacilityUnlocks.Feature(Kind.Housing, 1), FacilityUnlocks.Feature(Kind.Housing, 3));
+
+        SetGems(500);
+        Assert.IsTrue(FacilityLevels.TryUpgrade(Kind.Housing, out _));
+        Assert.AreEqual(2, FacilityLevels.Get(Kind.Housing));
     }
 
     [Test]
@@ -195,30 +208,16 @@ public class FacilityUpgradeTests
     }
 
     [Test]
-    public void 요일_던전은_시공의_틈_2레벨_탐험_던전은_3레벨이_있어야_열린다()
+    public void 던전은_시설_레벨과_무관하게_층_조건만_본다()
     {
+        // 시설이 전부 1레벨이어도(세이브 없음) 층만 채우면 열린다.
         FloorProgress.RestoreCleared(20);
-
-        FacilityTesting.Set(Kind.Rift, 1);
-        Assert.IsTrue(DungeonCatalog.IsUnlocked(DungeonKind.Main));
-        Assert.IsFalse(DungeonCatalog.IsUnlocked(DungeonKind.Daily), "층은 채웠어도 시공의 틈이 1레벨이면 잠겨 있다");
-        StringAssert.Contains("Lv.2", DungeonCatalog.UnlockText(DungeonKind.Daily));
-
-        FacilityTesting.Set(Kind.Rift, 2);
         Assert.IsTrue(DungeonCatalog.IsUnlocked(DungeonKind.Daily));
-        Assert.IsFalse(DungeonCatalog.IsUnlocked(DungeonKind.Expedition));
-
-        FacilityTesting.Set(Kind.Rift, 3);
         Assert.IsTrue(DungeonCatalog.IsUnlocked(DungeonKind.Expedition));
-    }
 
-    [Test]
-    public void 레벨이_모자라면_층을_깨도_새로_열렸다고_알리지_않는다()
-    {
-        FacilityTesting.Set(Kind.Rift, 1);
         var unlocked = new List<DungeonKind>();
         DungeonCatalog.CollectNewlyUnlocked(9, 10, unlocked);
-        Assert.IsEmpty(unlocked);
+        CollectionAssert.AreEqual(new[] { DungeonKind.Daily }, unlocked);
     }
 }
 

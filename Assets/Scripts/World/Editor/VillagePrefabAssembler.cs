@@ -231,22 +231,25 @@ public static class VillagePrefabAssembler
     private static void BuildSynthesis(Builder b)
     {
         // 합성소는 본체를 기둥 열이 두른다(임시 도형의 열두 기둥).
+        float[] annexes = { -100f, 100f };
         Hall hall = BuildHall(b, bodyDiameter: 20f, plinthDiameter: 30f, plinthHeight: 1.6f,
-            buttressBearings: new[] { 45f, 90f, 135f, 180f, 225f, 270f, 315f });
+            buttressBearings: new[] { 45f, 90f, 135f, 180f, 225f, 270f, 315f }, annexBearings: annexes, annexDiameter: 10f);
 
+        // 기둥 열은 2레벨부터 — 1레벨은 본채만 선 수수한 모습이다. 곁채 자리의 기둥은 뺀다.
         float ring = hall.bodyRadius + 2.4f;
         for (int i = 0; i < 8; i++)
         {
             float bearing = 22.5f + i * 45f;
+            if (NearAny(bearing, annexes, 32f)) continue;
             b.Put(Slot.Decoration, "kit_pillar", Dir(bearing) * ring + Vector3.up * hall.floorY, bearing,
-                b.Uniform("kit_pillar", hall.bodyHeight * 0.92f / b.Shape("kit_pillar").Height), All, true);
+                b.Uniform("kit_pillar", hall.bodyHeight * 0.92f / b.Shape("kit_pillar").Height), From2, true);
         }
     }
 
     private static void BuildSummoning(Builder b)
     {
         Hall hall = BuildHall(b, bodyDiameter: 16f, plinthDiameter: 23f, plinthHeight: 1.4f,
-            buttressBearings: new[] { 60f, 120f, 180f, 240f, 300f });
+            buttressBearings: new[] { 60f, 120f, 180f, 240f, 300f }, annexBearings: new[] { -95f, 95f }, annexDiameter: 8.5f);
 
         // 소환의 구슬. 문을 가리지 않게 앞 오른쪽 땅 위에 둔다(임시 도형에서 가장 눈에 띄던 것).
         Vector3 spot = Dir(38f) * (hall.plinthRadius + 3.5f);
@@ -267,7 +270,8 @@ public static class VillagePrefabAssembler
         }
     }
 
-    private static Hall BuildHall(Builder b, float bodyDiameter, float plinthDiameter, float plinthHeight, float[] buttressBearings)
+    private static Hall BuildHall(Builder b, float bodyDiameter, float plinthDiameter, float plinthHeight, float[] buttressBearings,
+        float[] annexBearings, float annexDiameter)
     {
         Placed plinth = b.Put(Slot.Foundation, "kit_plinth", Vector3.zero, 0f,
             b.Fit("kit_plinth", plinthDiameter, plinthHeight, plinthDiameter), All, true);
@@ -293,9 +297,14 @@ public static class VillagePrefabAssembler
         b.Put(Slot.Roof, "hall_roof", new Vector3(0f, body.Top - 0.25f, 0f), 0f, b.Uniform("hall_roof", bodyDiameter * 1.12f / roof.Width), Lv1, true);
         b.Put(Slot.Roof, "hall_roof", new Vector3(0f, body.Top - 0.25f, 0f), 0f, b.Uniform("hall_roof", bodyDiameter * 1.26f / roof.Width), Lv2, true);
 
-        // 2레벨: 벽을 받치는 부벽, 입구 양옆 깃발과 화로.
+        // 2레벨: 벽을 받치는 부벽, 입구 양옆 깃발과 화로. 곁채가 붙는 쪽 부벽은 뺀다.
         foreach (float bearing in buttressBearings)
-            b.Attach(Slot.Wall, "kit_buttress", body, bearing, floorY, bodyHeight * 0.82f, From2);
+            if (!NearAny(bearing, annexBearings, 35f))
+                b.Attach(Slot.Wall, "kit_buttress", body, bearing, floorY, bodyHeight * 0.82f, From2);
+
+        // 2레벨: 곁채 증축 — 본채 옆에 작은 둥근 채를 붙인다(원작 그림의 부가 시설). 문 구멍은 본채 쪽으로 돌려 가린다.
+        foreach (float bearing in annexBearings)
+            HallAnnex(b, bearing, bodyDiameter * 0.5f, annexDiameter, plinthHeight, floorY);
 
         float plinthRadius = plinthDiameter * 0.5f;
         foreach (float side in new[] { -1f, 1f })
@@ -334,6 +343,35 @@ public static class VillagePrefabAssembler
         return new Hall(floorY, bodyRadius, bodyHeight, plinthRadius);
     }
 
+    // 2레벨 곁채: 본채 옆에 반쯤 파묻힌 작은 둥근 채. 3레벨에서는 창을 더 내고 지붕 위에 작은 탑을 올린다.
+    private static void HallAnnex(Builder b, float bearing, float bodyRadius, float diameter, float plinthHeight, float floorY)
+    {
+        float radius = diameter * 0.5f;
+        Vector3 center = Dir(bearing) * (bodyRadius + radius * 0.45f);
+        AnnexFooting(b, center, bearing, diameter * 1.25f, plinthHeight, diameter * 1.25f, From2);
+
+        Placed body = b.Put(Slot.UpgradeModule, "hall_body", center + Vector3.up * floorY, bearing + 180f,
+            b.Uniform("hall_body", diameter / b.Shape("hall_body").Width), From2, true);
+        Shape roof = b.Shape("hall_roof");
+        b.Put(Slot.Roof, "hall_roof", new Vector3(center.x, body.Top - 0.2f, center.z), 0f,
+            b.Uniform("hall_roof", diameter * 1.2f / roof.Width), From2, true);
+
+        // 바깥쪽 창 — 곁채가 본채와 다른 방이라는 게 읽히게.
+        b.Attach(Slot.Window, "kit_window", body, bearing, floorY + body.Height * 0.3f, body.Height * 0.4f, From2);
+
+        // 3레벨: 곁채 지붕 너머로 가는 탑 — 멀리서도 레벨이 읽히게 세로로 높인다.
+        b.Put(Slot.SideModule, "kit_tower", Dir(bearing) * (bodyRadius + radius * 1.35f) + Vector3.up * floorY, bearing,
+            b.Uniform("kit_tower", (body.Height * 2.1f) / b.Shape("kit_tower").Height), Lv3, true);
+    }
+
+    private static bool NearAny(float bearing, float[] bearings, float within)
+    {
+        if (bearings == null) return false;
+        foreach (float other in bearings)
+            if (Mathf.Abs(Mathf.DeltaAngle(bearing, other)) < within) return true;
+        return false;
+    }
+
     // ---- 시공의 틈 --------------------------------------------------------------
 
     // 성벽 안쪽 면(로컬 z=0)에 등을 대고 선다. 단과 계단은 두지 않는다(사용자가 씬에서 걷어 낸 것).
@@ -357,15 +395,14 @@ public static class VillagePrefabAssembler
         float side = arch.Width * 0.5f;
         foreach (float s in new[] { -1f, 1f })
         {
-            // 1레벨: 등불. 2레벨: 화로·깃발, 성벽에 부벽. 3레벨: 양옆 망루와 결계 오벨리스크, 점광원.
+            // 1레벨: 등불. 2레벨: 화로·깃발, 성벽에 부벽. 3레벨: 결계 오벨리스크, 점광원.
+            // 양옆 망루는 두지 않는다 — 성벽 앞(z 3.2)에 서서 벽과 겹쳤다(2026-09-27 사용자).
             b.Put(Slot.Lighting, "kit_lantern", new Vector3(s * (side + 2f), 0f, archZ + 4f), 0f, b.Uniform("kit_lantern", 1.2f), All);
             b.Put(Slot.Lighting, "kit_brazier", new Vector3(s * (side + 1.5f), 0f, archZ + 8f), 0f, b.Uniform("kit_brazier", 1.2f), From2);
             b.Put(Slot.Decoration, "kit_banner", new Vector3(s * (side + 4.5f), 0f, 1.2f), 0f, b.Uniform("kit_banner", 1.5f), From2);
             b.Put(Slot.Wall, "kit_buttress", new Vector3(s * (side + 0.8f), 0f, b.Shape("kit_buttress").Depth * 1.9f * 0.5f), 0f,
                 b.Uniform("kit_buttress", 1.9f), From2, true);
 
-            b.Put(Slot.SideModule, "kit_tower", new Vector3(s * (side + 9f), 0f, 3.2f), 0f,
-                b.Uniform("kit_tower", 30f / b.Shape("kit_tower").Height), Lv3, true);
             b.Put(Slot.Decoration, "kit_obelisk", new Vector3(s * (side - 1f), 0f, archZ + 13f), 0f, b.Uniform("kit_obelisk", 1f), Lv3);
             b.Put(Slot.Decoration, "kit_obelisk", new Vector3(s * (side + 5f), 0f, archZ + 17f), 0f, b.Uniform("kit_obelisk", 0.8f), Lv3);
             b.PointLight(new Vector3(s * (side + 1.5f), 2.6f, archZ + 8f), new Color(1f, 0.6f, 0.3f), 12f, 2.5f, Lv3);
@@ -391,23 +428,34 @@ public static class VillagePrefabAssembler
     // ---- 네모난 집: 무기창고 -----------------------------------------------------------
 
     // 집 한 채. 본체 위에 지붕, 앞에 문. 3레벨에서 윗층을 올리는 집이면 지붕이 한 층 위로 옮겨 간다.
+    // from을 주면 그 레벨부터 서는 집이 된다(2레벨 곁채 = From2). 3레벨에서 올리는 윗층은 언제나 3레벨.
     private static Placed House(Builder b, Vector3 spot, float yaw, float width, float height, float depth,
-        bool raiseAtLevel3, bool door = true)
+        bool raiseAtLevel3, bool door = true, Vector2Int? from = null)
     {
-        Placed body = b.Put(Slot.MainBody, "house_body", spot, yaw, b.Fit("house_body", width, height, depth), All, true);
-        if (door) b.Attach(Slot.Entrance, "kit_door", body, yaw, spot.y, height * 0.78f, All, collider: true);
+        Vector2Int levels = from ?? All;
+        Slot slot = levels.x > 1 ? Slot.UpgradeModule : Slot.MainBody;
+        Placed body = b.Put(slot, "house_body", spot, yaw, b.Fit("house_body", width, height, depth), levels, true);
+        if (door) b.Attach(Slot.Entrance, "kit_door", body, yaw, spot.y, height * 0.78f, levels, collider: true);
 
         if (!raiseAtLevel3)
         {
-            b.Roof(body, All);
+            b.Roof(body, levels);
             return body;
         }
 
-        b.Roof(body, Upto2);
+        b.Roof(body, new Vector2Int(levels.x, 2));
         Placed upper = b.Put(Slot.UpgradeModule, "house_upper", new Vector3(spot.x, body.Top - 0.2f, spot.z), yaw,
             b.Fit("house_upper", width * 1.02f, height * 0.7f, depth * 1.02f), Lv3, true);
         b.Roof(upper, Lv3);
         return body;
+    }
+
+    // 곁채 밑 기단. 본채 기단 밖으로 나가는 곁채가 땅에 떠 보이지 않게 같은 높이로 깐다.
+    private static void AnnexFooting(Builder b, Vector3 center, float yaw, float width, float height, float depth, Vector2Int levels)
+    {
+        if (height <= 0.05f) return;
+        b.Put(Slot.UpgradeModule, "kit_plinth", new Vector3(center.x, 0f, center.z), yaw,
+            b.Fit("kit_plinth", width, height, depth), levels, true);
     }
 
     private static void BuildArmory(Builder b)
@@ -423,15 +471,22 @@ public static class VillagePrefabAssembler
         {
             b.Put(Slot.Decoration, "weapon_rack", new Vector3(s * 6.2f, floorY, 5.6f), 0f, b.Uniform("weapon_rack", 1f), All);
             b.Put(Slot.Lighting, "kit_lantern", new Vector3(s * 3.4f, 0f, 8.6f), 0f, b.Uniform("kit_lantern", 1f), All);
-            // 2레벨: 긴 벽마다 부벽 둘, 입구 옆 깃발, 화로.
-            foreach (float along in new[] { -3.5f, 3.5f })
-                b.Attach(Slot.Wall, "kit_buttress", body, s * 90f, floorY, 5f, From2, along: along);
+            // 2레벨: 옆벽에 부벽 둘(오른쪽은 곁채가 붙으므로 왼쪽만), 입구 옆 깃발, 화로.
+            if (s < 0f)
+                foreach (float along in new[] { -3.5f, 3.5f })
+                    b.Attach(Slot.Wall, "kit_buttress", body, s * 90f, floorY, 5f, From2, along: along);
             b.Put(Slot.Decoration, "kit_banner", new Vector3(s * 2.8f, floorY, 5.3f), 0f, b.Uniform("kit_banner", 0.85f), From2);
             b.Put(Slot.Lighting, "kit_brazier", new Vector3(s * 8.4f, 0f, 7.8f), 0f, b.Uniform("kit_brazier", 1f), From2);
             b.PointLight(new Vector3(s * 8.4f, 2.3f, 7.8f), new Color(1f, 0.6f, 0.3f), 9f, 2f, Lv3);
         }
         b.Put(Slot.Decoration, "kit_crates", new Vector3(-8.6f, floorY, -2.5f), 90f, b.Uniform("kit_crates", 1f), All);
-        b.Put(Slot.Decoration, "kit_crates", new Vector3(8.4f, floorY, -3.2f), -80f, b.Uniform("kit_crates", 0.9f), From2);
+
+        // 2레벨: 오른쪽에 창고 채를 증축한다(원작 그림의 곁채). 본채 옆벽에 붙고 기단 밖으로 나가는 만큼 기단을 잇는다.
+        // 3레벨에서는 곁채도 한 층 올린다.
+        const float annexWidth = 7f, annexDepth = 7.5f;
+        var annexSpot = new Vector3(body.Width * 0.5f + annexWidth * 0.5f - 0.4f, floorY, -0.6f);
+        AnnexFooting(b, annexSpot, 0f, annexWidth + 1.2f, floorY + 0.05f, annexDepth + 1.2f, From2);
+        House(b, annexSpot, 0f, annexWidth, 4.4f, annexDepth, true, true, From2);
         b.Put(Slot.SideModule, "kit_tower", new Vector3(-7.4f, floorY, -4.4f), 200f,
             b.Uniform("kit_tower", 17f / b.Shape("kit_tower").Height), Lv3, true);
     }
@@ -483,11 +538,19 @@ public static class VillagePrefabAssembler
         b.PutAsset(Slot.UpgradeModule, Gaia.Prop("Stable02B"), new Vector3(-13.5f, floor, -8f), 90f, From2);
         b.Put(Slot.Decoration, "kit_crates", new Vector3(-10.5f, floor, -1f), 200f, b.Uniform("kit_crates", 0.9f), From2);
 
+        // 2레벨: 화덕 오른쪽 뒤에 작업 채를 증축한다(원작 그림의 곁채). 3레벨에서는 한 층 더 올린다.
+        const float wingWidth = 9f, wingDepth = 7.5f;
+        var wingSpot = new Vector3(forge.Width * 0.5f + 0.8f + wingWidth * 0.5f, floor, -6.5f);
+        AnnexFooting(b, wingSpot, 0f, wingWidth + 1.2f, floor + 0.05f, wingDepth + 1.2f, From2);
+        House(b, wingSpot, 0f, wingWidth, 5f, wingDepth, true, true, From2);
+
         // 화덕 불빛 — 주변 벽·바닥에 은은하게. 모든 레벨에서 켠다(그림자 없음).
         b.PointLight(new Vector3(0f, floor + 2.5f, front + 1.5f), VillagePalette.WarmOrange, 11f, 1.6f, All);
 
         // 3레벨: 마당 밖 오른쪽 뒤 망루와 화로 불빛.
-        b.Put(Slot.SideModule, "kit_tower", new Vector3(18.5f, 0f, -8f), 200f, b.Uniform("kit_tower", 18f / b.Shape("kit_tower").Height), Lv3, true);
+        // 망루는 작업 채 바깥 모서리 뒤에 선다.
+        b.Put(Slot.SideModule, "kit_tower", new Vector3(wingSpot.x + wingWidth * 0.5f + 2.5f, 0f, -12f), 200f,
+            b.Uniform("kit_tower", 18f / b.Shape("kit_tower").Height), Lv3, true);
         b.PointLight(new Vector3(10.5f, floor + 2.2f, 8.5f), new Color(1f, 0.6f, 0.3f), 10f, 2f, Lv3);
     }
 
@@ -501,7 +564,7 @@ public static class VillagePrefabAssembler
     // Meshy 시설들과 같은 마을로 읽히게 한다.
     private static void BuildEastStreet(Builder b)
     {
-        b.PutCluster(Slot.MainBody, Gaia.Complete("Village 2"), 0f, All);
+        b.LevelHousesIn(Slot.MainBody, b.PutCluster(Slot.MainBody, Gaia.Complete("Village 2"), 0f, All));
         b.Put(Slot.Decoration, "kit_banner", new Vector3(-6f, 0f, 19f), 0f, b.Uniform("kit_banner", 1f), All);
         b.Put(Slot.Lighting, "kit_lantern", new Vector3(3f, 0f, 19.5f), 0f, b.Uniform("kit_lantern", 1f), All);
         b.Put(Slot.Lighting, "kit_lantern", new Vector3(-14f, 0f, 18f), 0f, b.Uniform("kit_lantern", 1f), All);
@@ -509,7 +572,7 @@ public static class VillagePrefabAssembler
 
     private static void BuildWestStreet(Builder b)
     {
-        b.PutCluster(Slot.MainBody, Gaia.Complete("Village 1"), 0f, All);
+        b.LevelHousesIn(Slot.MainBody, b.PutCluster(Slot.MainBody, Gaia.Complete("Village 1"), 0f, All));
         b.Put(Slot.Decoration, "kit_banner", new Vector3(6f, 0f, 30f), 0f, b.Uniform("kit_banner", 1f), All);
         b.Put(Slot.Lighting, "kit_lantern", new Vector3(-4f, 0f, 30.5f), 0f, b.Uniform("kit_lantern", 1f), All);
         b.Put(Slot.Lighting, "kit_lantern", new Vector3(14f, 0f, 29f), 0f, b.Uniform("kit_lantern", 1f), All);
@@ -518,7 +581,7 @@ public static class VillagePrefabAssembler
     // 서남 마을 옆 작은 농장.
     private static void BuildSouthWestStreet(Builder b)
     {
-        b.PutCluster(Slot.MainBody, Gaia.Complete("Small Farm 3"), 0f, All);
+        b.LevelHousesIn(Slot.MainBody, b.PutCluster(Slot.MainBody, Gaia.Complete("Small Farm 3"), 0f, All));
         b.Put(Slot.Lighting, "kit_lantern", new Vector3(0f, 0f, 18f), 0f, b.Uniform("kit_lantern", 1f), All);
     }
 
@@ -538,6 +601,7 @@ public static class VillagePrefabAssembler
     private static void BuildFarm(Builder b, string cluster)
     {
         GameObject farm = b.PutCluster(Slot.MainBody, Gaia.Complete(cluster), 0f, All);
+        b.LevelHousesIn(Slot.MainBody, farm);
         // 농장 앞(마을 쪽) 끝에 등불 하나.
         b.Put(Slot.Lighting, "kit_lantern", new Vector3(0f, 0f, Builder.Bounds(farm).max.z + 1.5f), 0f, b.Uniform("kit_lantern", 1f), All);
     }
@@ -545,7 +609,7 @@ public static class VillagePrefabAssembler
     // 성벽 안쪽 면이 로컬 z 약 -15에 있다.
     private static void BuildEastWallStreet(Builder b)
     {
-        b.PutAsset(Slot.MainBody, Gaia.House("02B"), new Vector3(-1f, 0f, -6f), 0f, All);
+        b.LevelHouse(Slot.MainBody, b.PutAsset(Slot.MainBody, Gaia.House("02B"), new Vector3(-1f, 0f, -6f), 0f, All));
         b.PutAsset(Slot.SideModule, Gaia.Prop("Stable01"), new Vector3(9f, 0f, -6.5f), 0f, All);
         b.PutAsset(Slot.Decoration, Gaia.Prop("Wagon06"), new Vector3(4f, 0f, 3f), 25f, All);
         b.PutAsset(Slot.Decoration, Gaia.Prop("Wood08"), new Vector3(-8.5f, 0f, 1f), 70f, All);
@@ -555,7 +619,7 @@ public static class VillagePrefabAssembler
 
     private static void BuildWestWallStreet(Builder b)
     {
-        b.PutAsset(Slot.MainBody, Gaia.House("01C"), new Vector3(1f, 0f, -6f), 180f, All);
+        b.LevelHouse(Slot.MainBody, b.PutAsset(Slot.MainBody, Gaia.House("01C"), new Vector3(1f, 0f, -6f), 180f, All));
         b.PutAsset(Slot.SideModule, Gaia.Prop("Stable02"), new Vector3(-9.5f, 0f, -6f), 0f, All);
         b.PutAsset(Slot.Decoration, Gaia.Prop("Wagon04"), new Vector3(-4f, 0f, 3f), -20f, All);
         b.PutAsset(Slot.Decoration, Gaia.Prop("Wood09"), new Vector3(8.5f, 0f, 1f), 90f, All);
@@ -612,6 +676,7 @@ public static class VillagePrefabAssembler
         Bounds bounds = Builder.Bounds(house);
         float laneEnd = side < 0f ? bounds.max.x : bounds.min.x;
         house.transform.localPosition += new Vector3(side * LaneHalfWidth - laneEnd, 0f, z - bounds.center.z);
+        b.LevelHouse(Slot.MainBody, house);
     }
 
     // ---- 훈련소 ---------------------------------------------------------------
@@ -629,10 +694,16 @@ private static void BuildTraining(Builder b)
         for (int i = 0; i < dummies.Length; i++)
             b.Put(Slot.Decoration, "training_dummy", new Vector3(dummies[i], Yard, 15f), 0f, b.Uniform("training_dummy", 1.2f), i < 3 ? All : From2, true);
 
+        // 2레벨: 마당 오른쪽 뒤(성벽 쪽)에 막사를 증축한다(원작 그림의 곁채). 문은 마당을 본다. 3레벨에서는 한 층 더.
+        var barracks = new Vector3(14.5f, Yard, 4.5f);
+        House(b, barracks, 0f, 12f, 5f, 6.5f, true, true, From2);
+
         foreach (float s in new[] { -1f, 1f })
         {
-            b.Put(Slot.Decoration, "weapon_rack", new Vector3(s * 18f, Yard, 6f), -s * 20f, b.Uniform("weapon_rack", 1.2f), All, true);
-            b.Put(Slot.Decoration, "kit_banner", new Vector3(s * 10f, Yard, 2f), 0f, b.Uniform("kit_banner", 1.1f), From2);
+            // 오른쪽 무기걸이는 막사 앞으로 비킨다.
+            Vector3 rack = s < 0f ? new Vector3(-18f, Yard, 6f) : new Vector3(19f, Yard, 12f);
+            b.Put(Slot.Decoration, "weapon_rack", rack, -s * 20f, b.Uniform("weapon_rack", 1.2f), All, true);
+            if (s < 0f) b.Put(Slot.Decoration, "kit_banner", new Vector3(s * 10f, Yard, 2f), 0f, b.Uniform("kit_banner", 1.1f), From2);
             b.Put(Slot.Lighting, "kit_brazier", new Vector3(s * 22f, Yard, 9f), 0f, b.Uniform("kit_brazier", 1.1f), From2);
             b.Put(Slot.Lighting, "kit_lantern", new Vector3(s * 7.5f, Yard, 27f), 0f, b.Uniform("kit_lantern", 1f), All);
             b.Put(Slot.Decoration, "kit_obelisk", new Vector3(s * 9f, Yard, 24f), 0f, b.Uniform("kit_obelisk", 1f), Lv3);
@@ -1159,6 +1230,121 @@ private static void BuildTraining(Builder b)
         private void Register(Slot slot, GameObject go, Vector2Int levels)
         {
             parts.Add(new FacilityBuilding.Part { slot = slot, target = go, minLevel = levels.x, maxLevel = levels.y });
+        }
+
+        // 이미 등록한 파츠의 레벨을 바꾼다. 등록되지 않은 것(묶음 안의 집)이면 새로 등록한다.
+        private void Relevel(Slot slot, GameObject go, Vector2Int levels)
+        {
+            for (int i = 0; i < parts.Count; i++)
+            {
+                if (parts[i].target != go) continue;
+                parts[i].minLevel = levels.x;
+                parts[i].maxLevel = levels.y;
+                return;
+            }
+            Register(slot, go, levels);
+        }
+
+        // ---- 숙소 레벨: 마을의 Gaia 집 ------------------------------------------------
+        //
+        // 숙소를 올리면 마을의 집이 모두 자란다(2026-09-26 사용자). 원작 그림처럼 Lv.1 작은 집 → Lv.2 곁채 증축 →
+        // Lv.3 큰 집. Gaia 3DForge 집은 종류마다 변형이 넷이다 — 01·02는 돌 기단 위 2~3층 큰 집, 03·04는 1층 반 작은 집,
+        // C·A 변형은 옆에 기둥 선 곁채(차양)가 붙고, 무표시·A는 비탈용 바깥 계단이 붙는다(평지에선 계단이 묻힌다).
+        //   Lv.1  같은 계열 작은 집 B        (01·03 → 03B, 02·04 → 04B). 원래 작은 집이면 0.7배로 줄인 오두막
+        //   Lv.2  같은 계열 작은 집 C(곁채)   원래 작은 집이면 0.85배
+        //   Lv.3  지금 세운 그 집. 곁채 없는 작은 집(03·04, 03B·04B)이면 2레벨보다 작아 보이므로 A(곁채)로 올린다.
+        // 마을 배치는 3레벨 모습 그대로다 — 작은 집은 그 자리 안에 들어간다. 바꿔 끼우는 집은 문이 있는 +X 박공 끝과
+        // 앞뒤 가운데를 원래 집에 맞춘다(골목 쪽 문 자리가 흔들리지 않게).
+        // 대장간 집(Forge01·02, 16×11m)도 집과 같은 큰 집으로 친다 — 묶음 안에서 가장 큰 건물이라 이것만 그대로면
+        // 1레벨 마을에 큰 집이 덩그러니 남는다. 헛간(Stable)·닭장은 3~7m 소품이라 그대로 둔다.
+        private static readonly System.Text.RegularExpressions.Regex GaiaHouseName =
+            new System.Text.RegularExpressions.Regex(@"Gaia(House|Forge)0([1-4])([ABC]?)$");
+
+        /// 놓인 Gaia 집 한 채를 숙소 레벨로 바꿔 끼우게 한다. Gaia 집이 아니면 그대로 둔다.
+        public void LevelHouse(Slot slot, GameObject house)
+        {
+            GameObject source = PrefabUtility.GetCorrespondingObjectFromOriginalSource(house);
+            var match = GaiaHouseName.Match(source != null ? source.name : house.name);
+            if (!match.Success) return;
+
+            bool forge = match.Groups[1].Value == "Forge";
+            int type = int.Parse(match.Groups[2].Value);
+            string suffix = match.Groups[3].Value;
+            bool big = forge || type <= 2;
+            string small = type == 1 || type == 3 ? "03" : "04";
+
+            // 곁채 없는 작은 집은 3레벨에서 곁채 달린 같은 집(A)으로 바꾼다.
+            bool replace = !big && (suffix == string.Empty || suffix == "B");
+            if (replace) PlaceHouseVariant(slot, house, Gaia.House(small + "A"), Lv3);
+            else
+            {
+                Relevel(slot, house, Lv3);
+                house.name = Label(house.name, Lv3);
+            }
+
+            // 원래 작은 집(03·04)은 3레벨도 작은 집이라 B·C로 바꿔 끼워도 모습이 거의 같다(2026-09-27 사용자 "업그레이드되지
+            // 않는 집이 있다"). 큰 집으로 키우면 촘촘히 붙은 줄(동쪽 거리의 세 채)이 서로 겹치므로, 대신 1·2레벨을 줄여 세운다.
+            PlaceHouseVariant(slot, house, Gaia.House(small + "B"), Lv1, big ? 1f : SmallHouseLv1Scale);
+            PlaceHouseVariant(slot, house, Gaia.House(small + "C"), Lv2, big ? 1f : SmallHouseLv2Scale);
+
+            if (replace)
+            {
+                // 원래 집은 자리 기준으로만 썼다. 묶음(중첩 프리팹) 안의 자식은 지울 수 없어 꺼 두고 레벨 목록에서 뺀다.
+                parts.RemoveAll(part => part.target == house);
+                house.SetActive(false);
+                house.name += " (자리)";
+            }
+        }
+
+        /// 묶음 안의 집을 전부 숙소 레벨로 바꿔 끼우게 한다.
+        public void LevelHousesIn(Slot slot, GameObject cluster)
+        {
+            var houses = new List<GameObject>();
+            foreach (Transform child in cluster.transform) houses.Add(child.gameObject);
+            foreach (GameObject house in houses) LevelHouse(slot, house);
+        }
+
+        // 원래 작은 집의 1·2레벨 배율(원래 큰 집은 작은 집으로 바꿔 끼우는 것만으로 충분히 작아진다).
+        private const float SmallHouseLv1Scale = 0.7f;
+        private const float SmallHouseLv2Scale = 0.85f;
+
+        private void PlaceHouseVariant(Slot slot, GameObject house, string path, Vector2Int levels, float scale = 1f)
+        {
+            GameObject variant = PutAsset(slot, path, Vector3.zero, 0f, levels);
+            variant.transform.SetParent(house.transform.parent, false);
+            variant.transform.localRotation = house.transform.localRotation;
+            variant.transform.localScale = house.transform.localScale * scale;
+
+            // 두 집을 각자 자기 공간에서 잰다(배율을 뺀 모양). 문 쪽(+X) 끝과 앞뒤 가운데를 맞추고, 높이는 원점(문턱)을 그대로 둔다.
+            // 줄인 집도 문 쪽 끝은 원래 집의 문 쪽 끝에 붙는다 — 골목에서 문까지 거리가 그대로다.
+            Bounds target = LocalBounds(house);
+            Bounds own = LocalBounds(variant);
+            float houseScale = house.transform.localScale.x, variantScale = variant.transform.localScale.x;
+            var offset = new Vector3(target.max.x * houseScale - own.max.x * variantScale, 0f,
+                                     target.center.z * houseScale - own.center.z * variantScale);
+            variant.transform.localPosition = house.transform.localPosition + house.transform.localRotation * offset;
+        }
+
+        // 렌더러 메시 범위를 go 자신의 공간으로 옮겨 모은다(회전·배치와 무관한 모양 범위).
+        private static Bounds LocalBounds(GameObject go)
+        {
+            Matrix4x4 toLocal = go.transform.worldToLocalMatrix;
+            bool any = false;
+            var bounds = new Bounds();
+            foreach (MeshFilter filter in go.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (filter.sharedMesh == null) continue;
+                Matrix4x4 m = toLocal * filter.transform.localToWorldMatrix;
+                Bounds mb = filter.sharedMesh.bounds;
+                for (int c = 0; c < 8; c++)
+                {
+                    Vector3 p = m.MultiplyPoint3x4(new Vector3((c & 1) == 0 ? mb.min.x : mb.max.x,
+                        (c & 2) == 0 ? mb.min.y : mb.max.y, (c & 4) == 0 ? mb.min.z : mb.max.z));
+                    if (!any) { bounds = new Bounds(p, Vector3.zero); any = true; }
+                    else bounds.Encapsulate(p);
+                }
+            }
+            return bounds;
         }
 
         private static string Label(string name, Vector2Int levels)
