@@ -236,7 +236,7 @@ public static class VillageEntrancePaths
             if (facility.kind != VillageBlockout.Kind.Street) continue;
             foreach (Transform t in district.GetComponentsInChildren<Transform>(true))
             {
-                if (!IsGaiaBuilding(t)) continue;
+                if (!IsGaiaBuilding(t) || !IsFinalHouse(t, district)) continue;
                 list.Add(GaiaDoor(root, t, $"{district.name} {CleanName(t.name)}"));
             }
         }
@@ -252,6 +252,19 @@ public static class VillageEntrancePaths
         Vector3 forward = village.InverseTransformDirection(part.forward);
         forward.y = 0f;
         return new Entrance { label = label, door = door, forward = forward.normalized, width = width };
+    }
+
+    // 숙소 레벨로 바꿔 끼우는 집(VillagePrefabAssembler.LevelHouse)은 한 자리에 1·2·3레벨 집이 겹쳐 있다. 문은 같은 자리에
+    // 맞춰 두었으므로 3레벨 집 하나만 입구로 친다 — 셋 다 치면 한 문에서 길이 세 겹으로 나 거리가 어지러워졌다.
+    // 1·2레벨 집("(Lv1)"·"(Lv2)")과 자리로만 남긴 원래 집("(자리)")은 건너뛴다.
+    private static bool IsFinalHouse(Transform t, Transform district)
+    {
+        for (Transform p = t; p != null && p != district; p = p.parent)
+        {
+            string name = p.name;
+            if (name.EndsWith("(Lv1)") || name.EndsWith("(Lv2)") || name.EndsWith("(자리)")) return false;
+        }
+        return true;
     }
 
     private static bool IsGaiaBuilding(Transform t)
