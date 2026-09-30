@@ -96,14 +96,7 @@ public static class VillageMood
 
     private static Material MagicMaterial(string name, Color emission)
     {
-        string path = $"{MaterialFolder}/{name}.mat";
-        var material = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (material == null)
-        {
-            System.IO.Directory.CreateDirectory(MaterialFolder);
-            material = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = name };
-            AssetDatabase.CreateAsset(material, path);
-        }
+        Material material = EditorMaterials.LoadOrCreateLit($"{MaterialFolder}/{name}.mat", name);
         // 바탕은 어두운 돌에 청록을 조금 섞은 색 — 발광을 끄면 광장 돌과 이어진다.
         material.SetColor("_BaseColor", Color.Lerp(VillagePalette.DarkStone, VillagePalette.MagicCyan, 0.15f));
         material.SetFloat("_Smoothness", 0.3f);

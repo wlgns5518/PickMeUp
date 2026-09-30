@@ -23,8 +23,8 @@ public static class WeaponImporter
     [MenuItem("PickMeUp/Equipment/Import Weapon Models")]
     public static void Import()
     {
-        EnsureFolder(OutputFolder);
-        EnsureFolder(CatalogFolder);
+        EditorAssetFolders.Ensure(OutputFolder);
+        EditorAssetFolders.Ensure(CatalogFolder);
 
         string[] guids = AssetDatabase.FindAssets("t:Prefab", new[] { SourceFolder });
         var all = new List<WeaponDefinition>();
@@ -153,14 +153,5 @@ public static class WeaponImporter
     {
         string kr;
         return Korean.TryGetValue(assetName, out kr) ? kr : assetName.Replace('_', ' ');
-    }
-
-    private static void EnsureFolder(string folder)
-    {
-        if (AssetDatabase.IsValidFolder(folder)) return;
-
-        string parent = Path.GetDirectoryName(folder).Replace('\\', '/');
-        EnsureFolder(parent);
-        AssetDatabase.CreateFolder(parent, Path.GetFileName(folder));
     }
 }

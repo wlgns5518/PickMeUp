@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class BloodEffectPool : MonoBehaviour
+public class BloodEffectPool : MonoBehaviour, IBloodEffects
 {
     // 볼류메트릭 블러드는 레이마칭 셰이더라 GPU 비용이 큼 - 프리팹당 풀 크기와
     // 동시 활성 개수를 모두 제한해 전투가 몰려도 GPU 부하가 무한정 쌓이지 않도록 한다.
@@ -10,7 +10,6 @@ public class BloodEffectPool : MonoBehaviour
     [SerializeField] private float defaultLifetime = 3f;
     [SerializeField] private float maxLifetime = 10f;
 
-    private static BloodEffectPool instance;
 
     private static readonly int BloodColorId = Shader.PropertyToID("_Color");      // BFX_Blood - 튀는 피 메시
     private static readonly int DecalTintColorId = Shader.PropertyToID("_TintColor"); // BFX_Decal - 바닥 자국
@@ -36,25 +35,23 @@ public class BloodEffectPool : MonoBehaviour
     private readonly List<GameObject> activeInstances = new List<GameObject>();
     private readonly List<float> activeExpireTimes = new List<float>();
 
-    public static BloodEffectPool Instance
+    // 씬에 놓인 풀이 없을 때 GameServices가 부른다. 만든 풀은 Awake에서 스스로 자리에 앉는다.
+    public static IBloodEffects CreateHost()
     {
-        get
-        {
-            if (instance == null)
-            {
-                GameObject holder = new GameObject(nameof(BloodEffectPool));
-                instance = holder.AddComponent<BloodEffectPool>();
-            }
-
-            return instance;
-        }
+        var holder = new GameObject(nameof(BloodEffectPool));
+        return holder.AddComponent<BloodEffectPool>();
     }
 
-    // 씬에 미리 배치해둔 풀이 있으면 그것을 쓰도록 등록한다.
-    // (등록하지 않으면 Instance 게터가 중복 홀더를 새로 만들어버린다.)
+    // 씬에 미리 배치해둔 풀이 있으면 그것을 쓰도록 자리에 앉힌다.
+    // (앉히지 않으면 처음 쓰일 때 GameServices가 중복 홀더를 새로 만들어버린다.)
     private void Awake()
     {
-        if (instance == null) instance = this;
+        GameServices.BloodEffects.TryRegister(this);
+    }
+
+    private void OnDestroy()
+    {
+        GameServices.BloodEffects.Unregister(this);
     }
 
     private void Update()

@@ -53,7 +53,7 @@ public class EquipmentWorkshopUI : UiScreen
     private UiPickerPanel equipmentPicker;
 
     private UiPopup ratePopup;
-    private readonly List<TMP_Text> rateCells = new List<TMP_Text>();
+    private UiTable rateTable;
     private UiResultPopup resultPopup;
 
     // 넣은 재료. 앞에서부터 채워지고, 칸을 누르면 그 자리가 빠지며 뒤가 당겨진다.
@@ -228,39 +228,22 @@ public class EquipmentWorkshopUI : UiScreen
 
     private void BuildRatePopup()
     {
-        rateCells.Clear();
         ratePopup = UiPopup.Create(overlay, "RatePopup", "등급 확률", new Vector2(900f, 700f), false);
 
-        float[] columns = { 0f, 260f, 480f };
-        string[] titles = { "결과 등급", "확률", "능력치 배율" };
+        rateTable = UiTable.Create(ratePopup.Body, 0f, new[] { 0f, 260f, 480f },
+            new[] { "결과 등급", "확률", "능력치 배율" }, Grades.Length, 60f,
+            new[] { UiTheme.FontBody, UiTheme.FontHeading, UiTheme.FontBody });
 
-        RectTransform header = UiKit.Node(ratePopup.Body, "Header");
-        UiKit.TopStretch(header, 0f, 44f);
-        UiKit.Rounded(header, "Fill", UiTheme.SurfaceSunken, UiTheme.RadiusS);
-        for (int c = 0; c < titles.Length; c++)
-        {
-            TMP_Text t = UiKit.Text(header, "Col_" + c, titles[c], UiTheme.FontLabel, UiTheme.TextSecondary);
-            UiKit.Fill(t.rectTransform, columns[c] + UiTheme.Space5, 0f, 0f, 0f);
-        }
-
-        const float rowHeight = 60f;
+        // 등급 이름과 배율은 바뀌지 않는다. 확률만 재료 등급과 난이도에 따라 열 때마다 채운다(OpenRates).
         for (int g = 0; g < Grades.Length; g++)
         {
-            RectTransform row = UiKit.Node(ratePopup.Body, "Row_" + g);
-            UiKit.TopStretch(row, 52f + g * rowHeight, rowHeight);
-            UiKit.Rounded(row, "Fill", g % 2 == 0 ? UiTheme.SurfaceRaised : UiTheme.Surface, UiTheme.RadiusS);
-
             Color color = UiTheme.GradeColor(Grades[g]);
-            TMP_Text grade = UiKit.Text(row, "Grade", UiTheme.Paint(EquipmentGradeNames.NameOf(Grades[g]), color) +
-                "  " + EquipmentGradeNames.PrefixOf(Grades[g]), UiTheme.FontBody, UiTheme.TextPrimary);
-            UiKit.Fill(grade.rectTransform, columns[0] + UiTheme.Space5, 0f, 0f, 0f);
-
-            TMP_Text percent = UiKit.Text(row, "Percent", string.Empty, UiTheme.FontHeading, color);
-            UiKit.Fill(percent.rectTransform, columns[1] + UiTheme.Space5, 0f, 0f, 0f);
-            rateCells.Add(percent);
-
-            TMP_Text power = UiKit.Text(row, "Power", $"x{EquipmentGradeRules.PowerOf(Grades[g]):0.00}", UiTheme.FontBody, UiTheme.TextSecondary);
-            UiKit.Fill(power.rectTransform, columns[2] + UiTheme.Space5, 0f, 0f, 0f);
+            rateTable.Cell(g, 0).text = UiTheme.Paint(EquipmentGradeNames.NameOf(Grades[g]), color) +
+                "  " + EquipmentGradeNames.PrefixOf(Grades[g]);
+            rateTable.Cell(g, 1).color = color;
+            TMP_Text power = rateTable.Cell(g, 2);
+            power.text = $"x{EquipmentGradeRules.PowerOf(Grades[g]):0.00}";
+            power.color = UiTheme.TextSecondary;
         }
 
         TMP_Text note = UiKit.Text(ratePopup.Body, "Note", "실패하면 재료와 골드를 잃습니다.",
@@ -280,7 +263,7 @@ public class EquipmentWorkshopUI : UiScreen
         EquipmentGrade baseGrade = CraftRecipe.BaseGradeOf(craftSlots);
         ratePopup.SetTitle($"등급 확률 — {DifficultyTabs[System.Array.IndexOf(Difficulties, difficulty)]} · 재료 {EquipmentGradeNames.NameOf(baseGrade)}등급");
         for (int g = 0; g < Grades.Length; g++)
-            rateCells[g].text = EquipmentCraftTable.PercentText(baseGrade, difficulty, Grades[g]);
+            rateTable.Cell(g, 1).text = EquipmentCraftTable.PercentText(baseGrade, difficulty, Grades[g]);
         ratePopup.Show();
     }
 

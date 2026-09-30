@@ -177,7 +177,7 @@ public class CardSpawner : MonoBehaviour
         // 기다리지 않는다. 몸 하나에 3분 넘게 걸리므로 소환 연출을 붙잡아 둘 수 없다 —
         // 다 구워지기 전에 전투에 나가면 그 판은 공용 몸으로 싸우고, 다음 판부터 제 몸으로 나온다.
         // 초상화가 도착한 뒤라야 그 그림을 읽어 외형을 뽑을 수 있으므로 여기가 가장 이른 시점이다.
-        if (summoned != null) MeshyBodyService.Request(summoned);
+        if (summoned != null) GameServices.Bodies.Request(summoned);
     }
 
     private bool IsReady()

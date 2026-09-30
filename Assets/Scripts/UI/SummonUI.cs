@@ -55,7 +55,7 @@ public class SummonUI : UiScreen
 
     private UiPopup ratePopup;
     private UiTabs rateTabs;
-    private readonly List<RectTransform> rateRows = new List<RectTransform>();
+    private UiTable rateTable;
     private TMP_Text rateSummary;
 
     private RectTransform resultBar;
@@ -232,7 +232,6 @@ public class SummonUI : UiScreen
 
     private void BuildRatePopup()
     {
-        rateRows.Clear();
         ratePopup = UiPopup.Create(overlay, "RatePopup", "소환 확률", new Vector2(1080f, 820f), false);
 
         string[] labels = new string[Banners.Length];
@@ -241,33 +240,10 @@ public class SummonUI : UiScreen
         UiKit.TopStretch(rateTabs.Rect, 0f, UiTheme.TabHeight);
         rateTabs.Changed += _ => RefreshRates();
 
-        float y = UiTheme.TabHeight + UiTheme.Space5;
-
-        // 머리줄
-        RectTransform header = UiKit.Node(ratePopup.Body, "Header");
-        UiKit.TopStretch(header, y, 44f);
-        UiKit.Rounded(header, "Fill", UiTheme.SurfaceSunken, UiTheme.RadiusS);
-        string[] titles = { "등급", "등장 확률", "등장하는 영웅" };
-        for (int c = 0; c < titles.Length; c++)
-        {
-            TMP_Text t = UiKit.Text(header, "Col_" + c, titles[c], UiTheme.FontLabel, UiTheme.TextSecondary);
-            UiKit.Fill(t.rectTransform, RateColumns[c] + UiTheme.Space5, 0f, 0f, 0f);
-        }
-        y += 44f + UiTheme.Space2;
-
         int maxRows = Mathf.Max(SummonTable.MaxStars(SummonKind.Normal), SummonTable.MaxStars(SummonKind.Paid));
-        for (int i = 0; i < maxRows; i++)
-        {
-            RectTransform row = UiKit.Node(ratePopup.Body, "Row_" + i);
-            UiKit.TopStretch(row, y + i * RateRowHeight, RateRowHeight);
-            UiKit.Rounded(row, "Fill", i % 2 == 0 ? UiTheme.SurfaceRaised : UiTheme.Surface, UiTheme.RadiusS);
-            for (int c = 0; c < RateColumns.Length; c++)
-            {
-                TMP_Text t = UiKit.Text(row, "Col_" + c, string.Empty, c == 1 ? UiTheme.FontHeading : UiTheme.FontBody, UiTheme.TextPrimary);
-                UiKit.Fill(t.rectTransform, RateColumns[c] + UiTheme.Space5, 0f, 0f, 0f);
-            }
-            rateRows.Add(row);
-        }
+        rateTable = UiTable.Create(ratePopup.Body, UiTheme.TabHeight + UiTheme.Space5, RateColumns,
+            new[] { "등급", "등장 확률", "등장하는 영웅" }, maxRows, RateRowHeight,
+            new[] { UiTheme.FontBody, UiTheme.FontHeading, UiTheme.FontBody });
 
         rateSummary = UiKit.Wrap(UiKit.Text(ratePopup.Body, "Note", string.Empty, UiTheme.FontLabel, UiTheme.TextSecondary));
         rateSummary.alignment = TextAlignmentOptions.BottomLeft;
@@ -287,17 +263,17 @@ public class SummonUI : UiScreen
         SummonKind kind = Banners[Mathf.Clamp(rateTabs.Selected, 0, Banners.Length - 1)];
         int shown = SummonTable.MaxStars(kind);
 
-        for (int i = 0; i < rateRows.Count; i++)
+        for (int i = 0; i < rateTable.RowCount; i++)
         {
             int stars = i + 1;
             bool used = stars <= shown;
-            rateRows[i].gameObject.SetActive(used);
+            rateTable.SetRowVisible(i, used);
             if (!used) continue;
 
             Color color = UiTheme.StarColor(stars);
-            SetCell(rateRows[i], 0, UiTheme.Paint(UiKit.Stars(stars), color) + "  " + stars + "성");
-            SetCell(rateRows[i], 1, UiTheme.Paint(SummonTable.PercentText(kind, stars), color));
-            SetCell(rateRows[i], 2, $"{stars}성 영웅");
+            rateTable.Cell(i, 0).text = UiTheme.Paint(UiKit.Stars(stars), color) + "  " + stars + "성";
+            rateTable.Cell(i, 1).text = UiTheme.Paint(SummonTable.PercentText(kind, stars), color);
+            rateTable.Cell(i, 2).text = $"{stars}성 영웅";
         }
 
         // 영웅은 소환될 때마다 새로 태어나므로 영웅별 개별 확률이 없다. 그것만 짚어 준다.
@@ -305,9 +281,6 @@ public class SummonUI : UiScreen
             "영웅별 개별 확률은 없습니다.\n" +
             $"{UiKit.Stars(UiTheme.MaxTier)}은 소환으로 등장하지 않습니다.";
     }
-
-    private static void SetCell(RectTransform row, int column, string text) =>
-        row.Find("Col_" + column).GetComponent<TMP_Text>().text = text;
 
     // ---- 소환 ---------------------------------------------------------------
 

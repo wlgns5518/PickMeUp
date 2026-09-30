@@ -224,7 +224,7 @@ public static class UiArtBaker
     /// 확인 창이 없으니 코드에서 부를 때 쓴다.
     public static async Task Bake(string group)
     {
-        int balance = await MeshyApi.Balance();
+        int balance = await MeshyClient.Shared.BalanceAsync();
         int needed = Count(group) * CreditsPerImage;
         if (balance >= 0 && balance < needed)
         {
@@ -260,21 +260,19 @@ public static class UiArtBaker
             bool banner = art.shape == Shape.Banner;
             // 배너와 무늬는 칸을 꽉 채우는 그림이라 배경을 지우지 않는다.
             bool keepBackground = banner || art.shape == Shape.Texture;
-            string body =
-                "{\"ai_model\":" + MeshyBodyRecipe.EscapeJson(AiModel) +
-                ",\"prompt\":" + MeshyBodyRecipe.EscapeJson(art.subject + StyleOf(art.shape)) +
-                ",\"aspect_ratio\":\"" + (banner ? "16:9" : "1:1") + "\"" +
-                ",\"remove_background\":" + (keepBackground ? "false" : "true") + "}";
+            string body = MeshyRequests.TextToImage(AiModel, art.subject + StyleOf(art.shape),
+                aspectRatio: banner ? "16:9" : "1:1", removeBackground: !keepBackground);
 
-            string taskId = await MeshyApi.CreateImage(body);
-            MeshyBodyRecipe.ImageTask task = await MeshyApi.Await<MeshyBodyRecipe.ImageTask>(
-                MeshyBodyRecipe.SheetEndpoint, taskId, null);
+            MeshyClient meshy = MeshyClient.Shared;
+            string taskId = await meshy.CreateImageAsync(body);
+            MeshyProtocol.ImageTask task = await meshy.AwaitTaskAsync<MeshyProtocol.ImageTask>(
+                MeshyProtocol.TextToImage, taskId);
 
-            if (task.image_urls == null || task.image_urls.Length == 0)
+            if (task.FirstImageUrl == null)
                 throw new Exception("그림이 비어서 돌아왔다.");
 
             string raw = RawPathFor(art.file);
-            await MeshyApi.Download(task.image_urls[0], raw);
+            await meshy.DownloadAsync(task.FirstImageUrl, raw);
             Refine(art, raw);
             Debug.Log($"[UiArtBaker] {art.file} 완료 (태스크 {taskId}).");
         }

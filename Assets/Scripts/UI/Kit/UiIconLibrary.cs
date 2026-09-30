@@ -55,31 +55,14 @@ public class UiIconLibrary : ScriptableObject
     [Tooltip("탑 옆 하늘을 지나가는 구름.")]
     public Sprite cloud;
 
-    private static UiIconLibrary cached;
-    private static bool searched;
+    private static readonly ResourceSlot<UiIconLibrary> Slot = new ResourceSlot<UiIconLibrary>(ResourceName,
+        $"[UiIconLibrary] Resources/{ResourceName}.asset 이 없어 아이콘을 글자로 그립니다.");
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetCache()
-    {
-        cached = null;
-        searched = false;
-    }
+    private static void ResetCache() => Slot.Reset();
 
     // 없으면 null. 부르는 쪽이 글자로 대신 그린다.
-    public static UiIconLibrary Current
-    {
-        get
-        {
-            if (cached != null) return cached;
-            if (searched) return null;
-
-            searched = true;
-            cached = Resources.Load<UiIconLibrary>(ResourceName);
-            if (cached == null)
-                Debug.LogWarning($"[UiIconLibrary] Resources/{ResourceName}.asset 이 없어 아이콘을 글자로 그립니다.");
-            return cached;
-        }
-    }
+    public static UiIconLibrary Current => Slot.Value;
 
     public static Sprite Currency(Currency currency)
     {

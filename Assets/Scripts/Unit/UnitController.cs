@@ -159,11 +159,12 @@ public partial class UnitController : MonoBehaviour
     // 이 전투 유닛이 어떤 로스터 캐릭터인지. 사망 시 영구 사망 처리에 쓴다.
     public CharacterSO SourceCharacter { get; private set; }
 
-    // 전투 기여도 — MVP 선정과 경험치 정산이 이 값을 읽는다.
-    // 가한 피해는 방어로 감소된 뒤의 실제 감소량 기준이라, 방패에 막힌 공격은 기여로 잡히지 않는다.
-    public int DamageDealt { get; private set; }
-    public int DamageTaken { get; private set; }
-    public int Kills { get; private set; }
+    // 전투 기여도 — MVP 선정과 경험치 정산이 이 값을 읽는다(UnitCombatRecord).
+    private readonly UnitCombatRecord combatRecord = new UnitCombatRecord();
+    public UnitCombatRecord CombatRecord => combatRecord;
+    public int DamageDealt => combatRecord.DamageDealt;
+    public int DamageTaken => combatRecord.DamageTaken;
+    public int Kills => combatRecord.Kills;
     public UnitStats Stats => stats;
     public NavMeshAgent Agent => agent;
     public Animator Animator => animator;
@@ -177,39 +178,7 @@ public partial class UnitController : MonoBehaviour
     public float RunDistance => runDistance;
     public float DestinationUpdateInterval => destinationUpdateInterval;
 
-    // 스킬을 다시 쓸 수 있게 되는 시각.
-    private float nextSkillTime;
-
-    // 지금 타깃과 공격 거리 안에서 맞붙어 있은 시간(초). 사거리 밖으로 떨어지거나 상대가
-    // 바뀌면 0으로 돌아간다. stats.skillEngageDelay가 이 값을 본다.
-    private float engagedDwell;
-    private TargetRef engagedDwellTarget;
-    private float lastBlockTime = -999f;
-    private float lastPotionTime = -999f;
-    private float lastHealTime = -999f;
-    // CanHealAlly가 매 프레임 덮어쓰는 "지금 찾아본 후보".
-    private UnitController healTarget;
-    // 영창을 시작할 때 잠가 둔 대상. 완성(CompleteHeal)은 이쪽만 본다 — BeginHealCast 주석 참조.
-    private UnitController castHealTarget;
-    // 막을 상대. 엔티티일 수도 있으므로 참조가 아니라 손잡이다.
-    private TargetRef blockThreat;
-    private float attackLockedUntil;
-    private float poiseImmuneUntil;
-    private bool pendingIsComboFinisher;
-    // 이번 스윙이 발차기인가. 피해와 강인도 계산이 갈린다.
-    private bool pendingIsKick;
-    private float nextDestinationUpdateTime;
-    private Vector3 lastAgentDestination;
-    private float lastAgentStoppingDistance;
-    private bool hasAgentDestination;
     private int currentAnimationHash;
-    private Vector3 roamDirection;
-    private Vector3 knockbackDirection;
-    private bool hasPendingKnockback;
-    private float nextRoamTime;
-    private float lastTargetChangeTime = -999f;
-    private float requestedAgentSpeed;
-    private UnitController lastAttacker;
     private Collider[] bodyColliders;
 
     // 이 유닛에 속한 콜라이더 전부. UnitRegistry가 시야 레이의 히트 중 유닛 몸통을 걸러내는 데 쓴다.
@@ -251,12 +220,7 @@ public partial class UnitController : MonoBehaviour
     private int walkAnimationHash;
     private int runAnimationHash;
     private int jumpAnimationHash;
-    private int[] attackAnimationHashes;
-    private float[] attackAnimationDurationsPerStep;
-    private int attackComboIndex;
-    private bool hasAttackAnimation;
     private int skillAnimationHash;
-    private int kickAnimationHash;
     private int blockAnimationHash;
     private int potionAnimationHash;
     private int healAnimationHash;
@@ -264,14 +228,8 @@ public partial class UnitController : MonoBehaviour
     private int hitAnimationHash;
     private int deathAnimationHash;
     private bool hasWalkAnimationState;
-    private int moveSpeedParameterHash;
-    private bool hasMoveSpeedParameter;
-    // 마지막으로 배속 기준으로 삼은 클립 속도. 기준이 바뀌는 순간을 잡아내 damping을 건너뛴다.
-    private float lastMoveClipSpeed = -1f;
 
-    private float attackAnimationDuration;
     private float skillAnimationDuration;
-    private float kickAnimationDuration;
     private float potionAnimationDuration;
     private float healAnimationDuration;
     private float dodgeAnimationDuration;
@@ -298,38 +256,17 @@ public partial class UnitController : MonoBehaviour
     // (기본 클립 기준 4.08m/s x 0.67초 = 약 2.7m). 거리를 바꾸고 싶으면 클립을 바꿔야 한다.
     public float DodgeMoveSpeed(float distance) => dodgeClipSpeed;
 
-    // 회피 도약을 실제 이동으로 옮긴다.
-    //
-    // NavMeshAgent에 목적지를 주지 않고 직접 미는 이유: 에이전트는 가속(8m/s^2)을 거치므로
-    // 4m/s에 닿는 데만 0.5초가 걸리는데 도약 자체가 0.67초다. 목적지를 주면 클립은 뛰는데
-    // 몸은 기어간다. 발놀림(UpdateCombatFootwork)이 같은 이유로 agent.Move를 쓴다.
-    // 뛰는 동안은 발이 땅에 닿아 있지 않으므로 등속으로 밀어도 미끄러져 보이지 않는다.
-    public void MoveDodge(Vector3 direction, float speed, float deltaTime)
-    {
-        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
-
-        // 도약하는 동안은 이 호출이 이 유닛을 움직이는 유일한 수단이어야 한다.
-        // 에이전트가 스스로 남긴 속도로 흘러가면 도약과 겹쳐 엉뚱한 쪽으로 간다.
-        agent.velocity = Vector3.zero;
-        agent.Move(direction * (speed * deltaTime));
-    }
+    // 회피 도약을 실제 이동으로 옮긴다. 목적지를 주지 않고 직접 민다(LocomotionPart.MoveDodge 주석 참조).
+    public void MoveDodge(Vector3 direction, float speed, float deltaTime) =>
+        Locomotion.MoveDodge(direction, speed, deltaTime);
 
     // 도약 중인가. 켜져 있는 동안은 다른 이동 수단이 이 유닛을 건드리지 않는다.
-    public bool IsLeapingDodge { get; private set; }
+    public bool IsLeapingDodge => Locomotion.IsLeapingDodge;
 
     // 지금 실제로 땅 위를 나아가는 속도.
     // 재생 배속은 "요청한 속도"가 아니라 이 값에 맞춰야 한다 — NavMeshAgent는 가속 중이거나
     // 코너를 돌 때, 다른 유닛을 피할 때 요청보다 느리게 간다. 그 구간마다 다리가 헛돈다.
-    public float CurrentMoveSpeed
-    {
-        get
-        {
-            if (agent == null || !agent.enabled) return 0f;
-            Vector3 v = agent.velocity;
-            v.y = 0f;
-            return v.magnitude;
-        }
-    }
+    public float CurrentMoveSpeed => Locomotion.CurrentSpeed;
 
     // 마지막으로 물러난 뒤에 한 번이라도 공격했는가.
     //
@@ -383,7 +320,6 @@ public partial class UnitController : MonoBehaviour
         stats.ResetHp();
         stats.ResetMana();
         stats.ResetPoise();
-        poiseImmuneUntil = 0f;
         ResetCombatRecord();
         ResetCombatRuntime();
         ApplyAgentSpeed(stats.runSpeed);
@@ -418,9 +354,8 @@ public partial class UnitController : MonoBehaviour
 
         if (scanner != null) scanner.Initialize(this);
 
-        // 배회 시각도 유닛마다 흩어 놓는다. 기본값 0이면 스폰 직후 전원이
-        // 같은 프레임에 NavMesh.SamplePosition을 호출한다.
-        nextRoamTime = Time.time + Random.Range(0f, roamInterval);
+        // 배회 시각도 유닛마다 흩어 놓는다(LocomotionPart.ScatterRoamClock).
+        Locomotion.ScatterRoamClock();
         if (emotion != null) emotion.Initialize(this);
         ApplyAgentSpeed(stats.runSpeed);
         // 에이전트가 회전을 맡는 구간(도주, 이동, 배회)도 코드가 돌릴 때와 같은 속도로 돌게 한다.
@@ -436,7 +371,7 @@ public partial class UnitController : MonoBehaviour
     {
         idleAnimationHash = ToHash(idleStateName);
         runAnimationHash = ToHash(runStateName);
-        CacheAttackComboAnimations();
+        Swing.CacheCombo();
 
         // 아래 상태들은 리그마다 있을 수도 없을 수도 있다(고블린 컨트롤러에는 Kick도 Block도 없다).
         // 이름만 보고 "있다"고 판단하면 존재하지 않는 상태로 CrossFade해서 유닛이 그 자리에 굳는다.
@@ -444,7 +379,7 @@ public partial class UnitController : MonoBehaviour
         walkAnimationHash = ResolveStateHash(walkStateName);
         jumpAnimationHash = ResolveStateHash(jumpStateName);
         skillAnimationHash = ResolveStateHash(skillStateName);
-        kickAnimationHash = ResolveStateHash(kickStateName);
+        Swing.CacheKick();
         blockAnimationHash = ResolveStateHash(blockStateName);
         potionAnimationHash = ResolveStateHash(potionStateName);
         healAnimationHash = ResolveStateHash(healStateName);
@@ -454,10 +389,7 @@ public partial class UnitController : MonoBehaviour
 
         hasWalkAnimationState = walkAnimationHash != 0;
 
-        CacheMoveSpeedParameter();
-
         skillAnimationDuration = GetAnimationClipDuration(skillStateName, 1f);
-        kickAnimationDuration = GetAnimationClipDuration(kickStateName, 0.8f);
         potionAnimationDuration = GetAnimationClipDuration(potionStateName, 0.8f);
         healAnimationDuration = healAnimationHash != 0
             ? GetAnimationClipDuration(healStateName, skillAnimationDuration)
@@ -482,51 +414,18 @@ public partial class UnitController : MonoBehaviour
         return animator.HasState(0, hash) ? hash : 0;
     }
 
-    // 무기를 갈아 끼우면 Attack1~N 클립이 다른 Override Controller로 바뀐다. 상태 이름(해시)은
-    // 그대로지만 클립 길이는 무기마다 다르므로, WeaponEquipper.WeaponAnimatorChanged를 받을 때마다
-    // 다시 재 보아야 attackLockedUntil이 실제 재생 시간과 어긋나지 않는다.
-    private void CacheAttackComboAnimations()
-    {
-        // 무기마다 원본 팩이 주는 공격 클립 수가 다르다(단검 3 ~ 양손검 11).
-        // 무기 컨트롤러가 물려 있으면 그 개수를 그대로 쓰고, 없으면(맨손이거나 이 리그가
-        // 무기 컨트롤러를 안 쓰는 유닛) 프리팹에 적힌 기본값을 쓴다.
-        int steps = equipment != null && equipment.WeaponAttackCount > 0
-            ? equipment.WeaponAttackCount
-            : Mathf.Max(1, attackComboLength);
-
-        if (attackAnimationHashes == null || attackAnimationHashes.Length != steps)
-        {
-            attackAnimationHashes = new int[steps];
-            attackAnimationDurationsPerStep = new float[steps];
-        }
-
-        hasAttackAnimation = false;
-        for (int i = 0; i < steps; i++)
-        {
-            string name = steps > 1 ? attackStateName + (i + 1) : attackStateName;
-            // 실제로 애니메이터에 있는 단계만 남긴다. 무기가 선언한 콤보 수보다 컨트롤러의
-            // 상태가 적으면 존재하지 않는 상태로 CrossFade해서 그 단계에서 유닛이 굳는다.
-            attackAnimationHashes[i] = ResolveStateHash(name);
-            attackAnimationDurationsPerStep[i] = GetAnimationClipDuration(name, 1f);
-            if (attackAnimationHashes[i] != 0) hasAttackAnimation = true;
-        }
-
-        attackComboIndex = 0;
-        hasSwungAtLeastOnce = false;
-    }
-
     // 공격 모션이 하나라도 있는가. 없으면 CanAttack이 false가 되어 공격 상태로 들어가지 않는다.
-    public bool HasAttackAnimation => hasAttackAnimation;
+    public bool HasAttackAnimation => Swing.HasAnimation;
 
     // 콤보가 한 바퀴를 다 돌아 다음 스윙이 다시 1번부터 시작하는 시점. 트리가 이때만
     // 스킬 같은 재량 전환을 검토한다 — 콤보 스텝 사이마다 검토하면 스윙 하나 끝날 때마다
     // 다른 상태로 튀어서 콤보가 거의 끝까지 이어지지 않는다.
     //
-    // 한 번도 휘두르지 않은 상태를 레커버리로 세면 안 된다. attackComboIndex는 처음부터 0이라
+    // 한 번도 휘두르지 않은 상태를 레커버리로 세면 안 된다. 콤보 순번(SwingPart)은 처음부터 0이라
     // 교전에 들어선 첫 프레임에 이 값이 참이 되고, 유닛이 공격을 하기도 전에 스킬부터 쓴다.
     // 원거리 유닛에서 특히 드러났다 — 스폰되자마자 사거리 안이라 첫 행동이 곧바로 스킬이 되는데,
     // 스킬 모션은 근접 동작이라 7m 밖에서 발차기를 하며 피해를 넣었다.
-    public bool IsComboRecoveryPoint => hasSwungAtLeastOnce && attackComboIndex == 0;
+    public bool IsComboRecoveryPoint => Swing.IsComboRecoveryPoint;
 
     // 콤보를 끝냈으니 일단 빠질 것인가(암살자의 게릴라 리듬 — StalkBehavior 주석 참조).
     //
@@ -534,19 +433,17 @@ public partial class UnitController : MonoBehaviour
     // 지난번에 빠진 뒤로 실제로 한 번이라도 휘둘렀는가.
     //
     // 이게 없으면 빠지기가 무한 루프가 된다. 콤보 복귀 판정(IsComboRecoveryPoint)은
-    // hasSwungAtLeastOnce와 attackComboIndex로 재는데, 그 둘은 상태를 넘어 남는다.
+    // "한 번이라도 휘둘렀는가"와 콤보 순번으로 재는데, 그 둘은 상태를 넘어 남는다.
     // 그래서 빠졌다 돌아와 공격 동작에 들어서는 순간 이미 "콤보를 막 끝낸 시점"으로 읽혀
     // 한 번도 휘두르지 않고 곧바로 다시 빠졌다 — 실측에서 암살자의 준피해가 t=50부터
     // 25초 동안 1,237에서 1도 오르지 않았다.
-    private bool hasSwungSinceStalk = true;
-
     // StalkBehavior가 진입할 때 부른다. 다음 빠지기는 반드시 새 콤보 뒤에만 나온다.
-    public void MarkStalkStarted() => hasSwungSinceStalk = false;
+    public void MarkStalkStarted() => Swing.MarkStalkStarted();
 
     public bool ShouldStalk()
     {
         if (!stats.stalkAfterCombo || IsDead) return false;
-        if (!hasSwungSinceStalk) return false;
+        if (!Swing.HasSwungSinceStalk) return false;
         if (!HasUsableTarget()) return false;
 
         // 다 잡아 가는 상대는 놓지 않는다. 급소를 문 채 물러나는 것은 게릴라가 아니라 그냥 도망이다.
@@ -559,7 +456,7 @@ public partial class UnitController : MonoBehaviour
 
     // WeaponEquipper가 무기를 갈아 끼운 뒤 호출. Awake는 장비가 붙기 전에 한 번 끝나므로
     // 처음 캐시된 길이는 맨손 기준이라 무기 장착 후 다시 계산해야 한다.
-    public void RefreshAttackAnimations() => CacheAttackComboAnimations();
+    public void RefreshAttackAnimations() => Swing.CacheCombo();
 
     // 프로파일러 확인 결과 Animators.Update가 스크립트 전체(0.08ms)의 14배인 1.1ms로,
     // 실제 CPU 비용의 대부분을 차지했다. AlwaysAnimate는 화면 밖 유닛도 리타게팅/IK/본 트랜스폼을
@@ -576,49 +473,9 @@ public partial class UnitController : MonoBehaviour
         return string.IsNullOrEmpty(stateName) ? 0 : Animator.StringToHash(stateName);
     }
 
-    // runtimeAnimatorController.animationClips는 접근할 때마다 배열을 새로 만들어 반환한다.
-    // 유닛 하나당 3번(공격/스킬/피격) 호출되므로 스폰이 많아지면 그대로 GC 부담이 된다.
-    // 컨트롤러 에셋 단위로 클립 길이를 한 번만 만들어 모든 유닛이 공유한다.
-    private static readonly Dictionary<RuntimeAnimatorController, Dictionary<string, float>> ClipDurationCache =
-        new Dictionary<RuntimeAnimatorController, Dictionary<string, float>>();
-
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetClipDurationCache()
-    {
-        // 도메인 리로드를 끈 에디터에서 파괴된 컨트롤러 참조가 남지 않도록 플레이 시작마다 비운다.
-        ClipDurationCache.Clear();
-    }
-
-    private static Dictionary<string, float> GetClipDurations(RuntimeAnimatorController controller)
-    {
-        if (ClipDurationCache.TryGetValue(controller, out Dictionary<string, float> cached)) return cached;
-
-        AnimationClip[] clips = controller.animationClips;
-        var durations = new Dictionary<string, float>(clips.Length);
-        for (int i = 0; i < clips.Length; i++)
-        {
-            AnimationClip clip = clips[i];
-            if (clip != null) durations[clip.name] = clip.length;
-        }
-
-        ClipDurationCache[controller] = durations;
-        return durations;
-    }
-
-    private float GetAnimationClipDuration(string stateName, float fallback)
-    {
-        if (animator == null || animator.runtimeAnimatorController == null || string.IsNullOrEmpty(stateName))
-        {
-            return fallback;
-        }
-
-        if (GetClipDurations(animator.runtimeAnimatorController).TryGetValue(stateName, out float length))
-        {
-            return length;
-        }
-
-        return fallback;
-    }
+    // 클립 길이는 컨트롤러 단위로 한 번만 재어 모든 유닛이 나눠 쓴다(AnimatorClipLengths).
+    private float GetAnimationClipDuration(string stateName, float fallback) =>
+        AnimatorClipLengths.Of(animator, stateName, fallback);
 
     // 콜라이더 등록만 오브젝트 수명에 묶여 있다(RegisterColliders 주석 참조).
     // 팀 리스트 등록/해제는 OnEnable/OnDisable 쪽이다.
@@ -726,159 +583,39 @@ public partial class UnitController : MonoBehaviour
 #endif
     }
 
-    public void ClearTarget()
-    {
-        ReleaseTargetCount();
-        CurrentTarget = TargetRef.None;
-#if UNITY_EDITOR
-        currentTargetName = "";
-#endif
-    }
-
-    // ------------------------------------------------------------------
-    // 나를 노리고 있는 적 수
+    // ---------------------------------------------------------------- 표적(TargetingPart)
     //
-    // "이 유닛에게 몇 명이 붙어 있는가"는 타깃을 고를 때마다 후보마다 필요하다(뭉치기·혼잡도).
-    // 그때그때 팀 전체를 훑으면 유닛 수의 세제곱으로 커진다 — 67유닛이면 스캔 한 주기에 7만 번,
-    // 유닛이 두 배면 여덟 배가 된다. 그래서 세지 않고 들고 있는다.
-    //
-    // 더하고 빼는 자리는 네 곳뿐이다: 타깃을 잡을 때(AssignTarget), 놓을 때(ClearTarget),
-    // 전장에 들어올 때(Register), 나갈 때(Unregister — 죽거나 꺼지면 여기로 온다).
-    // 그 넷 밖에서 CurrentTarget을 건드리면 숫자가 어긋나므로 대입은 AssignTarget 한 곳으로 모아 둔다.
-    // ------------------------------------------------------------------
+    // 표적을 잡고 갈아타고 놓는 규칙, 맞았을 때 돌아설지(어그로), "나를 노리는 적 수" 장부는
+    // TargetingPart에 있다. CurrentTarget은 그 부품의 Assign/Clear만 바꾼다.
 
-    private readonly int[] attackersByTeam = new int[3];
-    private bool countedOnTarget;
+    private TargetingPart targetingPart;
+    private TargetingPart Targeting => targetingPart ?? (targetingPart = new TargetingPart(this));
+
+    public void ClearTarget() => Targeting.Clear();
 
     // 지금 이 유닛을 노리고 있는 team 소속 유닛 수.
-    public int AttackersFrom(UnitTeam team) => attackersByTeam[(int)team];
+    public int AttackersFrom(UnitTeam team) => Targeting.AttackersFrom(team);
 
-    internal void AddAttacker(UnitTeam team, int delta)
-    {
-        int index = (int)team;
-        attackersByTeam[index] = Mathf.Max(0, attackersByTeam[index] + delta);
-    }
+    internal void AddAttacker(UnitTeam team, int delta) => Targeting.AddAttacker(team, delta);
 
     // 레지스트리에 들고 날 때 호출된다. 죽은 유닛은 레지스트리에서 빠지므로 자연히 숫자에서도 빠진다.
-    internal void HoldTargetCount()
-    {
-        if (countedOnTarget || !CurrentTarget.Exists) return;
+    internal void HoldTargetCount() => Targeting.HoldCount();
 
-        countedOnTarget = true;
-        CurrentTarget.AddAttacker(team, 1);
-    }
+    internal void ReleaseTargetCount() => Targeting.ReleaseCount();
 
-    internal void ReleaseTargetCount()
-    {
-        if (!countedOnTarget) return;
+    public bool TrySetTarget(TargetRef target) => Targeting.TrySet(target);
 
-        countedOnTarget = false;
-        // 대상이 이미 파괴됐으면 숫자도 그와 함께 사라진 것이라 뺄 곳이 없다.
-        if (CurrentTarget.Exists) CurrentTarget.AddAttacker(team, -1);
-    }
-
-    public bool TrySetTarget(TargetRef target)
-    {
-        if (target == CurrentTarget && IsTargetValid()) return true;
-        if (!target.IsAlive || !IsHostileTo(target)) return false;
-        if (IsTargetChangeLocked()) return false;
-        if (IsCommandBlockingRetarget(target)) return false;
-
-        if (IsTargetValid())
-        {
-            if (!ShouldReleaseCurrentTarget() && !IsNewTargetClearlyBetter(target)) return false;
-            if (Time.time < lastTargetChangeTime + targetChangeInterval) return false;
-        }
-
-        AssignTarget(target);
-        return true;
-    }
-
-    // 어그로 재평가(TargetScanner.ReviewAggro)가 고른 새 타깃으로 갈아탄다.
-    //
-    // TrySetTarget과 나눠 둔 이유는 "더 나은가"를 재는 기준이 다르기 때문이다.
-    // TrySetTarget은 순수 거리로 25% 더 가까운지를 본다(IsNewTargetClearlyBetter). 그 기준으로는
-    // 바로 옆에 선 탱커로 영영 옮겨가지 못한다 — 거리가 같으니까. 여기 들어오는 후보는
-    // 위협 가중치·혼잡도·유지 편향이 이미 다 반영된 결과라, 거리로 한 번 더 거르면
-    // 편향이 통째로 무효가 된다.
-    //
-    // 대신 지켜야 할 것은 지킨다: 휘두르는 중이거나 영창 중에는 바꾸지 않고,
-    // 최소 전환 간격(targetChangeInterval)도 그대로 건다.
-    public bool TryRetarget(TargetRef target)
-    {
-        if (!target.Exists || target == CurrentTarget) return false;
-        if (!target.IsAlive || !IsHostileTo(target)) return false;
-
-        // 스윙 도중에 노리는 상대가 바뀌면 이미 나간 칼이 엉뚱한 곳을 향한다.
-        // 스윙과 스윙 사이의 틈에서만 갈아탄다.
-        //
-        // 영창 중에는 막지 않는다. 광역 마법의 착탄 지점은 영창을 시작할 때 이미 잠겨 있고
-        // (castingAimPoint) 단일 마법은 표적이 바뀌어도 그쪽으로 날아갈 뿐이라 깨지는 것이 없다.
-        // 반대로 여기서 막으면 마법사는 거의 늘 영창 중이라 파티 집중 표적으로 영영 옮겨가지
-        // 못한다 — 실측에서 마법사만 혼자 다른 적을 때리고 있던 원인이 이것이었다.
-        if (IsAttackAnimationLocked) return false;
-        if (Time.time < lastTargetChangeTime + targetChangeInterval) return false;
-        if (IsCommandBlockingRetarget(target)) return false;
-
-        AssignTarget(target);
-        ClearMoveDestination();
-        return true;
-    }
+    // 어그로 재평가(TargetScanner.ReviewAggro)가 고른 새 타깃으로 갈아탄다(TargetingPart.TryRetarget 주석 참조).
+    public bool TryRetarget(TargetRef target) => Targeting.TryRetarget(target);
 
     // 엔티티가 된 적 중에서 겨눌 상대를 찾는다.
-    //
-    // 스캐너(TargetScanner)는 게임오브젝트만 훑는다. 시야 레이캐스트와 팀 리스트 순회를
-    // 전제로 만들어진 것이라 1000마리에 그대로 걸면 그것만으로 프레임이 끝나기 때문이다.
-    // 그래서 엔티티 쪽은 브리지의 값 배열에서 고른다 — 거리와 이미 붙은 아군 수만 본다.
-    public bool TryAcquireEntityTarget()
-    {
-        if (team == UnitTeam.Enemy) return false;
-        if (EnemyWorldBridge.EnemyCount == 0) return false;
+    public bool TryAcquireEntityTarget() => Targeting.TryAcquireEntity();
 
-        if (!EnemyWorldBridge.TryFindBestEnemy(transform.position, stats.detectRange, out Unity.Entities.Entity enemy))
-        {
-            return false;
-        }
+    public bool ShouldReleaseCurrentTarget() => Targeting.ShouldRelease();
 
-        return TrySetTarget(new TargetRef(enemy));
-    }
+    public bool HasUsableTarget() => Targeting.HasUsable();
 
-    public bool ShouldReleaseCurrentTarget()
-    {
-        if (!CurrentTarget.Exists) return true;
-        if (!CurrentTarget.IsAlive) return true;
-        return false;
-    }
-
-    public bool HasUsableTarget()
-    {
-        if (IsTargetValid() && !ShouldReleaseCurrentTarget()) return true;
-
-        ClearTarget();
-        return false;
-    }
-
-    public void ReceiveSharedTarget(TargetRef target)
-    {
-        if (IsDead || !target.Exists || !target.IsAlive || !IsHostileTo(target)) return;
-        if (IsTargetChangeLocked()) return;
-        if (IsCommandBlockingRetarget(target)) return;
-
-        bool acceptedTarget = HasUsableTarget() ? TrySetTarget(target) : ForceSetSharedTarget(target);
-        if (!acceptedTarget) return;
-
-        ClearMoveDestination();
-
-        // 표적만 갈아 끼우고 하던 동작은 그대로 끝내는 것들이 있다
-        // (UnitBehavior.AcceptsCombatRedirect). 대표적으로 도약 공격 — 이미 몸이 떠 있는데
-        // 여기서 접어 버리면 LeapAttackBehavior가 내려놓기 전에 빠져나가 모델이 뜬 채로 남는다.
-        UnitBehavior current = RunningBehavior;
-        if (current != null && !current.AcceptsCombatRedirect) return;
-
-        // 어디로 갈지는 지목하지 않는다. 접어 두면 다음 틱에 트리가 새 표적을 놓고
-        // 처음부터 다시 고른다 — 사거리 안이면 공격, 아니면 추격이다.
-        InterruptBehavior();
-    }
+    public void ReceiveSharedTarget(TargetRef target) => Targeting.ReceiveShared(target);
 
     public void SetMoveDestination(Vector3 destination)
     {
@@ -898,39 +635,7 @@ public partial class UnitController : MonoBehaviour
         IsRoamingMoveDestination = false;
     }
 
-    public bool TrySetRoamDestination()
-    {
-        if (!roamWhenSearching || Time.time < nextRoamTime) return false;
-        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return false;
-
-        nextRoamTime = Time.time + roamInterval;
-
-        if (roamDirection.sqrMagnitude <= 0.0001f)
-        {
-            Vector2 initialDirection = Random.insideUnitCircle.normalized;
-            roamDirection = new Vector3(initialDirection.x, 0f, initialDirection.y);
-        }
-
-        Vector2 randomCircle = Random.insideUnitCircle.normalized;
-        Vector3 randomDirection = new Vector3(randomCircle.x, 0f, randomCircle.y);
-        Vector3 weightedDirection = Vector3.Slerp(randomDirection, roamDirection.normalized, roamDirectionWeight);
-        if (weightedDirection.sqrMagnitude <= 0.0001f)
-        {
-            weightedDirection = transform.forward;
-            weightedDirection.y = 0f;
-        }
-
-        NavMeshHit hit;
-        if (!NavMesh.SamplePosition(transform.position + weightedDirection.normalized * roamRadius, out hit, roamRadius, NavMesh.AllAreas))
-        {
-            return false;
-        }
-
-        roamDirection = hit.position - transform.position;
-        roamDirection.y = 0f;
-        SetMoveDestination(hit.position, true);
-        return true;
-    }
+    public bool TrySetRoamDestination() => Locomotion.TrySetRoamDestination();
 
     public bool IsTargetValid()
     {
@@ -984,87 +689,37 @@ public partial class UnitController : MonoBehaviour
                IsFacingTarget(attackFacingTolerance);
     }
 
-    public bool IsAttackAnimationLocked => Time.time < attackLockedUntil;
+    public bool IsAttackAnimationLocked => Swing.IsLocked;
 
-    public bool CanUseSkill()
-    {
-        // 순서는 싼 것부터다. 아래 다섯은 전부 필드와 산술이라, 여기서 걸리면 표적을
-        // 확인하는 비용(IsTargetValid는 표적이 게임오브젝트일 때 네이티브 호출이고,
-        // 엔티티일 때는 브리지 조회다)을 통째로 건너뛴다.
-        if (skillAnimationHash == 0) return false;
+    // ---------------------------------------------------------------- 스킬(SkillPart)
 
-        // 이번 전투에 쓸 몫이 남았는가. 쿨다운과는 다른 질문이다 — 쿨다운은 "얼마나 자주",
-        // 이쪽은 "이번 판에 몇 번이나"다(UnitStats.skillUseCount 주석 참조).
-        if (!stats.HasSkillUse) return false;
+    private SkillPart skillPart;
+    private SkillPart Skill => skillPart ?? (skillPart = new SkillPart(this));
 
-        // 붙어서 겨룬 시간이 모자라면 아직 못 쓴다. 달려들자마자가 아니라 한 합
-        // 주고받은 뒤에 큰 수가 나오게 하는 조건이다(TickEngageDwell 주석 참조).
-        if (engagedDwell < stats.skillEngageDelay) return false;
+    // 지금 스킬을 쓸 수 있는가. 한 합 주고받은 뒤에만, 쿨다운·마나·남은 횟수가 허락할 때만 나간다.
+    public bool CanUseSkill() => Skill.CanUse();
 
-        // 스킬은 여는 수가 아니다. 한 번도 휘두르지 않았는데 먼저 나가면 교전의 첫 동작이
-        // 늘 스킬로 똑같아진다. 원거리 유닛에서 특히 두드러졌다 — 스폰되자마자 사거리에
-        // 들어서므로 "입장하자마자 스킬"이 매 전투 고정 연출이 됐다.
-        // 콤보 레커버리 게이트는 이미 붙어서 칼을 섞는 중일 때만 걸리므로
-        // (UnitBehaviorTree.WantsSkill), 막 사거리에 들어선 순간에는 이 검사가 전부다.
-        if (!hasSwungAtLeastOnce) return false;
-
-        if (!stats.HasMana(stats.skillManaCost)) return false;
-        if (Time.time < nextSkillTime) return false;
-
-        // 표적 확인은 한 번만 한다. 예전에는 이 판정이 한 식 안에서 두 번 불렸다
-        // (희생자 면역 검사에서 한 번, 그 아래에서 또 한 번).
-        if (!IsTargetValid()) return false;
-
-        // 상대가 방금 이 스킬에 당했으면 다시 걸지 않는다. 붙잡는 스킬에 반드시 필요하다 —
-        // 없으면 고블린 다섯이 같은 아군 하나의 목에 동시에 매달린다.
-        // 무는 쪽이 아니라 물리는 쪽에 걸린 시간이라, 여러 마리가 각자 세어도 결과가 같다.
-        if (stats.skillVictimImmunity > 0f && !CurrentTarget.CanBeSkillVictim) return false;
-
-        return IsTargetInAttackRange();
-    }
+    public void TriggerSkill() => Skill.Trigger();
 
     // 이 유닛이 붙잡는 스킬에 다시 당할 수 있는가(무는 쪽이 아니라 물리는 쪽의 시계다).
-    public bool CanBeSkillVictim => Time.time >= skillVictimImmuneUntil;
+    public bool CanBeSkillVictim => Skill.CanBeVictim;
 
     // 붙잡는 스킬에 당했다고 표시한다. 시간은 건 쪽이 정한다 — 경직(Stagger)과 같은 규칙이다.
-    public void MarkSkillVictim(float duration)
-    {
-        if (duration <= 0f) return;
-        skillVictimImmuneUntil = Mathf.Max(skillVictimImmuneUntil, Time.time + duration);
-    }
-
-    private float skillVictimImmuneUntil;
+    public void MarkSkillVictim(float duration) => Skill.MarkVictim(duration);
 
     // 적은 전투 중 HP를 되돌릴 수단이 없다 — 인스펙터에서 회복약 개수를 넣어도 마시지 않는다.
     // 밸런스 수치가 아니라 설계 규칙이라 데이터가 아니라 코드에 둔다.
     // 앞으로 회복 스킬이나 아이템을 추가할 때도 이 프로퍼티를 먼저 확인하면 규칙이 유지된다.
     public bool CanRecoverHp => team != UnitTeam.Enemy;
 
-    public bool CanUsePotion()
-    {
-        if (!CanRecoverHp) return false;
-        if (IsDead || !stats.HasPotion) return false;
-        if (Time.time < lastPotionTime + stats.potionCooldown) return false;
+    // ---------------------------------------------------------------- 회복약·치유·보호막(SupportCastPart)
 
-        float hpRatio = stats.HpRatio;
-        if (hpRatio <= stats.potionHpThreshold) return true;
+    private SupportCastPart supportCastPart;
+    private SupportCastPart SupportCast => supportCastPart ?? (supportCastPart = new SupportCastPart(this));
 
-        // 마나가 바닥나 스킬을 못 쓰는 것도 마실 이유가 된다. 다만 HP가 거의 가득 차 있으면
-        // 회복량의 대부분이 버려지므로 그때는 아낀다. 스킬 자체가 없는 유닛은 해당 없음.
-        return skillAnimationHash != 0 &&
-               stats.skillManaCost > 0 &&
-               !stats.HasMana(stats.skillManaCost) &&
-               hpRatio <= stats.potionManaTriggerHpRatio;
-    }
+    public bool CanUsePotion() => SupportCast.CanUsePotion();
 
-    public void UsePotion()
-    {
-        // CanUsePotion을 거치지 않고 직접 불려도 적은 회복되지 않도록 여기서도 막는다.
-        if (!CanRecoverHp) return;
-        if (!stats.ConsumePotion(out _, out _)) return;
-
-        lastPotionTime = Time.time;
-    }
+    public void UsePotion() => SupportCast.UsePotion();
 
     public void TriggerPotion()
     {
@@ -1072,120 +727,21 @@ public partial class UnitController : MonoBehaviour
         PlayAnimation(potionAnimationHash != 0 ? potionAnimationHash : idleAnimationHash, true);
     }
 
-    // 서포터가 회복할 아군이 있는지 확인하고, 있으면 대상까지 잡아 둔다.
-    // 판단과 대상 선정을 나누면 HealBehavior가 다시 탐색해야 해서 같은 순회를 두 번 돌게 된다.
-    public bool CanHealAlly()
-    {
-        healTarget = null;
+    public bool CanHealAlly() => SupportCast.CanHealAlly();
 
-        if (!stats.canHealAllies || !CanRecoverHp || IsDead) return false;
-        if (Time.time < lastHealTime + stats.healCooldown) return false;
-        if (!stats.HasMana(stats.healManaCost)) return false;
+    public bool CanShieldAlly() => SupportCast.CanShieldAlly();
 
-        healTarget = UnitRegistry.FindMostWoundedAlly(
-            this, stats.healRange, stats.healTargetHpRatio, stats.dispelPriorityBonus);
-        return healTarget != null;
-    }
+    public void BeginShieldCast() => SupportCast.BeginShield();
 
-    // ---------------------------------------------------------------- 선제 보호막
+    public void CompleteShield() => SupportCast.CompleteShield();
 
-    private UnitController shieldTarget;
-    private UnitController castShieldTarget;
-    private float lastShieldTime = -999f;
+    public void CancelShieldCast() => SupportCast.CancelShield();
 
-    // 미리 보호막을 걸어 줄 아군이 있는가.
-    //
-    // 치유(CanHealAlly)와 보는 것이 정반대다. 치유는 "이미 깎인 사람"을 찾지만 여기는
-    // "아직 안 깎였는데 곧 깎일 사람"을 찾는다 — 몰려 있는 쪽이다. HP를 조건으로 걸지
-    // 않는 것이 핵심이다. 만피인 탱커에게 미리 걸어 두는 것이 이 기술의 전부다.
-    public bool CanShieldAlly()
-    {
-        shieldTarget = null;
+    public void BeginHealCast() => SupportCast.BeginHeal();
 
-        if (!stats.canShieldAllies || IsDead) return false;
-        if (Time.time < lastShieldTime + stats.shieldCooldown) return false;
-        if (!stats.HasMana(stats.shieldManaCost)) return false;
+    public void CompleteHeal() => SupportCast.CompleteHeal();
 
-        shieldTarget = UnitRegistry.FindShieldTarget(this, stats.healRange, stats.shieldThreatCount);
-        return shieldTarget != null;
-    }
-
-    // 대상을 잠그는 이유는 치유와 같다(BeginHealCast 주석 참조) — shieldTarget은 전역 전이가
-    // 매 프레임 덮어쓰는 후보라, 영창을 시작한 순간 쿨다운에 걸려 곧바로 null이 된다.
-    public void BeginShieldCast()
-    {
-        castShieldTarget = shieldTarget;
-        stats.SpendMana(stats.shieldManaCost);
-        lastShieldTime = Time.time;
-        BeginCast();
-    }
-
-    public void CompleteShield()
-    {
-        EndCast();
-
-        UnitController target = castShieldTarget;
-        castShieldTarget = null;
-        if (target == null || target.IsDead) return;
-
-        target.Stats.ApplyShield(stats.shieldAmount, stats.shieldDuration);
-    }
-
-    public void CancelShieldCast()
-    {
-        if (!IsCasting) return;
-
-        EndCast();
-        castShieldTarget = null;
-    }
-
-    // 영창을 시작한다. 마력은 여기서 나간다 — 끊기면 그대로 손실이다.
-    //
-    // 예전에는 HealState.Enter가 곧바로 PerformHeal을 불러 시전과 동시에 회복이 끝났다.
-    // 그래서 "영창 중 무방비"라는 원작 설정이 성립할 수 없었다 — 맞아서 끊겨도 이미 치료가
-    // 끝난 뒤라 잃는 것이 없었기 때문이다. 지금은 시작(마력 소모)과 완성(실제 회복)을 나눠서,
-    // 사제가 탱커의 방어선 안에서만 영창을 끝낼 수 있게 만든다.
-    //
-    // 대상을 castHealTarget으로 옮겨 잠그는 것이 핵심이다. healTarget은 "지금 찾아본 후보"이고
-    // 매 프레임 CanHealAlly가 덮어쓴다 — 전역 전이(HealTransition)가 프레임마다 그걸 부르기
-    // 때문이다. 영창을 시작하면 그 순간 쿨다운이 걸려 CanHealAlly가 곧바로 false가 되고,
-    // 그때 healTarget이 null로 지워진다. 잠가 두지 않으면 영창을 마쳤을 때 치료할 대상이
-    // 사라져 있어서, 마력만 나가고 아무도 회복되지 않는다(실측으로 확인한 버그다).
-    public void BeginHealCast()
-    {
-        castHealTarget = healTarget;
-        stats.SpendMana(stats.healManaCost);
-        lastHealTime = Time.time;
-        BeginCast();
-    }
-
-    // 영창을 끝까지 마쳤다. 여기서야 실제로 회복되고 상태이상이 걷힌다.
-    public void CompleteHeal()
-    {
-        EndCast();
-
-        UnitController target = castHealTarget;
-        castHealTarget = null;
-        if (target == null || target.IsDead || !target.CanRecoverHp) return;
-
-        target.Stats.Heal(stats.healAmount);
-
-        // 디스펠. 원작에서 독·마비·출혈을 제때 걷어내지 못하면 전열이 통째로 무력화된다 —
-        // 회복량보다 이쪽이 판을 가르는 경우가 많다.
-        if (stats.dispelOnHeal && target.Emotion != null && target.Emotion.HasDispellableEffect)
-        {
-            target.Emotion.Dispel();
-        }
-    }
-
-    // 영창이 끊겼다. 마력은 이미 나갔으므로 돌려주지 않는다 — 그것이 끊긴 대가다.
-    public void CancelHealCast()
-    {
-        if (!IsCasting) return;
-
-        EndCast();
-        castHealTarget = null;
-    }
+    public void CancelHealCast() => SupportCast.CancelHeal();
 
     public void TriggerHeal()
     {
@@ -1204,41 +760,6 @@ public partial class UnitController : MonoBehaviour
 
         PlayAnimation(dodgeAnimationHash, true);
         return true;
-    }
-
-    // 지금 방패를 올릴 수 있고, 올릴 이유도 있는가.
-    //
-    // "누가 나를 노리고 휘두르는가"를 여기서 찾지 않는다는 점이 중요하다. 그 감시는
-    // TickThreatAwareness가 매 프레임 따로 돌린다 — 이 메서드는 공격 잠금이 풀린 짧은
-    // 순간에만 불리기 때문에, 여기서 위협을 처음 알아채고 반응 시간까지 채우려 하면
-    // 손이 자유로운 시간이 모자라 방어가 거의 발동하지 않는다(그게 예전 동작이었다).
-    // 여기서는 이미 알아채고 반응까지 끝난 위협이 있는지만 확인한다.
-    public bool CanBlock()
-    {
-        blockThreat = TargetRef.None;
-        if (!CanEverBlock()) return false;
-        if (!HasReactedToThreat) return false;
-
-        blockThreat = noticedThreat;
-        return true;
-    }
-
-    // 방어 중 나를 노리는 적을 향해 돈다. BlockBehavior가 매 프레임 불러 방패 방향을 맞춘다 —
-    // 그러지 않으면 방어 자세로 굳어 있는 동안 위협이 옆/뒤로 돌아가도 계속 정면으로 오인해서
-    // 정면 180도 판정(IsWithinFrontArc)에 실패해 버린다.
-    // 방어 중 회전은 평소보다 느리다(blockTurnSpeed < rotationSpeed) — 위협이 등 뒤로 돌아가면
-    // 다 따라가지 못해서 정면 180도 판정에 허점이 생겨야 방어가 지나치게 완벽해지지 않는다.
-    public void FaceBlockThreat() => FaceDirection(blockThreat, blockTurnSpeed);
-
-    // 방어 중 나를 노리고 휘두르는 적을 다시 찾는다. 진입 시점에 잡아 둔 위협은 금방 낡는다 —
-    // 그 적이 스윙을 끝내거나 쓰러져도 계속 그쪽을 보고 방패를 든 채 서 있게 된다.
-    // 돌려주는 값은 "아직 막을 것이 남았는가"이고, BlockBehavior가 이걸로 자세를 풀 시점을 정한다.
-    // (CanBlock을 그대로 쓸 수 없는 이유: 방금 자세를 잡아 blockCooldown에 걸려 있어서
-    //  방어 중에는 항상 false가 나온다.)
-    public bool RefreshBlockThreat()
-    {
-        blockThreat = UnitRegistry.FindTelegraphingAttacker(this);
-        return blockThreat.Exists;
     }
 
     // 등 뒤를 잡혔는가를 가르는 정면 반구(180도). 이건 몸의 앞뒤이므로 직군과 무관하게 고정이다 —
@@ -1270,291 +791,54 @@ public partial class UnitController : MonoBehaviour
         return Vector3.Dot(forward.normalized, toAttacker.normalized) >= minDot;
     }
 
-    // 이 유닛이 원거리에서 싸우는가.
+    // ---------------------------------------------------------------- 간격 유지
     //
-    // 예전에는 이 판단이 전부 "사거리 >= minKeepDistanceRange"라는 숫자 하나였다. 그러면
-    // 무기에 따라 결과가 흔들린다 — 단검을 든 마법사가 근접으로 잡히고, 창수의 리치를 조금만
-    // 올리면 발차기와 쓸어베기를 잃는다. 역할이 있으면 역할로 묻고, 없는 유닛(고블린,
-    // 프리팹 직접 설정)만 예전 방식으로 떨어진다.
-    public bool IsRangedFighter =>
-        stats.role != JobRole.None
-            ? JobProfile.IsRangedRole(stats.role)
-            : stats.attackRange >= minKeepDistanceRange;
-
-    // 적이 이 거리 안으로 들어오면 물러선다. 0이면 붙어서 싸운다.
-    // 역할이 정해 준 값이 있으면 그것을 쓰고, 없으면 예전의 "사거리 x 비율"로 떨어진다.
-    private float KeepDistanceThreshold
-    {
-        get
-        {
-            if (stats.keepDistanceRange > 0f) return stats.keepDistanceRange;
-            if (stats.role != JobRole.None) return 0f;
-            return stats.attackRange >= minKeepDistanceRange ? stats.attackRange * keepDistanceRatio : 0f;
-        }
-    }
-
-    // 적에게 붙잡혀서 제 간격을 잃었는지 판단한다.
-    // attackRange만 늘리면 "더 멀리서 공격을 시작"할 뿐, 이미 붙은 적에게서 물러나지는 않는다.
-    // 실제로 돌려보니 사거리 9짜리가 1.4m에서 근접 유닛과 나란히 싸우고 있었다 —
-    // 거리로 먹고사는 역할이 성립하려면 교전 중에도 거리를 다시 벌리는 판단이 따로 필요하다.
-    //
-    // 원거리 직군만의 것이 아니다. 창수는 근접 무기를 들고도 이 판단을 한다 —
-    // 창의 리치는 붙이지 않았을 때만 우위이므로, 파고든 적을 밀어내며 찌르는 것이 그 직군이다.
-    // 겨누는 상대가 아니라 "내 간격 안에 누가 들어왔는가"를 본다.
-    //
-    // 예전에는 CurrentTarget과의 거리만 쟀다. 파티 집중 사격이 들어온 뒤로 그게 무너졌다 —
-    // 마법사의 표적은 8m 밖의 집중 표적인데 정작 위협은 발밑의 다른 고블린이라, 표적이 멀면
-    // "안전하다"고 판단해 버렸다. 그래서 물러났다가 곧바로 되돌아와 다시 맞는 왕복이 생겼다.
-    //
-    // 물러날지 정하는 기준(여기)과 어느 쪽으로 물러날지 정하는 기준
-    // (GetSpacingRetreatDirection), 영창을 접을지 정하는 기준(ShouldAbandonCast)이
-    // 전부 같은 것을 봐야 한다. 셋이 어긋나면 그 차이가 그대로 갈팡질팡으로 나타난다.
-    //
-    // 한 프레임 안에서는 답을 기억해 둔다. 한 틱에 여러 번 불리기 때문이다 —
-    // 물러날지(UnitBehaviorTree.WantsRetreat), 어떻게 물러날지(RunsAway), 영창을 접을지
-    // (ShouldAbandonCast), 그리고 물러나는 동작 자체(EvadeBehavior)가 전부 같은 질문을 한다.
-    // 안이 적 전체를 훑는 선형 스캔이라 그 중복이 그대로 비용이 된다.
-    //
-    // 프레임 안에서 답이 바뀔 일은 없다. 유닛은 프레임당 한 번 움직이고, 이 질문은 전부
-    // 그 이동이 끝난 뒤의 같은 brain.Tick() 안에서 나온다.
-    private int keepDistanceFrame = -1;
-    private bool keepDistanceCached;
-
-    public bool ShouldKeepDistance()
-    {
-        // 유지 거리가 없는 직군(근접 대부분)은 여기서 끝난다. 이 게이트가 메모보다 앞에
-        // 있어야 한다 — Time.frameCount는 네이티브 호출이라 11ns쯤 드는데, 그 뒤에 두면
-        // 스캔을 아예 하지 않는 유닛이 2ns짜리 검사를 13ns에 하게 된다(실측).
-        float threshold = KeepDistanceThreshold;
-        if (threshold <= 0f) return false;
-
-        int frame = Time.frameCount;
-        if (keepDistanceFrame == frame) return keepDistanceCached;
-
-        keepDistanceFrame = frame;
-        keepDistanceCached = UnitRegistry.CountEnemiesAround(this, transform.position, threshold) > 0;
-        return keepDistanceCached;
-    }
-
-    // 영창을 버리고 빠져야 하는가.
-    //
-    // ShouldKeepDistance는 "지금 겨누고 있는 적"과의 거리만 본다. 그런데 영창 중인 마법사를
-    // 실제로 위협하는 것은 겨눈 적이 아니라 옆에서 파고든 적이다 — 먼 적을 조준한 채
-    // 발밑의 고블린에게 맞고 있으면 그 검사는 영영 참이 되지 않는다. 그래서 여기서는
-    // 겨눈 상대와 무관하게 "내 간격 안에 적이 들어왔는가"만 본다.
-    //
-    // 접어도 마력은 잃지 않는다(CancelSpellCast). 대가는 서 있던 시간과 다시 모으기까지의
-    // 한 박자(spellRetryDelay)뿐이라, 붙잡힌 채 버티는 것보다 언제나 낫다 — 영창 중에는
-    // 받는 피해가 castVulnerabilityMultiplier만큼 커지기 때문이다.
-    // ShouldKeepDistance와 같은 것을 본다. 한때 이 둘이 서로 다른 기준을 쓰다가
-    // "영창은 접는데 물러나지는 않는" 어긋남을 만들었다 — 이제 한 곳에서 판단한다.
-    public bool ShouldAbandonCast() => ShouldKeepDistance();
-
-    // 달아나기를 멈춰도 되는 거리 = 유지 거리 x 이 배수.
-    //
-    // 유지 거리(2.6m)에 딱 맞춰 멈추면 그 경계에서 도망과 복귀가 계속 뒤집힌다 —
-    // 물러나자마자 다시 붙잡혀 또 물러나는 것이 "공격하려다 버벅이는" 그림이었다.
-    // 넉넉히 떼어놓고 멈춰야 돌아와서 실제로 영창을 시작할 여유가 생긴다.
-    private const float ChaseEscapeRatio = 2.5f;
-
-    // 쫓는 놈이 잠깐 안 보여도 곧바로 멈추지 않는 유예. 방어 쪽의 AlertGrace와 같은 장치다.
-    //
-    // 이게 없으면 "그 적이 나를 타깃으로 들고 있는가"가 프레임마다 뒤집힌다. 적은 제 주기마다
-    // 표적을 다시 고르고(TargetScanner / EnemyTargetingSystem), 그 사이사이 아무도 나를 물지
-    // 않는 순간이 끼어든다. 그때마다 도주가 그 자리에서 끝나 버리므로, 달아나다 멈춰 서서
-    // 돌아보고 다시 달아나는 그림이 된다 — 실제로 떨어진 거리는 얼마 되지 않는데도.
-    //
-    // 고블린이 4.0m/s로 꾸준히 쫓아오고 마법사가 4.66m/s로 달아나므로 벌어지는 속도는
-    // 0.66m/s뿐이다. 유예 없이 한 번 끊기면 그때까지 번 거리를 통째로 잃는다.
-    private const float ChaseGrace = 0.6f;
-    private float chaseGraceUntil = -999f;
-
-    // 나를 노리고 쫓아오는 적이 아직 붙어 있는가. 달아나기(fleeByRunning)를 계속할지 정한다.
-    //
-    // 거리만 보지 않고 "그 적이 나를 타깃으로 들고 있는가"까지 본다. 쫓아오던 놈이 표적을
-    // 바꾸면(탱커가 도발로 끌어갔거나 다른 아군을 물었으면) 도망칠 이유가 사라진다 —
-    // 다만 그 판단은 위 유예를 지나고 나서야 내린다.
-    public bool IsBeingChased()
-    {
-        float threshold = KeepDistanceThreshold;
-        if (threshold <= 0f) return false;
-
-        if (UnitRegistry.HasEnemyChasing(this, threshold * ChaseEscapeRatio))
-        {
-            chaseGraceUntil = Time.time + ChaseGrace;
-            return true;
-        }
-
-        return Time.time < chaseGraceUntil;
-    }
-
-    // 전선에서 떨어져 나왔는가. 프레임당 한 번만 재고 그 답을 재사용한다 —
-    // 후퇴 판단이 한 프레임에 여러 번 물어보는데, 매번 팀 전체를 훑을 이유는 없다.
-    private int regroupCheckFrame = -1;
-    private bool regroupCheckResult;
-
-    public bool IsSeparatedFromLine
-    {
-        get
-        {
-            if (regroupDistance <= 0f) return false;
-            if (regroupCheckFrame == Time.frameCount) return regroupCheckResult;
-
-            regroupCheckFrame = Time.frameCount;
-
-            UnitController nearest = UnitRegistry.FindNearestAlly(this);
-            if (nearest == null)
-            {
-                // 혼자 남았으면 돌아갈 전선이 없다. 평소대로 적에게서 물러난다.
-                regroupCheckResult = false;
-                return false;
-            }
-
-            Vector3 offset = nearest.transform.position - transform.position;
-            offset.y = 0f;
-            regroupCheckResult = offset.sqrMagnitude > regroupDistance * regroupDistance;
-            return regroupCheckResult;
-        }
-    }
-
-    // 간격을 벌릴 때 실제로 물러날 방향.
-    //
-    // 평소에는 적의 반대쪽이다. 다만 전선에서 떨어져 나온 상태라면 아군 쪽으로 물러난다 —
-    // 그러지 않으면 물러남이 곧 이탈이 되어, 적 하나를 끌고 맵 끝까지 나가면서 파티가 쪼개진다
-    // (실측: 궁수가 45m). 원작에서도 검사가 반격을 받으면 "탱커의 방패 뒤나 후방으로" 물러나지,
-    // 아무 데로나 빠지지 않는다. 물러나면서 전열에 합류하는 쪽이 두 마리 토끼를 다 잡는다.
-    // 마지막으로 정한 후퇴 방향과 그 시각. 짧은 시간 안에 다시 물러날 때는 이 방향을 그대로 쓴다.
-    private Vector3 lastRetreatDirection;
-    private float lastRetreatDirectionTime = -999f;
+    // 물러날지, 쫓기는지, 전선에서 떨어졌는지, 어느 쪽으로 물러날지는 UnitSpacing이 판단한다.
+    // 아래는 행동 트리와 동작들이 부르는 입구다. 인스펙터 값(minKeepDistanceRange 등)은 프리팹에
+    // 적혀 있으므로 여기 그대로 두고 UnitSpacing이 읽어 간다.
 
     [Tooltip("한 번 정한 후퇴 방향을 유지하는 시간(초). 이 안에 다시 물러나면 같은 쪽으로 간다. " +
              "0이면 물러날 때마다 새로 계산한다 — 그러면 방향이 계속 바뀌어 갈팡질팡하는 것처럼 보인다.")]
     [SerializeField, Min(0f)] private float retreatDirectionHold = 1.5f;
 
-    public Vector3 GetSpacingRetreatDirection()
-    {
-        // 방금 정한 방향이 있으면 그대로 간다.
-        //
-        // 간격을 되찾는 후퇴는 짧게 여러 번 끊어 일어난다(물러났다 → 돌아왔다 → 또 붙잡혔다).
-        // 그때마다 방향을 새로 계산하면 매번 다른 쪽으로 튀어서 갈팡질팡하는 것처럼 보인다.
-        // 한 번 정한 쪽으로 잠깐이라도 꾸준히 가야 "물러난다"로 읽힌다.
-        if (retreatDirectionHold > 0f &&
-            Time.time < lastRetreatDirectionTime + retreatDirectionHold &&
-            lastRetreatDirection.sqrMagnitude > 0.0001f)
-        {
-            return lastRetreatDirection;
-        }
+    private UnitSpacing spacing;
 
-        Vector3 direction = ResolveRetreatDirection();
+    // 도메인 리로드 뒤에는 Awake 없이 필드가 비므로 처음 물을 때 만든다.
+    private UnitSpacing Spacing => spacing ?? (spacing = new UnitSpacing(this));
 
-        lastRetreatDirection = direction;
-        lastRetreatDirectionTime = Time.time;
-        return direction;
-    }
+    internal float MinKeepDistanceRange => minKeepDistanceRange;
+    internal float KeepDistanceRatio => keepDistanceRatio;
+    internal float RegroupDistance => regroupDistance;
+    internal float RetreatDirectionHold => retreatDirectionHold;
 
-    // 실제로 갈 수 있는 방향이 정해졌으면 그것을 유지 대상으로 삼는다.
+    public bool IsRangedFighter => Spacing.IsRangedFighter;
+
+    private float KeepDistanceThreshold => Spacing.KeepDistanceThreshold;
+
+    public bool ShouldKeepDistance() => Spacing.ShouldKeepDistance();
+
+    // 영창을 버리고 빠져야 하는가.
     //
-    // 벽에 막혀 방향을 틀었을 때 이걸 부르지 않으면, 유지 창(retreatDirectionHold) 동안
-    // 막힌 원래 방향이 계속 돌아와 다음 도망도 같은 벽으로 향한다.
-    public void CommitRetreatDirection(Vector3 direction)
-    {
-        direction.y = 0f;
-        if (direction.sqrMagnitude <= 0.0001f) return;
-
-        lastRetreatDirection = direction.normalized;
-        lastRetreatDirectionTime = Time.time;
-    }
-
-    // 물러날 자리를 실제로 갈 수 있는 곳으로 잡는다.
+    // 영창 중인 마법사를 실제로 위협하는 것은 겨눈 적이 아니라 옆에서 파고든 적이다 — 먼 적을 조준한 채
+    // 발밑의 고블린에게 맞고 있으면 겨눈 상대와의 거리는 영영 가깝지 않다. 그래서 "내 간격 안에 적이
+    // 들어왔는가"(ShouldKeepDistance)와 같은 것을 본다. 한때 이 둘이 서로 다른 기준을 쓰다가
+    // "영창은 접는데 물러나지는 않는" 어긋남을 만들었다 — 이제 한 곳에서 판단한다.
     //
-    // 원하는 쪽이 벽이면 그대로는 못 간다. 목적지가 벽 안이라 NavMesh 위로 끌어당겨지면
-    // 지금 서 있는 자리 바로 옆이 되고, 유닛은 "도착했다"고 판단해 제자리에 선다.
-    // 게다가 방향 유지(retreatDirectionHold)가 그 막힌 방향을 계속 돌려주므로 영영 못 움직인다.
-    //
-    // 그래서 원하는 쪽부터 좌우로 벌려 가며 훑어, 실제로 거리를 벌 수 있는 첫 방향을 고른다.
-    // 사람도 벽에 막히면 벽을 따라 비스듬히 빠지지 벽에 붙어 버티지 않는다.
-    // 어느 쪽도 뚫리지 않았으면 false — 부르는 쪽이 도망 대신 다른 수를 잡아야 한다.
-    public bool TryFindRetreatSpot(Vector3 preferred, float distance, out Vector3 direction, out Vector3 destination)
-    {
-        direction = preferred;
-        destination = transform.position;
+    // 접어도 마력은 잃지 않는다(CancelSpellCast). 대가는 서 있던 시간과 다시 모으기까지의
+    // 한 박자(spellRetryDelay)뿐이라, 붙잡힌 채 버티는 것보다 언제나 낫다 — 영창 중에는
+    // 받는 피해가 castVulnerabilityMultiplier만큼 커지기 때문이다.
+    public bool ShouldAbandonCast() => ShouldKeepDistance();
 
-        preferred.y = 0f;
-        if (preferred.sqrMagnitude <= 0.0001f) return false;
-        preferred.Normalize();
+    public bool IsBeingChased() => Spacing.IsBeingChased();
 
-        // 원하는 쪽 → 좌우로 조금씩 → 끝내 안 되면 반대쪽까지.
-        for (int i = 0; i < RetreatFanAngles.Length; i++)
-        {
-            float angle = RetreatFanAngles[i];
-            Vector3 candidate = Quaternion.AngleAxis(angle, Vector3.up) * preferred;
-            Vector3 spot = transform.position + candidate * distance;
+    public bool IsSeparatedFromLine => Spacing.IsSeparatedFromLine;
 
-            // 목표 지점 근처에만 붙인다. 넉넉히 잡으면 엉뚱한 곳으로 끌려가 뒤로 가려다
-            // 앞으로 가는 자리가 잡힐 수 있다.
-            if (!NavMesh.SamplePosition(spot, out NavMeshHit hit, RetreatSampleRadius, NavMesh.AllAreas)) continue;
+    public Vector3 GetSpacingRetreatDirection() => Spacing.GetRetreatDirection();
 
-            Vector3 gained = hit.position - transform.position;
-            gained.y = 0f;
-            // 실제로 벌어지는 거리가 있어야 의미가 있다. 벽에 붙은 자리는 여기서 걸린다.
-            if (gained.sqrMagnitude < MinRetreatGain * MinRetreatGain) continue;
+    public void CommitRetreatDirection(Vector3 direction) => Spacing.CommitRetreatDirection(direction);
 
-            direction = gained.normalized;
-            destination = hit.position;
-            return true;
-        }
-
-        return false;
-    }
-
-    // 원하는 쪽에서 얼마나 벌려 가며 찾을지. 0이 원하는 방향 그대로다.
-    private static readonly float[] RetreatFanAngles = { 0f, 35f, -35f, 70f, -70f, 110f, -110f, 150f, -150f, 180f };
-    // 후보 지점을 NavMesh 위로 끌어당길 때 허용할 반경.
-    private const float RetreatSampleRadius = 1.5f;
-    // 이만큼도 못 벌면 막힌 것으로 본다.
-    private const float MinRetreatGain = 1.2f;
-
-    private Vector3 ResolveRetreatDirection()
-    {
-        // 무엇으로부터 물러나는가 — 겨누고 있는 상대가 아니라 실제로 품 안에 들어온 적들이다.
-        //
-        // 예전에는 CurrentTarget의 반대쪽으로 물러났다. 그런데 물러나기로 정하는 기준은
-        // "내 간격 안에 아무 적이나 들어왔는가"(ShouldAbandonCast)여서 둘이 어긋난다.
-        // 파티 집중 사격이 들어온 뒤로 그 어긋남이 커졌다 — 마법사의 CurrentTarget은 8m 밖의
-        // 집중 표적인 경우가 많은데, 정작 물러나게 만든 것은 발밑의 고블린이다.
-        // 그 상태로 "표적 반대쪽"으로 뛰면 위협 쪽으로 뛰어드는 일까지 생기고,
-        // 표적이 바뀔 때마다 방향이 통째로 홱 돈다.
-        Vector3 threatCenter = Vector3.zero;
-        float threshold = KeepDistanceThreshold;
-        bool hasThreat = threshold > 0f &&
-                         UnitRegistry.TryGetEnemyCentroidAround(this, transform.position, threshold, out threatCenter);
-
-        if (!hasThreat)
-        {
-            // 품 안에는 아무도 없다. 그러면 겨누는 상대가 유일한 근거다(예전 동작).
-            threatCenter = CurrentTarget.Exists
-                ? CurrentTarget.Position
-                : transform.position + transform.forward;
-        }
-
-        Vector3 away = transform.position - threatCenter;
-        away.y = 0f;
-        if (away.sqrMagnitude <= 0.0001f) away = -transform.forward;
-        away.Normalize();
-
-        if (!IsSeparatedFromLine) return away;
-
-        // 전선에서 떨어져 나온 상태라면 아군 쪽으로 물러난다 — 그러지 않으면 물러남이 곧 이탈이
-        // 되어, 적 하나를 끌고 맵 끝까지 나가면서 파티가 쪼개진다(실측: 궁수가 45m).
-        UnitController anchor = UnitRegistry.FindNearestAlly(this);
-        if (anchor == null) return away;
-
-        Vector3 toAnchor = anchor.transform.position - transform.position;
-        toAnchor.y = 0f;
-        if (toAnchor.sqrMagnitude <= 0.0001f) return away;
-
-        return toAnchor.normalized;
-    }
+    public bool TryFindRetreatSpot(Vector3 preferred, float distance, out Vector3 direction, out Vector3 destination) =>
+        Spacing.TryFindRetreatSpot(preferred, distance, out direction, out destination);
 
     // HP가 위험 수위인데 회복 수단(회복약/치료)이 없거나 이미 바닥났을 때 거리를 벌린다.
     // 적은 CanRecoverHp가 항상 false라 회복약이 없으면 이게 유일한 생존 수단이다.
@@ -1629,154 +913,16 @@ public partial class UnitController : MonoBehaviour
         TakeDamage(damage, null, attackerPosition, true, attackerEntity, true, false, poiseDamage, impactWeight);
     }
 
+    // 맞은 한 대가 거치는 길(흘려내기 → 배율 → 체력 → 흔적 → 히트스톱 → 어그로 → 강인도)은
+    // DamageIntakePart에 있다. 순서가 곧 규칙이라 그 부품 한곳에서 읽힌다.
     private void TakeDamage(int damage, UnitController attacker, Vector3 attackerPosition, bool hasAttackerPosition,
         Unity.Entities.Entity attackerEntity, bool applyKnockback, bool fromSkill, float poiseDamage,
         float impactWeight = 1f)
-    {
-        if (impactWeight <= 0f) impactWeight = 1f;
+        => Intake.Take(damage, attacker, attackerPosition, hasAttackerPosition, attackerEntity, applyKnockback,
+            fromSkill, poiseDamage, impactWeight);
 
-        // 이미 죽은 유닛에 피가 튀거나 피격 상태로 되돌아가지 않도록 여기서 끊는다.
-        if (IsDead) return;
-
-        // 뒤를 잡혔는가(피해 배율)와 받아낼 수 있는가(방어 각도)는 다른 질문이다.
-        // 방패는 정면 반구를 통째로 가리지만 패링은 훨씬 좁으므로, 검사에게는 "막지는 못했지만
-        // 등 뒤도 아닌" 구간이 생긴다 — 옆에서 들어온 칼은 정직하게 한 대 맞는다.
-        bool inFrontArc = !hasAttackerPosition || IsWithinFrontArc(attackerPosition);
-        bool wantsToBlock = IsBlocking && (!hasAttackerPosition || IsWithinGuardArc(attackerPosition));
-
-        // 방패를 올린 직후에 들어온 공격은 막는 것이 아니라 통째로 흘려낸다.
-        // 흘러가면 피해도 강인도 소모도 없으므로 아래 계산 자체를 건너뛴다.
-        if (wantsToBlock && TryPerfectGuard(attacker, attackerEntity)) return;
-
-        bool wasBlocking = wantsToBlock;
-
-        // 같은 공격이라도 어디서, 어떤 처지에서 맞았느냐로 실제 피해가 갈린다.
-        // 이 세 가지가 "위치를 잡는 것"과 "먼저 내지르는 것"에 값을 매긴다.
-        float damageMultiplier = 1f;
-        if (hasAttackerPosition && !inFrontArc)
-        {
-            damageMultiplier *= stats.backstabDamageMultiplier;
-            poiseDamage *= stats.backstabPoiseMultiplier;
-        }
-        // 내가 방금 칼을 내지르고 거두는 중이라 반응할 수 없는 상태.
-        if (IsInAttackRecovery) damageMultiplier *= stats.recoveryVulnerabilityMultiplier;
-        // 이미 자세가 무너져 있는 상태.
-        if (IsStaggered) damageMultiplier *= stats.staggerDamageMultiplier;
-        // 마력을 모으는 중이라 몸을 뺄 수도 막을 수도 없는 상태. 후방 시전자에게 가장 큰 배율이다 —
-        // 원작에서 마법사·사제가 탱커의 방어선 없이는 아무것도 못 하는 이유가 이것이다.
-        if (IsCasting) damageMultiplier *= stats.castVulnerabilityMultiplier;
-        // 그림자 속에 있으면 겨눠 맞히기 어렵다. 암살자가 몸으로 버티지 않고도 사는 방식이다.
-        // (이 한 대로 은신은 풀린다 — 아래에서 BreakStealth를 부른다.)
-        if (IsStealthed) damageMultiplier *= stats.stealthDamageMultiplier;
-
-        // 배율이 아무리 낮아도 1은 들어가던 하한을 걷어냈다(UnitStats.TakeDamage 주석 참조).
-        // 그림자 속에서 겨눠 맞힌 스치는 한 대가 0이 될 수 있다 — 그게 은신이 몸으로 버티지
-        // 않고도 사는 방식이고, 배율을 낮게 잡아 둔 뜻이기도 하다.
-        int incoming = damage > 0 ? Mathf.RoundToInt(damage * damageMultiplier) : damage;
-
-        int hpBefore = stats.currentHp;
-        stats.TakeDamage(incoming, wasBlocking);
-        int dealt = hpBefore - stats.currentHp;
-
-        if (wasBlocking)
-        {
-            // 막았다는 것 자체가 보여야 한다. 예전에는 피가 안 튀는 것 말고는 아무 반응도 없었다.
-            PlayBlockImpact();
-        }
-
-        // 맞았으면 위치가 드러난다. 배율은 위에서 이미 적용됐으므로 이 한 대는 감면을 받는다.
-        BreakStealth();
-
-        RecordDamage(dealt, attacker);
-        RecordHitDirection(attackerPosition, hasAttackerPosition);
-        if (!wasBlocking) SpawnBloodEffect(attackerPosition, hasAttackerPosition);
-        if (emotion != null) emotion.NotifyDamaged(dealt, fromSkill);
-
-        // 때린 쪽의 직군이 남기는 흔적. 막아낸 타격은 살에 닿지 않았으므로 아무것도 남기지 않는다.
-        if (!wasBlocking) ApplyOnHitDebuffs(attacker, inFrontArc);
-
-        // 칼이 닿은 순간 양쪽의 애니메이션을 아주 짧게 눌러 붙인다. 막힌 타격은 살에 박히는
-        // 것이 아니라 튕겨 나가는 것이라 더 짧게 끊는다. 무거운 한 방일수록 길다.
-        ApplyImpactHitStop(attacker, (wasBlocking ? 0.6f : 1f) * impactWeight);
-
-        // 살에 닿은 한 대는 발을 무겁게 한다(피격 둔화). 막아낸 타격은 몸에 닿지 않았다.
-        if (!wasBlocking && dealt > 0) ApplyHitFlinch();
-
-        // 밀려날 방향은 때린 자리에서 나온다. 때린 쪽이 엔티티여도 위치는 온다.
-        //
-        // 예전에는 이 판단이 "때린 UnitController가 있는가" 안에 들어 있어서, 엔티티에게 맞으면
-        // 방향이 아예 잡히지 않았다 — 강인도가 깨져 피격 리액션이 나와도 제자리에서 움찔만 했다.
-        if (hasAttackerPosition && applyKnockback) SetKnockbackDirection(attackerPosition);
-        else ClearKnockback();
-
-        // 때린 쪽으로 돌아설지 본다. 엔티티에게 맞았어도 같다 — 예전에는 게임오브젝트 공격자만 봐서
-        // 고블린에게 뒤를 물린 아군이 멀리 있는 처음 표적만 계속 쫓았다.
-        if (attacker != null) ForceSetAttackTarget(attacker);
-        else if (attackerEntity != Unity.Entities.Entity.Null) ForceSetAttackTarget(new TargetRef(attackerEntity));
-
-        if (stats.IsDead)
-        {
-            Die();
-            return;
-        }
-
-        // 강인도: 면역 중이 아니면 이번 피격으로 깎는다.
-        //
-        // 막아낸 타격도 그대로 깎는다는 것이 핵심이다. 피해는 0이지만 버티는 힘은 닳으므로,
-        // 방어가 공짜 무적이 되지 않는다 — 예전에는 이 역할을 방어 지구력(Block Stamina)이라는
-        // 별도 자원이 맡았는데, 강인도와 하는 일이 같아서 하나로 합쳤다.
-        bool poiseBroken = false;
-        if (Time.time >= poiseImmuneUntil && poiseDamage > 0f)
-        {
-            stats.currentPoise -= poiseDamage;
-            if (stats.currentPoise <= 0f) poiseBroken = true;
-        }
-
-        if (poiseBroken)
-        {
-            stats.ResetPoise();
-            poiseImmuneUntil = Time.time + stats.poiseBreakImmunity;
-
-            // 가드가 뚫려도 통째로 무너지지는 않는다.
-            //
-            // 한때 여기서 Stagger(staggerDuration)로 보냈다. 그런데 막는 쪽 입장에서 그 결과가
-            // 가혹했다 — 방패를 들었다가 뚫리면 1.2초를 아무것도 못 하고 서 있어야 하고,
-            // 그 사이 CanEverBlock이 거짓이라 다시 막지도 못한다. 여러 마리에게 둘러싸이면
-            // 방패를 드는 것 자체가 손해가 됐다.
-            //
-            // 지금은 막다 뚫린 것도 평범한 강인도 파괴와 같은 무게로 친다: 짧은 피격 반응 한 번.
-            // 가드가 열렸다는 사실은 남는다(모션이 BlockBreak으로 바뀌고, 강인도가 0에서
-            // 다시 차오르며, 그 순간의 방어 자세는 InterruptCurrentAction이 내려놓는다).
-            //
-            // 진짜 경직(StaggerBehavior)은 이제 두 곳에서만 나온다 — 흘려내기(퍼펙트 가드)에
-            // 걸린 공격자와, 붙잡아 무너뜨리는 스킬(TryForceStagger). 둘 다 "읽어냈다"의 보상이다.
-            hitFromGuardBreak = wasBlocking;
-            InterruptCurrentAction();
-            RequestHitReaction();
-            return;
-        }
-
-        // 강인도가 안 깨졌으면 애니메이션은 끊지 않는다 — 슈퍼아머는 아니라서 살짝 밀리기만 하고
-        // 곧장 다시 싸운다(콤보 마무리나 스킬만 진짜 경직을 유발한다).
-        if (hasAttackerPosition) ApplyMicroPushback(attackerPosition, impactWeight);
-
-        // 영창은 여기서 끊지 않는다.
-        //
-        // 아래 두 줄(InterruptCurrentAction + InterruptBehavior)은 근접 유닛에게는 무해하다 —
-        // 어차피 공격으로 돌아갈 참이었기 때문이다. 그런데 마법사에게는 치명적이다: 동작이
-        // 접히는 순간 CastBehavior가 영창을 통째로 흩어 버린다. 스치는 피해 한 번에 7.8초짜리
-        // 영창이 사라지는 셈이라, 실측에서 마법사가 붙잡힌 채 단 한 번도 완주하지 못하고
-        // 딜 0으로 끝났다(유성 낙하 3회, 화염구 4회 전부 중단).
-        //
-        // 규칙은 위 주석 그대로 가져간다: 진짜로 끊는 것은 강인도가 깨졌을 때뿐이다.
-        // 그 판정은 이미 위쪽에서 피격 리액션을 요청하며 처리했으므로, 여기까지 내려온 피격은
-        // "버텨 낸 것"이다. 영창 중에는 그 사이에도 무방비 배율(castVulnerabilityMultiplier)을
-        // 그대로 받으므로 공짜로 버티는 것이 아니다 — 계속 맞으면 강인도가 깨져 결국 끊긴다.
-        if (IsCasting) return;
-
-        InterruptCurrentAction();
-        InterruptBehavior();
-    }
+    private DamageIntakePart intakePart;
+    private DamageIntakePart Intake => intakePart ?? (intakePart = new DamageIntakePart(this));
 
     // ---------------------------------------------------------------- 바깥에서 들어오는 반응 요청
     //
@@ -1813,38 +959,6 @@ public partial class UnitController : MonoBehaviour
         HasPendingStagger = false;
     }
 
-    // 강인도가 깨지지 않은 일반 피격의 즉각적인 밀림. 피격 리액션의 시간 분산 넉백과 달리
-    // 하던 동작을 바꾸지 않고 그 자리에서 한 번에 살짝 밀어서 타격감만 준다.
-    //
-    // agent.Move로 민다. 에이전트가 NavMesh 경계를 넘지 않게 잘라 주므로 벽이나 낭떠러지 밖으로
-    // 밀려 나가지 않는다 — transform을 직접 옮기면 다음 프레임에 에이전트가 도로 끌어오거나 떨어진다.
-    private void ApplyMicroPushback(Vector3 attackerPosition, float weight = 1f)
-    {
-        if (stats.poiseHitPushback <= 0f) return;
-        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
-
-        Vector3 direction = transform.position - attackerPosition;
-        direction.y = 0f;
-        if (direction.sqrMagnitude <= 0.0001f) return;
-
-        agent.Move(direction.normalized * (stats.poiseHitPushback * Mathf.Max(0f, weight)));
-    }
-
-    private void SpawnBloodEffect(Vector3 attackerPosition, bool hasAttacker)
-    {
-        if (bloodEffectPrefabs == null || bloodEffectPrefabs.Length == 0) return;
-
-        GameObject prefab = bloodEffectPrefabs[Random.Range(0, bloodEffectPrefabs.Length)];
-        if (prefab == null) return;
-
-        Vector3 spawnPosition = (bodyCollider != null ? bodyCollider.bounds.center : transform.position) + bloodEffectOffset;
-        Vector3 lookDirection = hasAttacker ? transform.position - attackerPosition : transform.forward;
-        lookDirection.y = 0f;
-        Quaternion rotation = lookDirection.sqrMagnitude > 0.0001f ? Quaternion.LookRotation(lookDirection.normalized) : transform.rotation;
-
-        BloodEffectPool.Instance.Spawn(prefab, spawnPosition, rotation, bloodColor);
-    }
-
     // 쓰러졌다. 어디로 갈지 지목할 필요가 없다 — 사망은 트리 맨 위의 조건이라
     // (UnitBehaviorTree) 다음 틱에 DeadBehavior가 무조건 받는다. 여기서는 하던 동작을
     // 그 자리에서 접어 뒷정리(방어 자세 내리기, 공중에 뜬 몸 내려놓기)만 앞당긴다.
@@ -1855,102 +969,35 @@ public partial class UnitController : MonoBehaviour
 
     // 출혈처럼 시간에 따라 들어오는 피해. 피격 리액션을 일으키지 않아야
     // 출혈이 공격 모션을 매초 끊어먹는 일이 없다.
-    public void TakeBleedDamage(int damage)
-    {
-        if (IsDead) return;
-
-        int hpBefore = stats.currentHp;
-        stats.TakeDamage(damage);
-        DamageTaken += hpBefore - stats.currentHp;
-
-        if (stats.IsDead) Die();
-    }
+    public void TakeBleedDamage(int damage) => Intake.TakeBleed(damage);
 
     // DeadBehavior 진입 시 호출. 같은 팀에 죽음을 알려 공포를 전파하고(원작의 핵심 기믹)
     // 전투 매니저/UI 같은 외부 구독자에게 통지한다.
     public void NotifyDeath()
     {
         // 처치는 마지막으로 피해를 준 유닛에게 귀속시킨다. 출혈로 쓰러진 경우에도
-        // 출혈을 걸어둔 공격자가 lastAttacker로 남아 있어 기여가 사라지지 않는다.
-        if (lastAttacker != null && lastAttacker != this) lastAttacker.Kills++;
+        // 출혈을 걸어둔 공격자가 LastAttacker로 남아 있어 기여가 사라지지 않는다.
+        UnitController killer = combatRecord.LastAttacker;
+        if (killer != null && killer != this) killer.CreditKill();
 
         // 동료가 쓰러지는 순간. 한 번의 죽음이 영구 소멸인 전투라 가장 크게 흔든다.
-        if (team != UnitTeam.Enemy) CombatImpulse.Emit(this, AllyDeathShake);
+        if (team != UnitTeam.Enemy) GameServices.Shake.Current.Emit(this, AllyDeathShake);
 
         UnitEmotion.BroadcastAllyDeath(this);
         OnAnyUnitDied?.Invoke(this);
     }
 
-    // 공격 클립의 타격 프레임. 클립 이벤트 → UnitAnimationEvents.AttackHit → 여기.
-    //
-    // 공격을 "하기로 한 것"과 "닿았는가"가 여기서 갈린다. 앞의 것은 행동 트리가 정하고
-    // (AttackBehavior → TriggerAttack), 이 메서드는 그 결정을 모른 채 지금 이 순간의 거리와 각도만 본다.
-    //
-    // 예전에는 여기서 IsTargetValid만 보고 CurrentTarget에게 무조건 피해를 넣었다. 스윙이
-    // 시작된 뒤 상대가 5m 밖으로 달아나도, 등 뒤로 돌아가도 그대로 맞았다 — 빗나감이라는
-    // 것이 없으니 거리도 각도도 전투에서 아무 의미가 없었다. 이제 이 시점에 다시 잰다.
-    private void ResolveAttackHit()
-    {
-        // 시체가 휘두르던 칼의 이벤트가 뒤늦게 도착할 수 있다. 죽었으면 아무 일도 없다.
-        if (IsDead) return;
+    // 공격·스킬 클립의 타격 프레임. 클립 이벤트 → UnitAnimationEvents → 여기 → SwingPart.
+    // 이 시점에 거리와 각도를 다시 재서 누가 맞았는지 정한다(SwingPart.ResolveHit 주석 참조).
+    private void ResolveAttackHit() => Swing.ResolveHit();
 
-        // 준비 동작에서 거두고 방패를 든 스윙이다(CancelSwingForGuard). 섞여 나가던 클립의 이벤트일 뿐이다.
-        if (swingCancelled) return;
+    private void ResolveSkillHit() => Swing.ResolveSkillHit();
 
-        // 여기를 지나면 준비 동작이 끝나고 회수 동작이 시작된다.
-        hasStruckThisSwing = true;
-        lastStrikeTime = Time.time;
-
-        TargetRef victim = ResolveSwingVictim();
-        // 발차기는 베는 대신 무너뜨린다 — 피해는 낮고 강인도 피해는 크다.
-        float poiseDamage = pendingIsKick
-            ? stats.poiseDamageKick
-            : stats.poiseDamagePerHit + (pendingIsComboFinisher ? stats.poiseDamageComboFinisherBonus : 0f);
-        int damage = ScaleDamage(pendingIsKick
-            ? Mathf.RoundToInt(stats.attackDamage * stats.kickDamageMultiplier)
-            : stats.attackDamage);
-
-        // 활은 맞았는지를 근접과 똑같이 여기서 정하되, 그 한 방을 화살에 실어 보낸다.
-        // 빗나간 스윙도 화살은 떠난다 — 허공으로 날아가는 화살이 곧 빗나갔다는 표시다.
-        bool fired = TryFireProjectile(victim, damage, poiseDamage, false);
-
-        if (!victim.Exists)
-        {
-            OnSwingMissed();
-            return;
-        }
-
-        // 탱커의 발차기는 실드 배시다. 밀어내는 것 자체가 목적이라 넉백을 함께 건다 —
-        // "다가오는 적의 기세를 꺾고 뒤로 밀쳐낸다"가 원작에서 탱커가 방어선을 유지하는 방식이고,
-        // 그 사이에 후방이 영창을 끝내거나 사선을 확보한다.
-        // 다른 직군의 발차기는 예전처럼 가드를 여는 용도로만 쓰인다(넉백 없음).
-        bool shieldBash = pendingIsKick && stats.role == JobRole.Vanguard;
-
-        // 화살이 떠났으면 피해는 투사체가 도착할 때 들어간다(WeaponProjectile).
-        if (fired) return;
-
-        // 한 방의 무게. 몸을 실은 실드 배시가 가장 무겁고, 콤보를 끝까지 이어 붙인 마무리가 그다음이다.
-        float impactWeight = shieldBash ? ShieldBashImpactWeight
-            : pendingIsKick ? KickImpactWeight
-            : pendingIsComboFinisher ? FinisherImpactWeight
-            : 1f;
-
-        victim.TakeDamage(damage, this, shieldBash, false, poiseDamage, impactWeight);
-
-        // 방어선이 적의 기세를 꺾는 순간은 화면에도 남긴다.
-        if (shieldBash) CombatImpulse.Emit(this, ShieldBashShake);
-    }
-
-    // 한 방의 무게(히트스톱 시간·밀림 배율). 평타가 1이다.
-    private const float FinisherImpactWeight = 1.4f;
-    private const float KickImpactWeight = 1.3f;
-    private const float ShieldBashImpactWeight = 1.8f;
+    // 한 방의 무게(히트스톱 시간·밀림 배율). 평타가 1이다. 스킬과 마법이 함께 쓴다 —
+    // 평타 쪽 무게(마무리·발차기·실드 배시)는 SwingPart에 있다.
     private const float SkillImpactWeight = 1.6f;
 
     // 화면 흔들림 세기(0~1). CombatImpulse 주석의 "판을 가르는 순간"만 흔든다.
-    private const float ShieldBashShake = 0.35f;
-    private const float SkillHitShake = 0.5f;
-    private const float PerfectGuardShake = 0.45f;
     private const float AllyDeathShake = 0.8f;
 
     // 주무기가 투사체를 들고 있으면 쏘고 true. 근접 무기는 false를 돌려주고 그 자리에서 때린다.
@@ -1972,547 +1019,76 @@ public partial class UnitController : MonoBehaviour
         return true;
     }
 
-    // 스킬 모션의 타격 프레임. 클립 이벤트 → UnitAnimationEvents.SkillHit → 여기.
-    private void ResolveSkillHit()
-    {
-        if (IsDead) return;
-
-        hasStruckThisSwing = true;
-        lastStrikeTime = Time.time;
-
-        TargetRef victim = ResolveSwingVictim();
-        int damage = ScaleDamage(stats.skillDamage);
-
-        // 붙잡아 무너뜨리는 스킬(고블린의 무는 공격)인가.
-        //
-        // 그렇다면 강인도 피해는 넘기지 않는다. 둘 다 넣으면 이 한 방으로 강인도가 깨지면서
-        // 면역 시간이 켜지고, 바로 뒤에 오는 TryForceStagger가 그 면역에 막힌다 — 물어뜯었는데
-        // 정작 무너뜨리지 못하고 평범한 피격 반응으로 끝난다. 무너뜨리는 것 자체가 이 스킬의
-        // 강인도 효과이므로 둘 중 하나만 쓴다.
-        bool locksVictim = stats.skillStaggerDuration > 0f;
-        float poiseDamage = locksVictim ? 0f : stats.poiseDamageSkill;
-
-        // 스킬도 평타와 같은 규칙을 따른다 — 원거리 무기면 그 한 방을 투사체에 실어 보낸다.
-        // 그러지 않으면 화살은 평타에만 날아가고, 스킬은 허공을 향해 피해만 들어간다.
-        // (붙잡아 무너뜨리는 스킬은 지금 전부 근접이라 이 갈래로 오지 않는다. 원거리에
-        //  같은 성질을 주려면 무너뜨리는 시점이 투사체가 닿는 순간이어야 한다.)
-        bool fired = TryFireProjectile(victim, damage, poiseDamage, true);
-
-        if (!victim.Exists)
-        {
-            OnSwingMissed();
-            return;
-        }
-
-        if (fired) return;
-
-        victim.TakeDamage(damage, this, true, true, poiseDamage, SkillImpactWeight);
-        CombatImpulse.Emit(this, SkillHitShake);
-        if (!locksVictim) return;
-
-        // 흘려내기(퍼펙트 가드)에 걸렸으면 무너지는 쪽은 이쪽이다. TakeDamage 안에서
-        // TryPerfectGuard가 나를 경직시켰으므로 그것으로 안다 — 그 위에 상대까지 무너뜨리면
-        // 읽어내고 쳐낸 보람이 사라진다.
-        if (IsStaggered) return;
-
-        victim.TryForceStagger(stats.skillStaggerDuration);
-    }
-
     // 공포에 빠진 유닛은 원작 설정대로 능력치가 깎인다. 0이 되어 무해해지지는 않도록 최소 1.
     private int ScaleDamage(int damage)
     {
         return Mathf.Max(1, Mathf.RoundToInt(damage * EmotionMultiplier));
     }
 
-    public void TriggerAttack()
-    {
-        // 무엇으로 칠지는 지금 상황이 정한다. 콤보 순환은 그중 기본값일 뿐이다(ChooseAttack).
-        AttackChoice choice = ChooseAttack();
+    // 기본공격 한 번. 무엇으로 칠지(콤보·발차기·마무리)와 스윙 시계는 SwingPart가 정한다.
+    public void TriggerAttack() => Swing.Trigger();
 
-        pendingIsKick = choice.IsKick;
-        attackAnimationDuration = choice.Duration;
-        attackLockedUntil = Time.time + attackAnimationDuration;
+    // ---------------------------------------------------------------- 이동(LocomotionPart)
 
-        // 콤보 마무리 보너스는 "여러 단을 끝까지 이어붙인 것"에 대한 보상이다.
-        // 공격 모션이 하나뿐인 유닛(고블린)은 이어붙일 콤보가 없으므로 해당 없다.
-        pendingIsComboFinisher = choice.IsFinisher;
+    private LocomotionPart locomotionPart;
+    private LocomotionPart Locomotion => locomotionPart ?? (locomotionPart = new LocomotionPart(this));
 
-        // 이번 스윙은 아직 아무도 때리지 않았다. 이 플래그가 준비 동작(막을 수 있는 구간)과
-        // 회수 동작(무방비 구간)을 가른다 — 클립 길이로 추정하지 않고 타격 이벤트로 안다.
-        hasStruckThisSwing = false;
-        swingCancelled = false;
-        hasSwungAtLeastOnce = true;
-
-        // 물러난 뒤 한 발은 쐈다는 표시. 원거리 유닛이 Attack↔Evade만 오가는 것을 막는다.
-        MarkAttackedSinceEvade();
-
-        // 이번 빠지기 뒤로 실제로 휘둘렀다는 표시. 이게 없으면 빠지기가 무한 루프가 된다.
-        hasSwungSinceStalk = true;
-
-        // 칼을 뽑는 순간 모습이 드러난다. 치고 빠지는 리듬이 여기서 시작된다.
-        BreakStealth();
-
-        // 시위를 당기기 시작한다. 앞선 화살이 떠나면서 감춰 둔 화살을 다시 물린다.
-        if (equipment != null) equipment.BeginDraw();
-
-        lungeRemaining = stats.lungeMaxDistance;
-
-        // 다음 스윙까지의 호흡. 콤보를 완주한 뒤에는 길게 숨을 고르고, 그 밖에는 짧게 끊는다.
-        float recovery = pendingIsComboFinisher ? stats.comboFinisherRecoveryTime : stats.attackRecoveryTime;
-        recovery *= 1f + Random.Range(-stats.attackRecoveryRandomness, stats.attackRecoveryRandomness);
-        recovery = Mathf.Max(0f, recovery);
-        nextSwingReadyTime = attackLockedUntil + recovery;
-
-        // 이번 틈에 자리를 옮길지 여기서 한 번만 정한다(FootworkThisGap 주석 참조).
-        footworkThisGap = recovery >= minFootworkWindow;
-
-        PlayAnimation(choice.Hash, true);
-        attackComboIndex = choice.NextComboIndex;
-    }
-
-    // 이번 스윙에 낼 것 하나.
-    private struct AttackChoice
-    {
-        public int Hash;
-        public float Duration;
-        public bool IsKick;
-        public bool IsFinisher;
-        public int NextComboIndex;
-    }
-
-    // 기본공격을 상황으로 고른다.
-    //
-    // 예전에는 콤보 인덱스만 돌렸다. 무기를 든 손이 늘 같은 순서로 움직이니, 상대가 방패를
-    // 올리고 있든 자세가 무너져 있든 똑같은 스윙이 나갔다 — 고를 것이 없는 전투였다.
-    //
-    // 규칙은 위에서부터 본다. 어느 것도 걸리지 않으면 콤보 순환으로 떨어지므로,
-    // 규칙을 전부 지우면 예전 동작 그대로가 된다.
-    private AttackChoice ChooseAttack()
-    {
-        int step = attackComboIndex % attackAnimationHashes.Length;
-
-        AttackChoice choice;
-        choice.Hash = attackAnimationHashes[step];
-        choice.Duration = attackAnimationDurationsPerStep[step];
-        choice.IsKick = false;
-        choice.IsFinisher = attackAnimationHashes.Length > 1 && step == attackAnimationHashes.Length - 1;
-        choice.NextComboIndex = (step + 1) % attackAnimationHashes.Length;
-
-        // ① 상대가 방패를 올렸다 → 발차기.
-        //
-        // 무기 스윙은 막히면 피해가 통째로 흘러가고 강인도만 조금 깎는다. 같은 스윙을 계속
-        // 넣으면 가드가 열릴 때까지 아무 일도 일어나지 않는다. 발차기는 그 강인도를 크게
-        // 깎아(poiseDamageKick) 가드 자체를 연다.
-        //
-        // 다만 지금 콘텐츠에서는 이 규칙이 거의 잠들어 있다 — CanEverBlock 주석대로
-        // "방어는 아군만" 하기 때문에, 아군이 때리는 적은 애초에 방패를 올리지 않는다.
-        // 막는 적이 생기면 그때 저절로 살아난다.
-        if (CanKick() && IsTargetGuarding()) return KickChoice();
-
-        // ② 한 번 더 밀면 무너진다 → 발차기로 끊는다.
-        //
-        // 평타로는 모자라고 발차기면 깨지는 구간이 있다(평타 15 / 발차기 45). 그 구간에서
-        // 평타를 넣으면 상대는 버티고, 발차기를 넣으면 그 자리에서 무너져 다음 콤보가 통째로
-        // 들어간다. 적이 방어를 하지 않는 지금, 실제로 발차기가 나가는 것은 대개 이 규칙이다.
-        if (CanKick() && IsTargetPoiseRipe()) return KickChoice();
-
-        // ③ 상대가 무너져 있다 → 콤보의 마지막 단으로 건너뛴다.
-        //
-        // 무너진 몇 초는 상대가 내준 진짜 빈틈이고 받는 피해도 커진다(staggerDamageMultiplier).
-        // 그 자리에 콤보 1단을 넣으면 가장 약한 스윙으로 가장 좋은 기회를 쓰는 셈이 된다.
-        // ②가 무너뜨린 직후가 대개 여기로 이어진다.
-        if (attackAnimationHashes.Length > 1 && IsTargetStaggered())
-        {
-            int last = attackAnimationHashes.Length - 1;
-            choice.Hash = attackAnimationHashes[last];
-            choice.Duration = attackAnimationDurationsPerStep[last];
-            choice.IsFinisher = true;
-            choice.NextComboIndex = 0;
-        }
-
-        return choice;
-    }
-
-    private AttackChoice KickChoice()
-    {
-        AttackChoice choice;
-        choice.Hash = kickAnimationHash;
-        choice.Duration = kickAnimationDuration;
-        choice.IsKick = true;
-        choice.IsFinisher = false;
-        // 발차기는 콤보의 일부가 아니다. 순서를 소비하지 않고 제자리에 둬서,
-        // 무너뜨린 뒤에 하던 콤보를 그대로 이어 붙인다.
-        choice.NextComboIndex = attackComboIndex;
-        return choice;
-    }
-
-    // 발차기 한 번이면 무너지지만 평타로는 안 되는 구간에 상대가 들어와 있는가.
-    // 기준은 때리는 쪽의 수치다 — 강인도를 깎는 것은 이 유닛의 발과 무기이기 때문이다.
-    private bool IsTargetPoiseRipe()
-    {
-        if (!IsTargetValid()) return false;
-        if (stats.poiseDamageKick <= stats.poiseDamagePerHit) return false;
-
-        float poise = CurrentTarget.CurrentPoise;
-        return poise > stats.poiseDamagePerHit && poise <= stats.poiseDamageKick;
-    }
-
-    // 발차기를 쓸 수 있는가. 모션이 있어야 하고, 근접 유닛이어야 한다 —
-    // 원거리 직군은 애초에 발이 닿지 않는 거리에서 싸운다.
-    // 창수는 거리를 유지하지만 근접이므로 발차기를 쓴다(IsRangedFighter 주석 참조).
-    private bool CanKick()
-    {
-        return kickAnimationHash != 0 && !IsRangedFighter;
-    }
-
-    private bool IsTargetGuarding()
-    {
-        return IsTargetValid() && CurrentTarget.IsBlocking;
-    }
-
-    private bool IsTargetStaggered()
-    {
-        return IsTargetValid() && CurrentTarget.IsStaggered;
-    }
-
-    public void TriggerSkill()
-    {
-        nextSkillTime = Time.time + stats.skillCooldown;
-        stats.ConsumeSkillUse();
-        stats.SpendMana(stats.skillManaCost);
-
-        // 상대를 점유하는 스킬은 거는 그 순간에 상대를 잠가야 한다. 피해가 들어갈 때
-        // 잠그면 늦다 — 그 사이에 다른 고블린들이 이미 같은 목을 물기 시작한 뒤다.
-        if (stats.skillVictimImmunity > 0f && IsTargetValid())
-        {
-            CurrentTarget.MarkSkillVictim(stats.skillVictimImmunity);
-        }
-
-        PlayAnimation(skillAnimationHash, true);
-    }
-
-    public void SetBlocking(bool isBlocking)
-    {
-        IsBlocking = isBlocking;
-        if (isBlocking)
-        {
-            lastBlockTime = Time.time;
-            // 방패를 올린 시각. 퍼펙트 가드 창의 기준점이 된다.
-            guardRaisedTime = Time.time;
-            // 이번 자세로 흘려낼 수 있는지는 드는 순간에 정해진다 — 상대의 동작을 제대로
-            // 읽었느냐이지, 맞을 때마다 다시 굴릴 문제가 아니다.
-            perfectGuardArmed = Random.value < stats.perfectGuardChance;
-            blockImpactUntil = 0f;
-            PlayAnimation(blockAnimationHash, true);
-        }
-        else
-        {
-            blockImpactUntil = 0f;
-            PlayAnimation(idleAnimationHash, false);
-        }
-    }
-
+    // 멈춰 선다. 그림과 몸은 같이 멈춰야 하므로 남은 속도까지 지우고 대기 자세로 바꾼다.
     public void StopMovement()
     {
-        // 남은 속도까지 지운다.
-        //
-        // 감속하며 서는 편이 자연스럽다고 보고 한동안 velocity를 남겨 뒀는데, 그 판단이 틀렸다.
-        // 이 함수를 부르는 쪽(공격·방어·영창 진입)은 곧바로 애니메이션을 대기 자세로 바꾼다.
-        // 그림은 이미 멈췄는데 몸만 계속 미끄러지는 셈이라, 실측에서 달아나기를 마친 마법사가
-        // 대기 자세로 3.69m/s를 미끄러졌다. 그림과 몸은 같이 멈춰야 한다.
-        HaltAgent(true);
-
-        hasAgentDestination = false;
+        Locomotion.Stop();
         SetMoveAnimation(0f, false, false);
     }
 
-    // 에이전트를 실제로 멈춘다.
-    //
-    // 순서가 중요하다. 예전에는 isStopped를 세운 뒤 ResetPath를 불렀는데, ResetPath가
-    // isStopped를 도로 false로 되돌린다 — 실측으로 StopMovement 직후 isStopped가 False였다.
-    // 즉 "멈췄다"고 부른 뒤에도 에이전트는 멈춰 있지 않았다.
-    //
-    // clearVelocity: 남은 속도까지 지울지. 평소에는 지우지 않는다 — 감속하며 서는 편이
-    // 자연스럽고, 공격·방어처럼 제자리에 서는 상태는 그 감속이 오히려 어울린다.
-    // 도약처럼 이동을 코드가 통째로 가져가는 경우에만 지운다(BeginDodgeMove 주석 참조).
-    private void HaltAgent(bool clearVelocity)
-    {
-        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
-
-        agent.ResetPath();
-        agent.isStopped = true;
-        if (clearVelocity) agent.velocity = Vector3.zero;
-    }
-
-    // 회피 도약을 시작하기 전에 부른다.
-    //
-    // 도약은 agent.Move로 직접 미는 동작이라(MoveDodge 주석 참조) 에이전트가 스스로 움직이면
-    // 그 둘이 겹친다. 물러나기 직전의 유닛은 대개 적 쪽으로 다가가던 참이라 남은 속도가
-    // 앞을 향하고 있고, 그게 뒤로 미는 도약과 상쇄되어 "뒷점프를 하는데 몸은 앞으로 가는"
-    // 그림이 된다. 도약이 시작되는 순간 에이전트의 속도를 통째로 지워 그 겹침을 없앤다.
-    public void BeginDodgeMove()
-    {
-        HaltAgent(true);
-        hasAgentDestination = false;
-        IsLeapingDodge = true;
-    }
+    // 회피 도약을 시작하기 전에 부른다. 에이전트의 남은 속도를 지워 도약과 겹치지 않게 한다.
+    public void BeginDodgeMove() => Locomotion.BeginDodge();
 
     // 도약이 끝났다. 이동 권한을 에이전트에게 돌려준다.
-    public void EndDodgeMove()
-    {
-        IsLeapingDodge = false;
-    }
+    public void EndDodgeMove() => Locomotion.EndDodge();
 
-    public void MoveTo(Vector3 destination, float speed)
-    {
-        MoveTo(destination, speed, stats.moveStopDistance);
-    }
+    public void MoveTo(Vector3 destination, float speed) => Locomotion.MoveTo(destination, speed, stats.moveStopDistance);
 
-    public void MoveTo(Vector3 destination, float speed, float stoppingDistance)
-    {
-        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
+    public void MoveTo(Vector3 destination, float speed, float stoppingDistance) =>
+        Locomotion.MoveTo(destination, speed, stoppingDistance);
 
-        Vector3 destinationDelta = destination - lastAgentDestination;
-        float stoppingDistanceDelta = Mathf.Abs(stoppingDistance - lastAgentStoppingDistance);
-        if (hasAgentDestination &&
-            Time.time < nextDestinationUpdateTime &&
-            destinationDelta.sqrMagnitude < 0.04f &&
-            stoppingDistanceDelta < 0.01f)
-        {
-            return;
-        }
+    public bool HasReachedDestination(Vector3 destination) => Locomotion.HasReached(destination);
 
-        hasAgentDestination = true;
-        lastAgentDestination = destination;
-        lastAgentStoppingDistance = stoppingDistance;
-        nextDestinationUpdateTime = Time.time + destinationUpdateInterval;
+    public void ApplyKnockback(float progress) => Locomotion.ApplyKnockback(progress);
 
-        agent.isStopped = false;
-        ApplyAgentSpeed(speed);
-        agent.stoppingDistance = stoppingDistance;
-        agent.SetDestination(destination);
-    }
+    public void DisableAgentAfterDeath() => Locomotion.DisableAfterDeath();
 
-    public bool HasReachedDestination(Vector3 destination)
-    {
-        float stopDistance = stats.moveStopDistance;
-        Vector3 toDestination = destination - transform.position;
-        toDestination.y = 0f;
-        return toDestination.sqrMagnitude <= stopDistance * stopDistance;
-    }
+    private void ApplyAgentSpeed(float speed) => Locomotion.ApplySpeed(speed);
 
-    public void SetMoveAnimation(float speed, bool isRunning, bool isJumping)
-    {
-        if (isJumping && !string.IsNullOrEmpty(jumpStateName))
-        {
-            PlayAnimation(jumpAnimationHash, false);
-            return;
-        }
+    // 감정과 둔화가 걸린 값을 다시 계산해 에이전트에 밀어 넣는다(값이 바뀌는 순간에만).
+    private void RefreshAgentSpeed() => Locomotion.RefreshSpeed();
 
-        if (speed <= 0.01f)
-        {
-            PlayAnimation(idleAnimationHash, false);
-            return;
-        }
+    // ---------------------------------------------------------------- 보행 모션(GaitPart)
 
-        if (isRunning)
-        {
-            ApplyMoveAnimationSpeed(speed, runClipSpeed);
-            PlayAnimation(runAnimationHash, false);
-            return;
-        }
+    private GaitPart gaitPart;
+    private GaitPart Gait => gaitPart ?? (gaitPart = new GaitPart(this));
 
-        // 걷기 상태가 없는 리그(고블린)는 달리기 클립으로 대신하므로 기준 속도도 달리기 쪽을 쓴다.
-        ApplyMoveAnimationSpeed(speed, hasWalkAnimationState ? walkClipSpeed : runClipSpeed);
-        PlayAnimation(hasWalkAnimationState ? walkAnimationHash : runAnimationHash, false);
-    }
+    public void SetMoveAnimation(float speed, bool isRunning, bool isJumping) =>
+        Gait.SetMoveAnimation(speed, isRunning, isJumping);
 
-    // 클립이 원래 나아가는 속도와 실제 이동 속도가 어긋나면 발이 땅에서 미끄러진다.
-    // 민첩과 직업 배율로 이동 속도가 캐릭터마다 달라지므로(달리기 4~6m/s) 고정 배속으로는 맞출 수 없다.
-    // 그래서 Animator의 float 파라미터로 배속을 넘기고, Run/Walk 상태가 그 값을 곱해 재생한다.
-    // speed는 "지금 실제로 땅 위를 나아가는 속도"다. 요청 속도가 아니다.
-    //
-    // 한때 여기서 MoveMultiplier(공포/둔화)를 곱했다. 그 시절에는 부르는 쪽이 요청 속도를
-    // 넘겼기 때문인데, 나중에 실측 속도를 넘기는 경로가 생기면서 배율이 두 번 곱해졌다.
-    // 게다가 상태마다 넘기는 기준이 달라져(Chase는 실측, Move는 요청, Evade는 실측) 같은
-    // 달리기인데도 상태가 바뀔 때마다 재생 속도가 달라졌다 — 그게 버벅임의 정체다.
-    //
-    // 지금은 규칙이 하나다: 배속은 언제나 실제 이동 속도에서 나온다.
-    // 공포와 둔화는 이미 그 속도 안에 들어 있으므로(agent.speed에 곱해져 있다) 여기서 또 곱하지 않는다.
-    private void ApplyMoveAnimationSpeed(float groundSpeed, float clipSpeed)
-    {
-        if (!hasMoveSpeedParameter || animator == null) return;
-
-        float multiplier = Mathf.Clamp(groundSpeed / Mathf.Max(0.1f, clipSpeed),
-            moveSpeedMultiplierRange.x, moveSpeedMultiplierRange.y);
-
-        // 기준 클립이 바뀌면(달리기↔걷기↔뒷걸음) 같은 배속 숫자가 다른 뜻을 갖는다.
-        // 그 경계를 damping으로 이어붙이면 새 클립이 한동안 엉뚱한 배속으로 돈다 — 그때만 즉시 맞춘다.
-        bool clipChanged = !Mathf.Approximately(clipSpeed, lastMoveClipSpeed);
-        lastMoveClipSpeed = clipSpeed;
-
-        if (clipChanged || moveSpeedDampTime <= 0f)
-        {
-            animator.SetFloat(moveSpeedParameterHash, multiplier);
-            return;
-        }
-
-        // 크게 벌어졌을 때 감쇠를 건너뛰고 바로 맞추는 안을 실측했다가 걷어냈다.
-        // 출발·정지 구간에서 배속이 실제 속도를 뒤따라가는 것이 눈에 걸린다고 봤는데,
-        // 켜고 끄며 45초씩 두 바퀴 재 보니 차이가 없었다 — 평균 오차 0.557 대 0.540으로
-        // 실행 간 편차 안이고, 1m/s 초과 비율은 11.0% 대 11.2%로 사실상 같았다.
-        // 이 구간은 보행 선택(ShouldRunAtGroundSpeed)이 클립을 바꾸면서 이미 즉시 맞춰진다.
-
-        // 목표 배속을 향해 천천히 따라가게 한다. 실제 속도가 매 프레임 출렁여도
-        // 재생 속도는 그 출렁임을 그대로 받지 않는다(moveSpeedDampTime 주석 참조).
-        animator.SetFloat(moveSpeedParameterHash, multiplier, moveSpeedDampTime, Time.deltaTime);
-    }
-
-    private void CacheMoveSpeedParameter()
-    {
-        hasMoveSpeedParameter = false;
-        if (animator == null || string.IsNullOrEmpty(moveSpeedParameterName)) return;
-
-        moveSpeedParameterHash = Animator.StringToHash(moveSpeedParameterName);
-        // 파라미터가 없는 컨트롤러에 SetFloat을 부르면 매 프레임 경고가 쌓인다. 먼저 확인한다.
-        foreach (AnimatorControllerParameter parameter in animator.parameters)
-        {
-            if (parameter.type != AnimatorControllerParameterType.Float) continue;
-            if (parameter.nameHash != moveSpeedParameterHash) continue;
-
-            hasMoveSpeedParameter = true;
-            return;
-        }
-    }
-
-    // 재생 배속을 "내려던 속도"가 아니라 "지금 실제로 나아가는 속도"에 맞춘다.
-    //
-    // 쫓아가는 유닛이 무리에 막히면 NavMeshAgent는 거의 제자리인데, 요청 속도로 배속을 잡으면
-    // 다리만 전속력으로 돌아 땅 위를 미끄러진다 — 몰려간 고블린들이 앞에서 떠는 것처럼 보이던
-    // 그림의 절반이 이것이다. EvadeBehavior가 후퇴 모션에 같은 보정을 이미 쓰고 있다.
-    //
-    // 이동 모션을 재생하는 표준 경로. 이동 중인 상태는 전부 이것만 부르면 된다.
-    // ---------------------------------------------------------------- 속도에 맞는 보행 고르기
-    //
-    // 질주 클립 하나로 전 구간을 덮으면 느린 구간에서 다리가 헛돈다. 배속 하한이 0.6이라
-    // 질주 클립(4.2m/s)은 아무리 눌러도 2.5m/s만큼 다리를 젓는데, 실제로는 그보다 훨씬
-    // 느리게 기어가는 구간이 많다 — 실측으로 크게 어긋난 프레임의 73%가 이 경우였다.
-    //
-    // 하한을 낮추는 것은 답이 아니다. 그러면 이번엔 질주가 슬로모션으로 돌아간다.
-    // 대신 클립을 바꾼다: 빠르면 질주, 느리면 걷기, 사실상 멈췄으면 대기.
-
-    // 질주와 걷기가 갈리는 속도. 두 클립의 배속이 똑같이 1에서 멀어지는 지점이라
-    // 어느 쪽으로 가도 손해가 같다(기하평균).
-    private float RunWalkCrossoverSpeed =>
-        hasWalkAnimationState ? Mathf.Sqrt(Mathf.Max(0.01f, walkClipSpeed * runClipSpeed)) : 0f;
-
-    private bool ShouldRunAtGroundSpeed(float groundSpeed) => groundSpeed >= RunWalkCrossoverSpeed;
-
-    // 사실상 멈춰 있는 구간. 여기서 이동 클립을 계속 돌리면 제자리 뜀박질이 된다.
-    //
-    // 들어가는 문턱과 나오는 문턱을 다르게 두고 짧은 지연까지 붙인 이유는, 예전에 이 자리에서
-    // 겪은 깜빡임 때문이다 — 막혔다 풀렸다 하는 유닛이 달리기와 대기 사이를 프레임마다
-    // 오갔다. 그래서 예전에는 속도에 0.05 바닥을 깔아 아예 대기로 못 가게 막아 뒀는데,
-    // 그게 곧 제자리 뜀박질의 원인이었다. 막는 대신 문턱을 벌린다.
-    private const float MoveIdleEnterSpeed = 0.3f;
-    private const float MoveIdleExitSpeed = 0.6f;
-    private const float MoveIdleDelay = 0.15f;
-    private float belowMoveIdleSince = -1f;
-    private bool moveIdleLatched;
-
-    private bool TryPlayMoveIdle(float groundSpeed)
-    {
-        if (groundSpeed >= MoveIdleExitSpeed)
-        {
-            moveIdleLatched = false;
-            belowMoveIdleSince = -1f;
-            return false;
-        }
-
-        if (!moveIdleLatched)
-        {
-            if (groundSpeed > MoveIdleEnterSpeed)
-            {
-                belowMoveIdleSince = -1f;
-                return false;
-            }
-
-            if (belowMoveIdleSince < 0f) belowMoveIdleSince = Time.time;
-            if (Time.time - belowMoveIdleSince < MoveIdleDelay) return false;
-
-            moveIdleLatched = true;
-        }
-
-        // 교전 중이면 칼을 든 자세로 선다. 순찰 중에 그 자세로 서 있으면 어색하므로
-        // 겨누는 상대가 있을 때만이다(PlayCombatIdle 주석과 같은 이유).
-        if (CurrentTarget.Exists) PlayCombatIdle();
-        else PlayAnimation(idleAnimationHash, false);
-        return true;
-    }
-
-    public void SetMoveAnimationFromGroundSpeed(bool isRunning)
-    {
-        float ground = CurrentMoveSpeed;
-        if (TryPlayMoveIdle(ground)) return;
-
-        SetMoveAnimation(Mathf.Max(ground, 0.05f), isRunning && ShouldRunAtGroundSpeed(ground), false);
-    }
+    // 이동 모션을 재생하는 표준 경로. 재생 배속을 "지금 실제로 나아가는 속도"에 맞춘다.
+    public void SetMoveAnimationFromGroundSpeed(bool isRunning) => Gait.SetFromGroundSpeed(isRunning);
 
     // 실제로 나아가는 쪽에 맞는 다리를 고른다. 앞이면 달리기, 옆이나 뒤면 그 방향 클립.
-    //
-    // 몸과 진행방향은 완전히 맞출 수 없다. NavMeshAgent는 회전과 이동을 따로 돌리고
-    // (angularSpeed와 speed가 서로 무관하다), 목적지는 상대가 움직이고 지역 회피가 밀 때마다
-    // 방향이 바뀐다. 실측으로 추격 중 이동 프레임의 13%가 진행방향과 45도 이상 어긋났고,
-    // 몸을 즉시 돌리는 것도(SnapFacing) 속도를 누르는 것도(회전이 그만큼 빨라지지 않는다)
-    // 그 수치를 낮추지 못했다.
-    //
-    // 그래서 몸을 속도에 맞추는 대신 클립을 속도에 맞춘다. 어긋난 그 구간이 옆걸음·뒷걸음으로
-    // 재생되면 발이 땅을 딛고, 몸이 조금 어긋나 있는 것은 오히려 자연스러운 그림이 된다.
-    // 교전 발놀림이 이미 같은 방식으로 클립을 고른다(PlayFootworkAnimation).
-    public void SetDirectionalMoveAnimationFromGroundSpeed()
-    {
-        float speed = CurrentMoveSpeed;
+    public void SetDirectionalMoveAnimationFromGroundSpeed() => Gait.SetDirectionalFromGroundSpeed();
 
-        // 사실상 멈췄으면 방향을 물어봐야 의미가 없다.
-        if (TryPlayMoveIdle(speed)) return;
+    // ---------------------------------------------------------------- 몸 돌리기(FacingPart)
 
-        if (agent == null || !agent.enabled)
-        {
-            SetMoveAnimationFromGroundSpeed(true);
-            return;
-        }
+    private FacingPart facingPart;
+    private FacingPart Facing => facingPart ?? (facingPart = new FacingPart(this));
 
-        Vector3 move = agent.velocity;
-        move.y = 0f;
-        Vector3 forward = transform.forward;
-        forward.y = 0f;
-        if (move.sqrMagnitude <= 0.0001f || forward.sqrMagnitude <= 0.0001f)
-        {
-            SetMoveAnimationFromGroundSpeed(true);
-            return;
-        }
-
-        PlayMoveAnimationForDirection(move.normalized, forward.normalized, speed, ShouldRunAtGroundSpeed(speed));
-    }
-
-    public void FaceTarget() => FaceDirection(CurrentTarget, rotationSpeed);
+    public void FaceTarget() => Facing.Toward(CurrentTarget, rotationSpeed);
 
     // 주어진 쪽을 즉시 바라본다. 서서히 도는 것이 아니라 그 프레임에 맞춘다.
-    //
-    // 이동 모션과 실제 이동 방향이 어긋나면 그대로 발이 미끄러져 보인다. 도약이나 도주처럼
-    // 시작하는 순간부터 방향이 정해져 있는 동작은, 돌아서는 동안의 짧은 어긋남조차 눈에 띈다.
-    public void SnapFacing(Vector3 forwardDirection)
-    {
-        Vector3 facing = forwardDirection;
-        facing.y = 0f;
-        if (facing.sqrMagnitude <= 0.0001f) return;
-
-        transform.rotation = Quaternion.LookRotation(facing.normalized);
-    }
+    public void SnapFacing(Vector3 forwardDirection) => Facing.Snap(forwardDirection);
 
     // 주어진 방향을 등지고 선다. 뒷점프처럼 "뒤로 가는" 모션이 실제 이동과 맞으려면
     // 몸이 그 반대쪽을 보고 있어야 한다.
-    public void FaceAwayFrom(Vector3 moveDirection) => SnapFacing(-moveDirection);
+    public void FaceAwayFrom(Vector3 moveDirection) => Facing.Snap(-moveDirection);
 
     // 이미 내지른 스윙 도중의 회전. 겨누는 것은 휘두르기 전에 끝나 있어야 하고
     // (attackFacingTolerance), 여기서는 상대가 조금 움직인 만큼만 따라간다.
@@ -2520,99 +1096,14 @@ public partial class UnitController : MonoBehaviour
     public void FaceTargetWhileAttacking()
     {
         if (attackTurnSpeed <= 0f) return;
-        FaceDirection(CurrentTarget, attackTurnSpeed);
+        Facing.Toward(CurrentTarget, attackTurnSpeed);
     }
 
-    private void FaceDirection(UnitController facingTarget, float turnSpeed)
-    {
-        if (facingTarget == null) return;
-
-        FaceDirection(facingTarget.transform.position, turnSpeed);
-    }
-
-    // 겨누는 상대가 엔티티일 수도 있으므로 손잡이로도 받는다.
-    private void FaceDirection(TargetRef facingTarget, float turnSpeed)
-    {
-        if (!facingTarget.Exists) return;
-
-        FaceDirection(facingTarget.Position, turnSpeed);
-    }
-
-    private void FaceDirection(Vector3 facingPosition, float turnSpeed)
-    {
-        Vector3 direction = facingPosition - transform.position;
-        direction.y = 0f;
-        if (direction.sqrMagnitude <= 0.0001f) return;
-
-        Quaternion targetRotation = Quaternion.LookRotation(direction.normalized);
-
-        // RotateTowards는 초당 turnSpeed도씩 돌고 목표에 정확히 도달해 멈춘다.
-        //
-        // 예전에는 Slerp에 (turnSpeed * deltaTime / 180)을 t로 넣었다. 그건 각속도 제한이
-        // 아니라 지수 감쇠라서 두 가지가 어긋났다:
-        //  - 끝까지 수렴하지 않는다. 720으로 두면 프레임당 남은 각도의 6.7%만 좁히므로,
-        //    90도를 도는 데 0.5초를 써도 여전히 11도가 남는다. 도착하자마자 휘두르는
-        //    첫 공격이 늘 비스듬히 나가고, 스윙 도중에도 몸이 계속 돌아가던 원인이다.
-        //  - 프레임레이트에 따라 실제 회전 속도가 달라진다(t가 dt에 선형인데 감쇠는 지수라서).
-        // 이제 rotationSpeed / blockTurnSpeed가 이름 그대로 초당 각도를 뜻한다.
-        transform.rotation = Quaternion.RotateTowards(
-            transform.rotation,
-            targetRotation,
-            turnSpeed * Time.deltaTime);
-    }
-
-    // 가려는 쪽으로 몸을 돌린다. 다 돌았으면(또는 돌 방향이 없으면) true.
-    //
-    // 회전 주도권을 에이전트에게 넘기기 전에 쓴다. NavMeshAgent의 updateRotation은 "지금 내는
-    // 속도" 쪽으로 돌리는데, 방향을 뒤집는 구간에서는 그 속도가 0을 지나며 거의 돌지 않는다 —
-    // angularSpeed를 720으로 올려 놔도 그렇다. 실측에서 암살자가 빠졌다가 돌아설 때 몸이
-    // 물러나던 쪽을 본 채로 0.3초 넘게 뒷걸음질쳤다(진행·정면 내적 -0.89에서 8도/66ms로만 회복).
-    //
-    // 스냅이 아니라 rotationSpeed로 도는 것이 요점이다. 전속력으로 달리는 중에 몸만 홱 돌리면
-    // 에이전트에는 이전 방향의 속도가 남아 그림이 통째로 역주행이 된다(ChaseBehavior 주석의 실측).
-    public bool TurnTowardsMoveDirection(float toleranceDegrees)
-    {
-        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return true;
-
-        // 가려는 쪽은 조종이 원하는 속도로 본다. 아직 경로가 안 잡혔으면 남은 목적지로 대신한다 —
-        // 출발하는 첫 프레임이 정확히 그 경우다.
-        Vector3 direction = agent.desiredVelocity;
-        direction.y = 0f;
-        if (direction.sqrMagnitude <= 0.0001f && agent.hasPath)
-        {
-            direction = agent.steeringTarget - transform.position;
-            direction.y = 0f;
-        }
-
-        // 돌 방향을 못 찾았으면 붙들고 있을 이유가 없다. 여기서 false를 돌려주면
-        // 목적지가 잡히지 않는 동안 회전이 영영 코드에 묶인다.
-        if (direction.sqrMagnitude <= 0.0001f) return true;
-
-        Vector3 forward = transform.forward;
-        forward.y = 0f;
-        if (forward.sqrMagnitude <= 0.0001f) return true;
-
-        if (Vector3.Angle(forward, direction) <= toleranceDegrees) return true;
-
-        FaceDirection(transform.position + direction, rotationSpeed);
-        return false;
-    }
+    // 가려는 쪽으로 몸을 돌린다. 다 돌았으면(또는 돌 방향이 없으면) true(FacingPart 주석 참조).
+    public bool TurnTowardsMoveDirection(float toleranceDegrees) => Facing.TurnTowardsMoveDirection(toleranceDegrees);
 
     // 상대를 충분히 마주 보고 있는가. 타깃이 없으면 판단할 근거가 없으니 true로 둔다.
-    public bool IsFacingTarget(float toleranceDegrees)
-    {
-        if (!CurrentTarget.Exists) return true;
-
-        Vector3 direction = CurrentTarget.Position - transform.position;
-        direction.y = 0f;
-        if (direction.sqrMagnitude <= 0.0001f) return true;
-
-        Vector3 forward = transform.forward;
-        forward.y = 0f;
-        if (forward.sqrMagnitude <= 0.0001f) return true;
-
-        return Vector3.Angle(forward, direction) <= toleranceDegrees;
-    }
+    public bool IsFacingTarget(float toleranceDegrees) => Facing.IsFacingTarget(toleranceDegrees);
 
     public void TriggerDead()
     {
@@ -2637,72 +1128,20 @@ public partial class UnitController : MonoBehaviour
         return true;
     }
 
-    // 맞은 방향에 맞는 피격 모션을 고른다(HitFront/Back/Left/Right).
-    // 방향 클립이 하나도 없는 리그는 예전처럼 Hit 하나로 떨어진다.
-    //
-    // 가드가 뚫린 그 한 대만은 방향과 무관하게 BlockBreak으로 낸다. 경직을 없앤 뒤에도
-    // "방패가 젖혀졌다"는 것은 보여야 하기 때문이다 — 그러지 않으면 막다 뚫린 것과
-    // 그냥 한 대 맞은 것이 화면에서 구분되지 않는다.
-    public void TriggerHit()
-    {
-        if (hitFromGuardBreak && blockBreakAnimationHash != 0)
-        {
-            hitFromGuardBreak = false;
-            PlayAnimation(blockBreakAnimationHash, true);
-            return;
-        }
-
-        hitFromGuardBreak = false;
-        int hash = ResolveHitAnimationHash();
-        PlayAnimation(hash != 0 ? hash : hitAnimationHash, true);
-    }
-
-    // 이번 피격이 "막다가 뚫린 것"인가. TakeDamage가 세우고 TriggerHit이 한 번 쓰고 내린다.
-    private bool hitFromGuardBreak;
+    // 맞은 방향에 맞는 피격 모션을 고른다(HitFront/Back/Left/Right). 가드가 뚫린 그 한 대만은
+    // 방향과 무관하게 BlockBreak으로 낸다(HitReactionPart.PlayHit 주석 참조).
+    public void TriggerHit() => HitReaction.PlayHit();
 
     public void InterruptCurrentAction()
     {
-        attackLockedUntil = 0f;
+        Swing.ReleaseLock();
         IsBlocking = false;
-        hasAgentDestination = false;
-
-        if (agent != null && agent.enabled && agent.isOnNavMesh)
-        {
-            agent.isStopped = true;
-            agent.ResetPath();
-        }
-    }
-
-    public void ApplyKnockback(float progress)
-    {
-        if (!hasPendingKnockback) return;
-        if (knockbackDirection.sqrMagnitude <= 0.0001f) return;
-        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
-
-        float distance = stats.knockbackDistance * progress;
-        Vector3 destination = transform.position + knockbackDirection.normalized * distance;
-
-        agent.Move(destination - transform.position);
+        Locomotion.Interrupt();
     }
 
     public void DisableCollider()
     {
         if (bodyCollider != null) bodyCollider.enabled = false;
-    }
-
-    // 사망 즉시 처리 — 이동 관련만 끈다. 사망 애니메이션은 아직 재생 중이어야 하므로
-    // Animator와 이 컴포넌트는 여기서 끄지 않는다(FinalizeDeath에서 처리).
-    public void DisableAgentAfterDeath()
-    {
-        if (agent == null) return;
-
-        if (agent.enabled && agent.isOnNavMesh)
-        {
-            agent.isStopped = true;
-            agent.ResetPath();
-        }
-
-        agent.enabled = false;
     }
 
     // 사망 애니메이션이 끝난 뒤 호출. Animator를 끄지 않으면 시체가 늘어날수록
@@ -2716,55 +1155,19 @@ public partial class UnitController : MonoBehaviour
 
     // 공포 상태에서는 이동속도도 함께 깎인다. 요청 속도를 따로 들고 있는 이유는
     // 감정이 바뀌었을 때 MoveTo를 기다리지 않고 바로 다시 계산하기 위해서다.
-    private void ResetCombatRecord()
-    {
-        DamageDealt = 0;
-        DamageTaken = 0;
-        Kills = 0;
-        lastAttacker = null;
-    }
+    private void ResetCombatRecord() => combatRecord.Reset();
 
     // 엔티티를 때렸을 때 기여도를 세는 자리(TargetRef.TakeDamage가 부른다).
     //
-    // 게임오브젝트끼리는 맞은 쪽이 RecordDamage로 "실제로 깎인 만큼"을 때린 쪽에 얹는다.
+    // 게임오브젝트끼리는 맞은 쪽이 DamageIntakePart에서 "실제로 깎인 만큼"을 때린 쪽에 얹는다.
     // 엔티티는 피해가 큐를 건너 ECS에서 배율까지 적용되므로 그 값이 여기로 돌아오지 않는다.
     // 그래서 휘두른 값을 그대로 센다 — MVP 선정에 쓰는 순위용 숫자라 배후 배율만큼의
     // 차이로 순서가 뒤집히지는 않는다.
-    public void CreditDamageDealt(int damage)
-    {
-        if (damage <= 0) return;
-        DamageDealt += damage;
-    }
+    public void CreditDamageDealt(int damage) => combatRecord.CreditDealt(damage);
 
     // 엔티티를 쓰러뜨렸다(EnemyWorldBridge.DrainKills가 부른다).
-    // 게임오브젝트 쪽에서는 NotifyDeath가 lastAttacker.Kills를 올리는 자리와 같다.
-    public void CreditKill() => Kills++;
-
-    private void RecordDamage(int dealt, UnitController attacker)
-    {
-        if (dealt <= 0) return;
-
-        DamageTaken += dealt;
-        if (attacker == null || attacker == this) return;
-
-        lastAttacker = attacker;
-        attacker.DamageDealt += dealt;
-    }
-
-    private void ApplyAgentSpeed(float speed)
-    {
-        requestedAgentSpeed = speed;
-        if (agent != null) agent.speed = speed * MoveMultiplier;
-    }
-
-    // 감정과 둔화가 걸린 값을 다시 계산해 에이전트에 밀어 넣는다.
-    // 둘 중 하나가 바뀌는 순간에만 부르면 되므로 매 프레임 계산하지 않는다.
-    private void RefreshAgentSpeed() => ApplyAgentSpeed(requestedAgentSpeed);
-
-    // 회전이 따라잡을 때까지 속도를 눌러 보는 안을 실측했다가 걷어냈다. 도움이 되지 않는다 —
-    // 에이전트의 회전 속도는 이동 속도와 무관해서(angularSpeed), 느리게 가면 회전이 빨리
-    // 끝나는 것이 아니라 어긋난 채로 더 오래 갈 뿐이다.
-    // (실측: 미끄러짐 지수가 0.218에서 0.259로 오히려 나빠졌다.)
+    // 게임오브젝트 쪽에서는 NotifyDeath가 LastAttacker의 처치를 올리는 자리와 같다.
+    public void CreditKill() => combatRecord.CreditKill();
 
     private float EmotionMultiplier => emotion != null ? emotion.StatMultiplier : 1f;
 
@@ -2777,118 +1180,10 @@ public partial class UnitController : MonoBehaviour
         RefreshAgentSpeed();
     }
 
-    // CurrentTarget에 값을 넣는 유일한 자리. 여기서만 넣어야 "붙어 있는 적 수"가 어긋나지 않는다.
-    private void AssignTarget(TargetRef target)
-    {
-        ReleaseTargetCount();
-        CurrentTarget = target;
-        HoldTargetCount();
-        lastTargetChangeTime = Time.time;
-#if UNITY_EDITOR
-        currentTargetName = CurrentTarget.Exists ? CurrentTarget.DebugName : "";
-#endif
-    }
+    // 명령(CommandPart)이 표적을 직접 넣거나 적대 여부를 물을 때 쓰는 입구.
+    private void AssignTarget(TargetRef target) => Targeting.Assign(target);
 
-    private bool ForceSetSharedTarget(TargetRef target)
-    {
-        if (!target.IsAlive || !IsHostileTo(target)) return false;
-
-        AssignTarget(target);
-        return true;
-    }
-
-    // 저쪽이 때려도 되는 상대인가.
-    //
-    // 게임오브젝트끼리는 예전처럼 팀으로 가른다. 엔티티는 적 팀 전용이라 팀을 물어볼 것도 없이
-    // "내가 적이 아니면 적"이다 — 고블린이 고블린을 때리는 경우는 만들지 않았다.
-    private bool IsHostileTo(TargetRef target)
-    {
-        if (target.IsUnit) return UnitRegistry.AreEnemies(this, target.Unit);
-        return target.IsEntity && team != UnitTeam.Enemy;
-    }
-
-    // 맞았을 때 때린 쪽으로 돌아설지 정한다.
-    //
-    // 예전에는 한 대만 맞으면 무조건 그쪽으로 돌아섰다. 그 한 줄이 어그로 체계를 통째로
-    // 무의미하게 만들고 있었다 — 탱커가 아무리 시선을 붙들어도 뒤에서 궁수가 한 발 쏘는
-    // 순간 몬스터가 궁수에게 달려갔다. 원작에서 방어선이 하는 일이 정확히 그 반대다.
-    //
-    // 지금은 위협 가중치를 비교한다. 나를 붙들고 있는 상대보다 무겁게 치는 쪽이 때렸을 때만
-    // 돌아선다. 그래서:
-    //  - 탱커(3.2)와 맞붙은 몬스터는 궁수(0.4)의 화살이나 암살자(0.55)의 단검에 돌아서지 않는다.
-    //    "공격 후 어그로를 탱커에게 넘기고 빠진다"가 여기서 성립한다.
-    //  - 반대로 후방을 물고 있는 몬스터는 탱커가 한 대 치면 곧바로 탱커에게 끌려온다(도발).
-    //  - 역할이 없는 유닛끼리는 가중치가 모두 1이라 항상 성립한다 — 예전 동작 그대로다.
-    private void ForceSetAttackTarget(TargetRef attacker)
-    {
-        if (!attacker.Exists || !attacker.IsAlive || !IsHostileTo(attacker)) return;
-        if (attacker == CurrentTarget && IsTargetValid()) return;
-        if (IsCommandBlockingRetarget(attacker)) return;
-        if (!ShouldSwitchAggroTo(attacker)) return;
-
-        AssignTarget(attacker);
-        ClearMoveDestination();
-    }
-
-    private bool ShouldSwitchAggroTo(TargetRef attacker)
-    {
-        // 붙들고 있는 상대가 없으면 때린 쪽을 본다. 판단할 다른 근거가 없다.
-        if (!IsTargetValid()) return true;
-
-        // 파티 집중 표적을 때리는 중이면 맞아도 흔들리지 않는다.
-        //
-        // 이게 없으면 집중 사격이 성립하지 않는다. 적은 전부 위협 가중치가 같아서(고블린 1.0)
-        // 아래 비교가 늘 참이 되고, 딜러는 맞을 때마다 때린 적에게 끌려간다 —
-        // 실측에서 창수가 집중 표적에 붙었다가 피격 한 번에 매번 다른 적으로 떨어져 나갔다.
-        // 화력을 한 곳에 모으기로 한 이상, 맞는 것은 감수해야 하는 대가다(그러라고 탱커가 있다).
-        // 다만 이미 누군가 내 간격 안까지 들어왔다면 집중을 고집하지 않는다.
-        // 붙은 놈을 두고 먼 표적을 겨누는 것은 집중이 아니라 그냥 맞아 주는 것이다.
-        if (stats.focusBonus > 0f &&
-            CurrentTarget == UnitRegistry.GetFocusTarget(team) &&
-            !ShouldKeepDistance())
-        {
-            return false;
-        }
-
-        return attacker.ThreatWeight >= CurrentTarget.ThreatWeight;
-    }
-
-    private void SetKnockbackDirection(Vector3 attackerPosition)
-    {
-        knockbackDirection = transform.position - attackerPosition;
-        knockbackDirection.y = 0f;
-        if (knockbackDirection.sqrMagnitude <= 0.0001f)
-        {
-            knockbackDirection = -transform.forward;
-        }
-
-        hasPendingKnockback = true;
-    }
-
-    private void ClearKnockback()
-    {
-        knockbackDirection = Vector3.zero;
-        hasPendingKnockback = false;
-    }
-
-    // 답은 동작이 들고 있다(UnitBehavior.LocksTarget). 어느 동작이 해당하는지는
-    // 그 동작의 파일에 적혀 있다.
-    private bool IsTargetChangeLocked()
-    {
-        UnitBehavior current = RunningBehavior;
-        return current != null && current.LocksTarget;
-    }
-
-    private bool IsNewTargetClearlyBetter(TargetRef target)
-    {
-        if (!CurrentTarget.Exists || !target.Exists) return true;
-
-        float currentSqrDistance = SqrDistanceToTarget();
-        float newSqrDistance = (target.Position - transform.position).sqrMagnitude;
-        float requiredSqrDistance = currentSqrDistance * targetSwitchDistanceRatio * targetSwitchDistanceRatio;
-
-        return newSqrDistance < requiredSqrDistance;
-    }
+    private bool IsHostileTo(TargetRef target) => Targeting.IsHostileTo(target);
 
     private void PlayAnimation(int stateHash, bool forceRestart)
     {

@@ -104,7 +104,7 @@ public static class VillageWallPalette
         {
             float moss = surface != null && surface.covered[i] ? MossAt(surface.positions[i], surface.normals[i], surface.bounds) : 0f;
             Color c = px[i];
-            float lum = c.r * 0.299f + c.g * 0.587f + c.b * 0.114f;
+            float lum = ColorMath.Luminance(c);
             float max = Mathf.Max(c.r, Mathf.Max(c.g, c.b));
             float min = Mathf.Min(c.r, Mathf.Min(c.g, c.b));
             float saturation = max > 0.001f ? (max - min) / max : 0f;

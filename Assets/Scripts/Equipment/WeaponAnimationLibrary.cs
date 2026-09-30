@@ -39,8 +39,8 @@ public class WeaponAnimationLibrary : ScriptableObject
              "기본 클립을 그대로 쓰고, 방패를 든 유닛만 방패를 앞으로 세우는 자세로 바뀐다.")]
     public List<ShieldClip> shieldClips = new List<ShieldClip>();
 
-    private static WeaponAnimationLibrary cached;
-    private static bool searched;
+    private static readonly ResourceSlot<WeaponAnimationLibrary> Slot =
+        new ResourceSlot<WeaponAnimationLibrary>(ResourceName);
 
     // 방패용으로 한 겹 덧씌운 컨트롤러. 기본 컨트롤러 하나당 하나만 만들어 모든 유닛이 나눠 쓴다 —
     // 유닛마다 만들면 스폰 수만큼 런타임 에셋이 쌓인다.
@@ -50,8 +50,7 @@ public class WeaponAnimationLibrary : ScriptableObject
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetCache()
     {
-        cached = null;
-        searched = false;
+        Slot.Reset();
 
         // 도메인 리로드를 끈 에디터에서는 이 표가 플레이를 넘어 살아남는다. 지난 판에 만든
         // 컨트롤러를 그대로 두면 재생할 때마다 하나씩 쌓이므로 여기서 걷어낸다.
@@ -60,18 +59,7 @@ public class WeaponAnimationLibrary : ScriptableObject
         ShieldVariants.Clear();
     }
 
-    public static WeaponAnimationLibrary Instance
-    {
-        get
-        {
-            if (cached != null) return cached;
-            if (searched) return null;
-
-            searched = true;
-            cached = Resources.Load<WeaponAnimationLibrary>(ResourceName);
-            return cached;
-        }
-    }
+    public static WeaponAnimationLibrary Instance => Slot.Value;
 
     // 등록되지 않은 종류(None, Shield 등)는 null — 호출 쪽이 기본 컨트롤러(맨손)로 대체한다.
     public static Entry FindEntry(WeaponType type)

@@ -1,12 +1,14 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 // 전투에 시작과 끝을 붙여주는 컴포넌트.
 // 지금까지는 스포너가 유닛을 뿌리면 끝이었고, 한쪽이 전멸해도 아무 일도 일어나지 않았다.
 // 여기서 승패를 판정하고, 아군 사망은 PartyRoster에 영구 기록한다(원작의 영구 죽음).
+//
+// 시작·끝 알림은 BattleEvents로, 쓰는 쪽이 보는 모습은 IBattleSession(GameServices.Battle)으로 내보낸다.
+// 셈법(기여도·MVP·경험치·보상)은 BattleSettlement에 있다.
 [DisallowMultipleComponent]
-public class BattleManager : MonoBehaviour
+public class BattleManager : MonoBehaviour, IBattleSession
 {
     [Header("Start")]
     [Tooltip("스포너가 유닛을 다 뿌릴 때까지 기다리는 최대 시간. 이 안에 양 팀이 모두 등장하면 전투가 시작된다.")]
@@ -28,21 +30,6 @@ public class BattleManager : MonoBehaviour
 
     [Header("Reward")]
     [SerializeField] private BattleRewardSettings rewardSettings = new BattleRewardSettings();
-
-    public static BattleManager Instance { get; private set; }
-
-    // 정적 이벤트인 이유: 인스턴스 이벤트로 두면 구독자가 BattleManager.Instance를 먼저 찾아야 해서
-    // Awake/Start 순서에 묶이고, 스크립트를 고쳐 도메인 리로드가 일어나면(플레이 중 흔한 일)
-    // 구독이 통째로 끊긴 채 복구되지 않는다. 정적 이벤트 + OnEnable 구독이면 리로드 후에도 다시 붙는다.
-    public static event Action OnBattleStarted;
-    public static event Action<BattleResult> OnBattleEnded;
-
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetStaticEvents()
-    {
-        OnBattleStarted = null;
-        OnBattleEnded = null;
-    }
 
     private readonly BattleResult result = new BattleResult();
 
@@ -69,19 +56,18 @@ public class BattleManager : MonoBehaviour
     public IReadOnlyList<UnitController> AllyRoster => allyRoster;
     public bool IsRunning => started && !ended;
 
-    // Instance 대입을 Awake가 아니라 OnEnable에서 하는 이유:
+    // 자리에 앉는 것을 Awake가 아니라 OnEnable에서 하는 이유:
     // 플레이 도중 스크립트를 고치면 도메인 리로드가 일어나는데, 이때 Unity는 OnDisable/OnEnable은
-    // 다시 부르지만 Awake는 부르지 않는다. Awake에서만 대입하면 리로드 뒤 Instance가 null로 남는다.
+    // 다시 부르지만 Awake는 부르지 않는다. Awake에서만 앉으면 리로드 뒤 자리가 빈 채로 남는다.
     private void OnEnable()
     {
-        if (Instance != null && Instance != this)
+        if (!GameServices.Battle.TryRegister(this))
         {
             Debug.LogWarning("[BattleManager] 씬에 두 개 이상 있습니다. 나중 것을 비활성화합니다.");
             enabled = false;
             return;
         }
 
-        Instance = this;
         result.Reset();
         UnitController.OnAnyUnitDied += HandleUnitDied;
         // 엔티티가 된 적은 게임오브젝트가 아니라 브리지가 죽음을 알린다.
@@ -92,7 +78,7 @@ public class BattleManager : MonoBehaviour
     {
         UnitController.OnAnyUnitDied -= HandleUnitDied;
         EnemyWorldBridge.OnEnemyKilled -= HandleEnemyEntityKilled;
-        if (Instance == this) Instance = null;
+        GameServices.Battle.Unregister(this);
     }
 
     private void HandleEnemyEntityKilled()
@@ -165,7 +151,7 @@ public class BattleManager : MonoBehaviour
 
         allyRoster.Clear();
         allyRoster.AddRange(UnitRegistry.Allies);
-        OnBattleStarted?.Invoke();
+        BattleEvents.RaiseStarted();
     }
 
     private BattleOutcome EvaluateOutcome()
@@ -206,25 +192,8 @@ public class BattleManager : MonoBehaviour
         result.Duration = elapsed;
         result.AllySurvivors = UnitRegistry.Allies.Count;
 
-        BuildRewards();
-        SelectMvp(outcome);
-        Settle(outcome);
-
-        // 이긴 층은 해금 상태에 남긴다. 층은 자동으로 이어지지 않고,
-        // 플레이어가 메인 씬에서 다시 고르는 구조라 여기서는 기록만 한다.
-        if (outcome == BattleOutcome.Victory)
-        {
-            // 재료는 해금을 기록하기 전에 굴린다. 방금 깬 층의 등급으로 받아야 한다.
-            MaterialDrops.Roll(FloorProgress.SelectedFloor, rewardSettings, result.Materials);
-            MaterialInventory.AddRange(result.Materials);
-            result.Gold = GameEconomy.FloorClearGold(FloorProgress.SelectedFloor);
-            PlayerAccount.Add(Currency.Gold, result.Gold);
-
-            // 새 콘텐츠가 열렸는지는 깨기 전후의 진행도로 가른다. 이미 깼던 층을 다시 깨면 아무것도 열리지 않는다.
-            int clearedBefore = FloorProgress.HighestCleared;
-            FloorProgress.MarkCleared(FloorProgress.SelectedFloor);
-            DungeonCatalog.CollectNewlyUnlocked(clearedBefore, FloorProgress.HighestCleared, result.UnlockedDungeons);
-        }
+        // 기여도 → MVP → 경험치 → 승리 보상. 셈법은 BattleSettlement에 있다.
+        new BattleSettlement(rewardSettings).Settle(outcome, allyRoster, FloorProgress.SelectedFloor, result);
 
         CaptureStress();
         SaveRoster();
@@ -234,7 +203,7 @@ public class BattleManager : MonoBehaviour
         // 지난 층의 잔당이 섞여 들어간다.
         EnemyHorde.Clear();
 
-        OnBattleEnded?.Invoke(result);
+        BattleEvents.RaiseEnded(result);
 
         returnTimer = returnDelay;
         returningToMain = true;
@@ -280,103 +249,5 @@ public class BattleManager : MonoBehaviour
         // 로스터 에셋이 있으면 그쪽을 우선한다. 출전하지 않은 캐릭터의 진행도가 지워지지 않도록.
         if (roster != null) SaveSystem.Save(roster.Members);
         else SaveSystem.Save(rosterBuffer);
-    }
-
-    // 참전한 아군 전원의 기여도를 결과로 옮겨 담는다. 쓰러진 동료도 포함된다 —
-    // 정산에서는 빠지지만 기여도 자체는 결과창이 보여줄 수 있어야 한다.
-    // 유닛 인스턴스는 곧 정리될 수 있으므로 결과창이 읽을 값은 여기서 복사해 둔다.
-    private void BuildRewards()
-    {
-        for (int i = 0; i < allyRoster.Count; i++)
-        {
-            UnitController unit = allyRoster[i];
-            if (unit == null) continue;
-
-            // 정산에서 빠지는 참가자도 레벨 칸은 채워 둔다. 0으로 남겨두면 결과창이
-            // "레벨 0에서 0으로"라는 없는 값을 읽게 된다.
-            int level = unit.SourceCharacter != null ? unit.SourceCharacter.Level : 0;
-
-            result.Rewards.Add(new BattleReward
-            {
-                Character = unit.SourceCharacter,
-                DisplayName = unit.SourceCharacter != null && !string.IsNullOrEmpty(unit.SourceCharacter.characterName)
-                    ? unit.SourceCharacter.characterName
-                    : unit.name,
-                Kills = unit.Kills,
-                DamageDealt = unit.DamageDealt,
-                DamageTaken = unit.DamageTaken,
-                Survived = !unit.IsDead,
-                LevelBefore = level,
-                LevelAfter = level,
-            });
-        }
-    }
-
-    // MVP는 승리했을 때, 살아남은 참가자 중에서만 뽑는다.
-    // 전멸한 판에서 최우수를 가리는 것도, 실려 나간 동료를 그 판의 최우수로 세우는 것도
-    // 이 게임에서는 말이 되지 않는다 — 끝까지 서 있는 것이 이 판의 목표다.
-    private void SelectMvp(BattleOutcome outcome)
-    {
-        if (outcome != BattleOutcome.Victory || result.Rewards.Count == 0) return;
-
-        BattleReward best = null;
-        float bestScore = float.NegativeInfinity;
-
-        for (int i = 0; i < result.Rewards.Count; i++)
-        {
-            BattleReward reward = result.Rewards[i];
-            if (!reward.Survived) continue;
-
-            float score = MvpScore(reward);
-            if (score <= bestScore) continue;
-
-            bestScore = score;
-            best = reward;
-        }
-
-        // 아무도 피해를 주지도 받지도 않은 판(예: 적이 스스로 사라진 경우)에는 MVP를 비워 둔다.
-        if (best == null || bestScore <= 0f) return;
-
-        best.IsMvp = true;
-        result.Mvp = best;
-    }
-
-    // 생존자끼리만 비교하므로 생존 가산점은 없다 — 모두가 받으면 순위가 바뀌지 않는다.
-    private float MvpScore(BattleReward reward)
-    {
-        return reward.DamageDealt
-               + reward.Kills * rewardSettings.mvpKillWeight
-               + reward.DamageTaken * rewardSettings.mvpTankWeight;
-    }
-
-    // 정산. 살아서 판을 끝낸 참가자만 대상이다 — 쓰러진 채 끝난 동료는 이번 판에서
-    // 경험치도, 스킬 해금도 받지 못한다. 원작의 죽음이 그렇듯 "쓰러졌다"가 곧 손실이어야 한다.
-    //
-    // 경험치는 "판을 끝까지 버텼는가"와 "몇을 쓰러뜨렸는가"로만 매긴다. 가한 피해는 세지 않는다 —
-    // 피해량은 결국 직업과 무기가 정하는 값이라, 같은 판을 같이 뛰어도 화력이 센 직업만
-    // 계속 앞서 나가고 탱커·지원가는 영영 뒤처진다. 그건 활약이 아니라 배역의 차이다.
-    private void Settle(BattleOutcome outcome)
-    {
-        int baseExp = outcome == BattleOutcome.Victory
-            ? rewardSettings.expOnVictory
-            : rewardSettings.expOnDefeat;
-
-        for (int i = 0; i < result.Rewards.Count; i++)
-        {
-            BattleReward reward = result.Rewards[i];
-            if (reward.Character == null || !reward.Survived) continue;
-
-            int exp = baseExp + reward.Kills * rewardSettings.expPerKill;
-            if (reward.IsMvp) exp += rewardSettings.mvpExpBonus;
-
-            reward.ExpGained = exp;
-            reward.LevelBefore = reward.Character.Level;
-            reward.Character.GainExp(exp);
-            reward.LevelAfter = reward.Character.Level;
-
-            // 레벨과 스탯이 오른 바로 뒤에 조건을 본다. 이 순서라야 "레벨 20 도달" 같은 조건이
-            // 그 레벨을 넘긴 판에서 곧바로 열린다 — 한 판 늦게 열리면 왜 열렸는지 알 수 없다.
-            SkillUnlocks.Evaluate(reward.Character, reward.UnlockedSkills);
-        }
     }
 }

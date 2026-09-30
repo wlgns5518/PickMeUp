@@ -481,7 +481,7 @@ public static class VillageGaiaSkin
         return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
     }
 
-    private static float Luminance(Color c) => c.r * 0.299f + c.g * 0.587f + c.b * 0.114f;
+    private static float Luminance(Color c) => ColorMath.Luminance(c);
 
     // 면 방향으로 세 평면 투영을 섞는다. 세운 면은 v가 높이라 세로 널은 세로로, 돌담 줄눈은 가로로 선다.
     private static Color Triplanar(Swatch swatch, Vector3 p, Vector3 n)

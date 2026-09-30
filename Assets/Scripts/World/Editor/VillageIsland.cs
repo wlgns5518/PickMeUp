@@ -338,21 +338,14 @@ public static class VillageIsland
         var mesh = AssetDatabase.LoadAssetAtPath<Mesh>(MeshPath);
         bool created = mesh == null;
         if (created) mesh = new Mesh { name = "IslandUnderside" };
-        mesh.Clear();
         mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
-        mesh.SetVertices(vertices);
-        mesh.SetUVs(0, uvs);
-        mesh.SetTriangles(triangles, 0);
-        mesh.RecalculateNormals();
-        mesh.RecalculateTangents();
-        mesh.RecalculateBounds();
+        MeshAssembly.Write(mesh, vertices, uvs, MeshAssembly.Recalculate.ForNormalMap, triangles);
         // 바깥을 보게 감았는지 확인 — 윗고리 첫 정점의 법선이 가운데 반대쪽이어야 한다.
         if (Vector3.Dot(mesh.normals[0], new Vector3(vertices[0].x, 0f, vertices[0].z)) < 0f)
         {
             for (int k = 0; k < triangles.Count; k += 3) (triangles[k + 1], triangles[k + 2]) = (triangles[k + 2], triangles[k + 1]);
             mesh.SetTriangles(triangles, 0);
-            mesh.RecalculateNormals();
-            mesh.RecalculateTangents();
+            MeshAssembly.RecalculateNow(mesh, MeshAssembly.Recalculate.Normals | MeshAssembly.Recalculate.Tangents);
         }
 
         if (created) AssetDatabase.CreateAsset(mesh, MeshPath);
@@ -377,13 +370,7 @@ public static class VillageIsland
     // 지형 바위 레이어(T_ground_rock_02) 무늬로 만든 바위 머티리얼 — 윗면 가장자리의 바위와 같은 돌이다.
     private static Material RockMaterial(TerrainData data)
     {
-        var material = AssetDatabase.LoadAssetAtPath<Material>(RockMaterialPath);
-        if (material == null)
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(RockMaterialPath));
-            material = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "M_IslandRock" };
-            AssetDatabase.CreateAsset(material, RockMaterialPath);
-        }
+        Material material = EditorMaterials.LoadOrCreateLit(RockMaterialPath, "M_IslandRock");
         TerrainLayer layer = data.terrainLayers.Length > RockLayer ? data.terrainLayers[RockLayer] : null;
         material.SetTexture("_BaseMap", layer != null ? layer.diffuseTexture : null);
         material.SetTexture("_BumpMap", layer != null ? layer.normalMapTexture : null);

@@ -1,5 +1,3 @@
-using UnityEngine;
-
 // 팀이 공유하는 "마지막으로 발견된 적" 게시판.
 //
 // 예전에는 적을 발견한 유닛이 팀 전원을 순회하며 직접 알렸다(UnitRegistry.AlertTeam).
@@ -14,63 +12,15 @@ using UnityEngine;
 //
 // 소식은 손잡이(TargetRef)다. 게임오브젝트만 담던 동안 적이 엔티티가 되자 게시판이 영영 비어,
 // 한 명이 발견한 고블린을 팀이 함께 알아채는 일이 없었다.
+//
+// 이 클래스는 입구다. 실제 값은 GameServices.Threats(ThreatBoard)가 들고 있고, 플레이를 새로
+// 시작할 때마다 새로 만들어진다 — 도메인 리로드를 끈 에디터에서 지난 판의 파괴된 유닛이 남지 않는다.
 public static class TeamThreatBoard
 {
-    private struct Entry
-    {
-        public TargetRef Target;
-        public int Version;
-    }
+    public static void Report(UnitTeam team, TargetRef target) => GameServices.Threats.Report(team, target);
 
-    // UnitTeam은 Ally/Enemy/Neutral 셋뿐이고 값이 0,1,2라 배열 첨자로 그대로 쓴다.
-    private static readonly Entry[] entries = new Entry[3];
+    public static bool TryConsume(UnitTeam team, ref int lastVersion, out TargetRef target) =>
+        GameServices.Threats.TryConsume(team, ref lastVersion, out target);
 
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetOnPlay()
-    {
-        // 도메인 리로드를 끈 에디터에서 이전 플레이의 파괴된 유닛이 남지 않도록 비운다.
-        for (int i = 0; i < entries.Length; i++) entries[i] = default;
-    }
-
-    // 적을 발견했다고 알린다. 같은 적을 다시 알리는 것은 소식이 아니므로 버전을 올리지 않는다.
-    public static void Report(UnitTeam team, TargetRef target)
-    {
-        if (!target.Exists || !target.IsAlive) return;
-
-        int index = IndexOf(team);
-        if (entries[index].Target == target) return;
-
-        entries[index].Target = target;
-        entries[index].Version++;
-    }
-
-    // 아직 받아 가지 않은 소식이 있으면 꺼내 간다.
-    // lastVersion은 부르는 쪽(유닛)이 들고 있는 값으로, 여기서 갱신해 준다.
-    public static bool TryConsume(UnitTeam team, ref int lastVersion, out TargetRef target)
-    {
-        target = TargetRef.None;
-
-        int index = IndexOf(team);
-        Entry entry = entries[index];
-        if (entry.Version == lastVersion) return false;
-
-        // 소식을 확인한 것 자체는 기록한다. 대상이 이미 죽었더라도 다음 프레임에 또 묻지 않도록.
-        lastVersion = entry.Version;
-
-        TargetRef candidate = entry.Target;
-        if (!candidate.Exists || !candidate.IsAlive) return false;
-
-        target = candidate;
-        return true;
-    }
-
-    // 게시판에 올라온 소식의 현재 번호. 새로 스폰된 유닛이 "이미 지난 소식"부터
-    // 훑지 않도록 시작값을 맞추는 데 쓴다.
-    public static int VersionOf(UnitTeam team) => entries[IndexOf(team)].Version;
-
-    private static int IndexOf(UnitTeam team)
-    {
-        int index = (int)team;
-        return index >= 0 && index < entries.Length ? index : 0;
-    }
+    public static int VersionOf(UnitTeam team) => GameServices.Threats.VersionOf(team);
 }

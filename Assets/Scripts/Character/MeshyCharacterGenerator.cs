@@ -1,14 +1,14 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
-using System.Text;
+using System.Threading.Tasks;
 using UnityEngine;
-using UnityEngine.Networking;
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
 
+// 소환 한 장을 만드는 순서만 쥐고 있는 곳 — 속 굴리기 → 이름 → 초상화 → 저장.
+//
+// 각 단계는 따로 산다. 속(직업·능력치)은 CharacterRoller, 이름은 CharacterNameGenerator(Gemini),
+// 초상화는 CharacterPortraitGenerator(Meshy), 남기기는 CharacterAssetWriter. 통신은 그 아래
+// MeshyClient/GeminiClient 한 벌을 모두가 같이 쓴다. 여기 남은 것은 인스펙터 값과 순서뿐이다.
 public class MeshyCharacterGenerator : MonoBehaviour
 {
     [Header("Meshy API")]
@@ -48,38 +48,6 @@ public class MeshyCharacterGenerator : MonoBehaviour
     [SerializeField] private string imageDir = "Assets/Character/CharacterImage";
     [SerializeField] private string assetDir = "Assets/Character/Characters";
 
-    // API 키는 환경변수 또는 Secrets/apikeys.json 에서 읽는다 (ApiKeys.cs).
-    private static string ApiKey    => ApiKeys.Meshy;
-    private static string GeminiKey => ApiKeys.Gemini;
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 상수 / 데이터 테이블
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private const string TaskUrl = "https://api.meshy.ai/openapi/v1/text-to-image";
-
-    // 직업: enum, 영어 프롬프트, 가중치를 1:1 매칭으로 묶음
-    private static readonly JobType[]  JobPool = {
-        JobType.Melee, JobType.Mage, JobType.Archer, JobType.Assassin, JobType.Tank, JobType.Support,
-        JobType.Lancer,
-        JobType.Carpenter, JobType.Cook, JobType.Blacksmith, JobType.Tanner,
-    };
-    private static readonly string[]   JobPromptsEn = {
-        "swordsman", "mage", "archer", "assassin", "tank knight", "priest healer",
-        "spearman",
-        "carpenter", "cook", "blacksmith", "leatherworker",
-    };
-    private static readonly int[]      JobWeights = { 12, 12, 12, 12, 12, 12, 12,  6, 5, 6, 5 };
-
-    private static readonly string[]   Traits   = { "냉소적인", "낙천적인", "고독한", "충직한", "야망 있는", "수줍은", "비밀스러운" };
-    private static readonly string[]   TraitsEn = { "cynical", "cheerful", "lonely", "loyal", "ambitious", "shy", "mysterious" };
-
-    // 폴링 상태 키워드 (소문자) — 매 폴링에서 HashSet 조회 O(1)
-    private static readonly HashSet<string> SucceededStatus = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        { "succeeded", "success", "completed", "done", "finished" };
-    private static readonly HashSet<string> FailedStatus = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        { "failed", "canceled", "cancelled", "expired", "error" };
-
     // ─────────────────────────────────────────────────────────────────────────
     // 공개 API
     // ─────────────────────────────────────────────────────────────────────────
@@ -89,48 +57,30 @@ public class MeshyCharacterGenerator : MonoBehaviour
     /// forcedStars가 1 이상이면 그 등급으로 고정한다 — 소환소가 확률표로 굴린 결과를 넘긴다.
     public IEnumerator GenerateCharacter(Action<CharacterSO> onUpdate, string presetName = null, int forcedStars = 0)
     {
-        int jIdx = RollWeightedIndex(JobWeights);
-        int tIdx = UnityEngine.Random.Range(0, Traits.Length);
-
-        CharacterSO so = ScriptableObject.CreateInstance<CharacterSO>();
-        // 식별자는 무엇보다 먼저 박는다. 아래에서 에셋으로 저장할 때 이 값이 같이 실려야
-        // 그 id로 굽는 몸(CharacterModelStore)과 세이브 기록이 에디터를 다시 켜도 이어진다.
-        so.EnsureId();
-        // 등급은 소환 확률표가 정한다. 넘겨받은 값이 없으면 고급 소환과 같은 확률로 굴린다.
-        so.starCount = forcedStars > 0 ? Mathf.Clamp(forcedStars, 1, 7) : SummonTable.RollStars(SummonKind.Paid);
-        so.level = 1; so.exp = 0; so.expToNext = 10;
-        so.job = JobPool[jIdx];
-        // 마법사는 태어날 때 속성이 하나 정해지고 평생 바뀌지 않는다.
-        // 그래서 같은 마법사라도 어느 속성을 뽑았느냐가 그 캐릭터의 쓸모를 가른다 —
-        // 소환의 결과가 등급뿐 아니라 속성으로도 갈리는 셈이다.
-        so.affinity = so.job == JobType.Mage ? SpellCatalog.RollAffinity() : MagicAffinity.None;
+        CharacterRoller.JobEntry job = CharacterRoller.RollJob();
+        CharacterRoller.Trait trait = CharacterRoller.RollTrait();
+        CharacterSO so = CharacterRoller.Create(job, forcedStars);
 
         if (!string.IsNullOrEmpty(presetName))
+        {
             so.characterName = presetName;
+        }
         else
-            yield return GenerateName(name => so.characterName = name);
+        {
+            Task<string> naming = Names().GenerateOneAsync();
+            yield return new WaitForTask(naming);
+            so.characterName = naming.Status == TaskStatus.RanToCompletion ? naming.Result : CharacterNameGenerator.Fallback;
+        }
 
-        // 마법사는 속성이 곧 정체성이라 설명에도 적는다 — "빙결 마법사"와 "화염 마법사"는 다른 캐릭터다.
-        string jobLabel = so.job == JobType.Mage
-            ? $"{SpellCatalog.Korean(so.affinity)} {CharacterRules.Korean(so.job)}"
-            : CharacterRules.Korean(so.job);
-        so.description  = $"{Traits[tIdx]} 인간 {jobLabel}";
-        so.constitution = RollConstitution(so.job);
-        RollInitialStats(so);
-        so.name = $"{so.characterName} ({so.starCount}★)";
-
+        CharacterRoller.Finish(so, trait);
         onUpdate?.Invoke(so);
 
-        // Meshy text-to-image
-        string imageUrl = null;
-        yield return GenerateImageUrl(BuildPortraitPrompt(jIdx, tIdx, so), u => imageUrl = u);
+        Task<Texture2D> drawing = Portraits().GenerateAsync(CharacterPortraitGenerator.Prompt(job, trait));
+        yield return new WaitForTask(drawing);
+        if (drawing.Status == TaskStatus.RanToCompletion && drawing.Result != null)
+            ApplyPortrait(drawing.Result, so);
 
-        if (!string.IsNullOrEmpty(imageUrl))
-            yield return DownloadAndApplyPortrait(imageUrl, so);
-
-#if UNITY_EDITOR
-        if (saveAsAsset) SaveCharacterAsAsset(so);
-#endif
+        if (saveAsAsset) Writer().SaveCharacter(so);
 
         onUpdate?.Invoke(so);
     }
@@ -138,193 +88,49 @@ public class MeshyCharacterGenerator : MonoBehaviour
     /// 한 번 호출로 N개 이름 받기 — RPM 부담 회피
     public IEnumerator GenerateNames(int count, Action<List<string>> onComplete)
     {
-        var result = new List<string>(count);
-        if (count <= 0) { onComplete?.Invoke(result); yield break; }
+        Task<List<string>> naming = Names().GenerateManyAsync(count);
+        yield return new WaitForTask(naming);
 
-        if (string.IsNullOrEmpty(GeminiKey))
+        List<string> names = naming.Status == TaskStatus.RanToCompletion ? naming.Result : new List<string>();
+        while (names.Count < count) names.Add(CharacterNameGenerator.Fallback);
+        onComplete?.Invoke(names);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 단계별 일꾼 — 인스펙터 값을 그때그때 읽어 만든다(플레이 중에 고친 값도 다음 소환부터 먹는다).
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private CharacterNameGenerator Names()
+    {
+        var gemini = new GeminiClient(new GeminiClient.Options
         {
-            FillFallback(result, count);
-            onComplete?.Invoke(result);
-            yield break;
-        }
-
-        int seed = UnityEngine.Random.Range(1000, 99999);
-        string prompt =
-            $"서양 판타지 RPG 캐릭터 이름 {count}개를 만들어줘. " +
-            "엘프어/고대어 느낌의 외국식 이름. 예: 카엘리온, 아르웬, 드라키엘, 셀레스티아. " +
-            "한 줄에 하나씩 한글 2~6글자로 음역. " +
-            "번호, 따옴표, 마침표, 괄호, 설명 절대 금지. 이름 외 다른 텍스트 금지. " +
-            $"모두 서로 다른 이름. 시드: {seed}";
-
-        int maxTokens = Mathf.Clamp(count * 12, 30, 400);
-        string response = null;
-        yield return SendGemini(prompt, 1.3f, maxTokens, "배치 이름", r => response = r);
-
-        if (!string.IsNullOrEmpty(response))
-            ExtractHangulNames(ExtractGeminiText(response), count, result);
-
-        FillFallback(result, count);
-        onComplete?.Invoke(result);
+            RateLimitRetries = gemini429MaxRetries,
+            FallbackWaitSeconds = gemini429FallbackWait,
+        });
+        return new CharacterNameGenerator(gemini, geminiModel);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 캐릭터 데이터 롤
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private static void RollInitialStats(CharacterSO so)
+    private CharacterPortraitGenerator Portraits()
     {
-        int baseV = 5 + so.starCount * 2;
-        so.stats.strength     = baseV + UnityEngine.Random.Range(0, 4);
-        so.stats.intelligence = baseV + UnityEngine.Random.Range(0, 4);
-        so.stats.vitality     = baseV + UnityEngine.Random.Range(0, 4);
-        so.stats.agility      = baseV + UnityEngine.Random.Range(0, 4);
-
-        int hidden = 5 + so.starCount;
-        so.hiddenStats.diligence = hidden + UnityEngine.Random.Range(-2, 3);
-        so.hiddenStats.stamina   = hidden + UnityEngine.Random.Range(-2, 3);
-        so.hiddenStats.stress    = UnityEngine.Random.Range(0, 10);
-        so.hiddenStats.mental = CharacterRules.IsFragileMental(so.starCount)
-            ? UnityEngine.Random.Range(1, 4)
-            : hidden + UnityEngine.Random.Range(-1, 4);
-        so.hiddenStats.skill  = hidden + UnityEngine.Random.Range(-2, 3);
-        so.hiddenStats.body   = hidden + UnityEngine.Random.Range(-1, 4);
-        so.hiddenStats.sanity = hidden + UnityEngine.Random.Range(-1, 4);
-    }
-
-    private static Constitution RollConstitution(JobType job)
-    {
-        Constitution c = new Constitution { name = "균형" };
-        switch (job)
+        var meshy = new MeshyClient(new MeshyClient.Options
         {
-            case JobType.Melee:      c.name = "근육질"; c.strengthGrowth = 1.6f; c.vitalityGrowth = 1.2f; c.agilityGrowth = 0.8f; c.intelligenceGrowth = 0.4f; break;
-            case JobType.Mage:       c.name = "현자";   c.intelligenceGrowth = 1.8f; c.agilityGrowth = 0.6f; c.vitalityGrowth = 0.6f; c.strengthGrowth = 0.4f; break;
-            case JobType.Archer:     c.name = "민첩한"; c.agilityGrowth = 1.6f; c.strengthGrowth = 1f;   c.intelligenceGrowth = 0.8f; c.vitalityGrowth = 0.6f; break;
-            case JobType.Assassin:   c.name = "그림자"; c.agilityGrowth = 1.8f; c.strengthGrowth = 1.0f; c.intelligenceGrowth = 0.7f; c.vitalityGrowth = 0.5f; break;
-            case JobType.Tank:       c.name = "강건한"; c.vitalityGrowth = 1.8f; c.strengthGrowth = 1.2f; c.intelligenceGrowth = 0.5f; c.agilityGrowth = 0.5f; break;
-            case JobType.Support:    c.name = "조화";   c.intelligenceGrowth = 1.4f; c.vitalityGrowth = 1.0f; c.agilityGrowth = 0.8f; c.strengthGrowth = 0.8f; break;
-            // 창수는 검사보다 팔이 길고 자세가 낮다 — 힘보다 균형과 지구력에 가깝게 잡았다.
-            case JobType.Lancer:     c.name = "곧은";   c.strengthGrowth = 1.3f; c.agilityGrowth = 1.2f; c.vitalityGrowth = 1.0f; c.intelligenceGrowth = 0.5f; break;
-            case JobType.Carpenter:  c.name = "근면";   c.strengthGrowth = 1.2f; c.vitalityGrowth = 1.1f; c.agilityGrowth = 0.9f; c.intelligenceGrowth = 0.8f; break;
-            case JobType.Cook:       c.name = "온화";   c.vitalityGrowth = 1.2f; c.intelligenceGrowth = 1.1f; c.agilityGrowth = 0.9f; c.strengthGrowth = 0.8f; break;
-            case JobType.Blacksmith: c.name = "강인";   c.strengthGrowth = 1.5f; c.vitalityGrowth = 1.3f; c.agilityGrowth = 0.6f; c.intelligenceGrowth = 0.6f; break;
-            case JobType.Tanner:     c.name = "손재주"; c.agilityGrowth = 1.3f; c.intelligenceGrowth = 1.1f; c.strengthGrowth = 0.9f; c.vitalityGrowth = 0.7f; break;
-        }
-        c.strengthGrowth     *= UnityEngine.Random.Range(0.85f, 1.15f);
-        c.intelligenceGrowth *= UnityEngine.Random.Range(0.85f, 1.15f);
-        c.vitalityGrowth     *= UnityEngine.Random.Range(0.85f, 1.15f);
-        c.agilityGrowth      *= UnityEngine.Random.Range(0.85f, 1.15f);
-        return c;
+            PollIntervalSeconds = pollInterval,
+            TimeoutSeconds = timeoutSeconds,
+            Retry = new RetryPolicy(maxRetries, RetryPolicy.IsTransient,
+                (attempt, reply) => TimeSpan.FromSeconds(baseRetryDelay * Math.Pow(2, attempt))),
+            RetryLogLabel = "Meshy",
+        });
+        return new CharacterPortraitGenerator(meshy, aiModel);
     }
 
-    private static int RollWeightedIndex(int[] weights)
+    private CharacterAssetWriter Writer() => new CharacterAssetWriter(imageDir, assetDir, roster);
+
+    private void ApplyPortrait(Texture2D tex, CharacterSO so)
     {
-        int total = 0;
-        for (int i = 0; i < weights.Length; i++) total += weights[i];
-        if (total <= 0) return 0;
-        int roll = UnityEngine.Random.Range(0, total);
-        int acc = 0;
-        for (int i = 0; i < weights.Length; i++)
-        {
-            acc += weights[i];
-            if (roll < acc) return i;
-        }
-        return weights.Length - 1;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Meshy: text-to-image
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private string BuildPortraitPrompt(int jIdx, int tIdx, CharacterSO so)
-    {
-        return
-            $"A single {TraitsEn[tIdx]} human {JobPromptsEn[jIdx]} character, " +
-            "upper body portrait from the waist up, natural relaxed standing pose, " +
-            "slight three-quarter view, looking forward, " +
-            "semi-realistic mature fantasy illustration, detailed face and costume, " +
-            "cinematic lighting, painterly style, " +
-            "PURE SOLID WHITE BACKGROUND #FFFFFF, completely white background, " +
-            "no scenery, no environment, no gradient, no shadow on the ground, " +
-            "no props, no other characters, no text, no logo, " +
-            "not cute, not chibi, not childish, adult proportions, " +
-            "character centered and fully visible, high quality";
-    }
-
-    private IEnumerator GenerateImageUrl(string prompt, Action<string> onComplete)
-    {
-        string body = "{\"ai_model\":" + EscapeJson(aiModel) + ",\"prompt\":" + EscapeJson(prompt) + "}";
-
-        string createResponse = null;
-        yield return SendMeshyWithRetry(TaskUrl, "POST", body, "이미지 태스크 생성", r => createResponse = r);
-        if (string.IsNullOrEmpty(createResponse)) { onComplete?.Invoke(null); yield break; }
-
-        // 동기 응답에 URL이 바로 있으면 사용
-        string immediate = ExtractFirstUrl(createResponse);
-        if (!string.IsNullOrEmpty(immediate)) { onComplete?.Invoke(immediate); yield break; }
-
-        string taskId = ExtractStringField(createResponse, "result")
-                     ?? ExtractStringField(createResponse, "id");
-        if (string.IsNullOrEmpty(taskId))
-        {
-            Debug.LogError($"[Meshy] 태스크 ID/이미지 URL 못 찾음: {createResponse}");
-            onComplete?.Invoke(null);
-            yield break;
-        }
-
-        yield return PollTaskUntilDone($"{TaskUrl}/{taskId}", "이미지", onComplete);
-    }
-
-    // 폴링 — text-to-image / 향후 다른 비동기 태스크에도 재사용 가능
-    private IEnumerator PollTaskUntilDone(string statusUrl, string label, Action<string> onComplete)
-    {
-        float elapsed = 0f;
-
-        while (elapsed < timeoutSeconds)
-        {
-            string body = null;
-            yield return SendMeshyWithRetry(statusUrl, "GET", null, $"{label} 폴링", r => body = r);
-
-            if (!string.IsNullOrEmpty(body))
-            {
-                string status = ExtractStringField(body, "status") ?? ExtractStringField(body, "task_status");
-                string url = ExtractFirstUrl(body);
-
-                if (SucceededStatus.Contains(status ?? "") ||
-                    (status != null && !FailedStatus.Contains(status) && !string.IsNullOrEmpty(url) && url != statusUrl))
-                {
-                    onComplete?.Invoke(url);
-                    yield break;
-                }
-                if (FailedStatus.Contains(status ?? ""))
-                {
-                    Debug.LogError($"[Meshy] {label} 종료({status}): {body}");
-                    onComplete?.Invoke(null);
-                    yield break;
-                }
-            }
-
-            yield return new WaitForSeconds(pollInterval);
-            elapsed += pollInterval;
-        }
-
-        Debug.LogError($"[Meshy] {label} 폴링 타임아웃");
-        onComplete?.Invoke(null);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 이미지 다운로드 / 배경 처리 / 저장
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private IEnumerator DownloadAndApplyPortrait(string imageUrl, CharacterSO so)
-    {
-        Texture2D tex = null;
-        yield return DownloadTexture(imageUrl, t => tex = t);
-        if (tex == null) { Debug.LogWarning("[Meshy] 이미지 다운로드 null"); yield break; }
-
         if (transparentBackground)
-            tex = MakeWhiteTransparent(tex, whiteThreshold, softEdge);
+            tex = WhiteBackgroundRemover.Apply(tex, whiteThreshold, softEdge);
 
-        so.portrait = SavePortraitAndLoadSprite(tex, so.characterName, out string assetPath);
+        so.portrait = Writer().StorePortrait(tex, so.characterName, out string assetPath);
         so.portraitAssetPath = assetPath;
 
 #if UNITY_EDITOR
@@ -333,444 +139,5 @@ public class MeshyCharacterGenerator : MonoBehaviour
         // 빌드에서는 이 텍스처가 곧 초상화 스프라이트의 원본이라 남겨 둔다.
         Destroy(tex);
 #endif
-    }
-
-    private static IEnumerator DownloadTexture(string url, Action<Texture2D> onComplete)
-    {
-        using (UnityWebRequest req = UnityWebRequestTexture.GetTexture(url))
-        {
-            yield return req.SendWebRequest();
-            if (req.result == UnityWebRequest.Result.Success)
-                onComplete?.Invoke(DownloadHandlerTexture.GetContent(req));
-            else
-            {
-                Debug.LogError($"[Meshy] 이미지 다운로드 실패({req.responseCode}): {req.error}");
-                onComplete?.Invoke(null);
-            }
-        }
-    }
-
-    private static Texture2D MakeWhiteTransparent(Texture2D src, int threshold, bool softEdge)
-    {
-        try
-        {
-            Color32[] pixels = src.GetPixels32();
-            float t = threshold;
-            float range = Mathf.Max(1f, 255f - t);
-
-            for (int i = 0; i < pixels.Length; i++)
-            {
-                Color32 c = pixels[i];
-                int minRgb = c.r < c.g ? (c.r < c.b ? c.r : c.b) : (c.g < c.b ? c.g : c.b);
-                if (minRgb >= 255)        c.a = 0;
-                else if (minRgb >= threshold)
-                    c.a = softEdge ? (byte)Mathf.RoundToInt((1f - (minRgb - t) / range) * 255f) : (byte)0;
-                pixels[i] = c;
-            }
-
-            // 원본이 RGBA32면 그 자리에서 적용해서 추가 alloc 피함
-            if (src.format == TextureFormat.RGBA32)
-            {
-                src.SetPixels32(pixels);
-                src.Apply();
-                return src;
-            }
-
-            var result = new Texture2D(src.width, src.height, TextureFormat.RGBA32, false);
-            result.SetPixels32(pixels);
-            result.Apply();
-            // 내려받은 원본은 여기서 역할이 끝났다. 런타임 텍스처라 지우지 않으면 소환할 때마다 한 장씩 남는다.
-            Destroy(src);
-            return result;
-        }
-        catch (Exception e)
-        {
-            Debug.LogWarning($"[Meshy] 배경 투명 처리 실패, 원본 사용: {e.Message}");
-            return src;
-        }
-    }
-
-    private Sprite SavePortraitAndLoadSprite(Texture2D tex, string characterName, out string assetPath)
-    {
-        assetPath = null;
-#if UNITY_EDITOR
-        try
-        {
-            string fullDir = Path.Combine(Path.GetDirectoryName(Application.dataPath), imageDir);
-            Directory.CreateDirectory(fullDir);
-
-            string filename = $"{SanitizeFileName(characterName ?? "character")}_{DateTime.Now:yyyyMMdd_HHmmss}_{UnityEngine.Random.Range(1000, 9999)}.png";
-            File.WriteAllBytes(Path.Combine(fullDir, filename), tex.EncodeToPNG());
-
-            assetPath = $"{imageDir}/{filename}".Replace('\\', '/');
-            AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
-
-            if (AssetImporter.GetAtPath(assetPath) is TextureImporter importer)
-            {
-                importer.textureType = TextureImporterType.Sprite;
-                importer.spriteImportMode = SpriteImportMode.Single;
-                importer.SaveAndReimport();
-            }
-            return AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
-        }
-        catch (Exception e)
-        {
-            Debug.LogError($"[Meshy] PNG 저장 실패: {e.Message}");
-            return null;
-        }
-#else
-        // FullRect로 만든다. 기본값(Tight)은 알파 외곽선을 따라 폴리곤을 뜨는데, 카드에 그대로
-        // 붙일 사각 초상화라 얻는 것 없이 시간만 든다(1024짜리 한 장에 수 ms).
-        return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f),
-            100f, 0, SpriteMeshType.FullRect);
-#endif
-    }
-
-#if UNITY_EDITOR
-    private void SaveCharacterAsAsset(CharacterSO so)
-    {
-        try
-        {
-            string fullDir = Path.Combine(Path.GetDirectoryName(Application.dataPath), assetDir);
-            Directory.CreateDirectory(fullDir);
-
-            string path = AssetDatabase.GenerateUniqueAssetPath(
-                $"{assetDir}/{SanitizeFileName(so.characterName)}.asset".Replace('\\', '/'));
-            AssetDatabase.CreateAsset(so, path);
-            RegisterInRoster(so);
-            AssetDatabase.SaveAssets();
-        }
-        catch (Exception e) { Debug.LogError($"[Meshy] CharacterSO 저장 실패: {e.Message}"); }
-    }
-
-    // 저장만 하고 명단에 얹지 않으면, 이번 판에는 손에 들어온 것처럼 보이지만
-    // 다음에 켤 때 보유 명단은 로스터 에셋에서 다시 만들어지므로 그 캐릭터만 사라진다.
-    // (실제로 .asset은 일곱인데 편성 창에는 다섯만 나오는 상태였다.)
-    private void RegisterInRoster(CharacterSO so)
-    {
-        CharacterRosterSO target = roster != null ? roster : FindSingleRoster();
-        if (target == null)
-        {
-            Debug.LogWarning($"[Meshy] 보유 명단(CharacterRosterSO)을 찾지 못해 {so.characterName}이(가) 명단에 오르지 않았습니다. " +
-                             "생성기의 Roster 칸에 로스터 에셋을 지정하세요.");
-            return;
-        }
-
-        target.EditorRegister(so);
-    }
-
-    // 로스터가 하나뿐일 때만 자동으로 고른다. 여럿이면 어느 쪽에 얹어야 할지 알 수 없으므로
-    // 조용히 아무 데나 넣지 않고 인스펙터 지정을 요구한다.
-    private static CharacterRosterSO FindSingleRoster()
-    {
-        string[] guids = AssetDatabase.FindAssets("t:CharacterRosterSO");
-        if (guids.Length != 1) return null;
-
-        return AssetDatabase.LoadAssetAtPath<CharacterRosterSO>(AssetDatabase.GUIDToAssetPath(guids[0]));
-    }
-#endif
-
-    private static string SanitizeFileName(string name)
-    {
-        if (string.IsNullOrEmpty(name)) return "character";
-        char[] invalid = Path.GetInvalidFileNameChars();
-        var sb = new StringBuilder(name.Length);
-        foreach (char c in name)
-            sb.Append(Array.IndexOf(invalid, c) >= 0 || c == ' ' ? '_' : c);
-        return sb.ToString();
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Gemini
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private IEnumerator GenerateName(Action<string> onComplete)
-    {
-        if (string.IsNullOrEmpty(GeminiKey))
-        {
-            Debug.LogWarning("[Gemini] API 키 없음 → 이름없음");
-            onComplete?.Invoke("이름없음");
-            yield break;
-        }
-
-        int seed = UnityEngine.Random.Range(1000, 99999);
-        string prompt =
-            "서양 판타지 RPG 캐릭터 이름 하나만 만들어줘. " +
-            "엘프어/고대어 느낌의 외국식 이름. 예: 카엘리온, 아르웬, 발타자르, 셀레스티아, 드라키엘. " +
-            "한글 2~6글자로 음역해서 출력. 이름만 출력, 다른 설명/따옴표/마침표/괄호 금지. " +
-            $"시드: {seed}";
-
-        string response = null;
-        yield return SendGemini(prompt, 1.2f, 20, "이름", r => response = r);
-
-        string name = string.IsNullOrEmpty(response) ? "" : CleanName(ExtractGeminiText(response));
-        onComplete?.Invoke(string.IsNullOrEmpty(name) ? "이름없음" : name);
-    }
-
-    /// 공통 Gemini POST + 429 재시도. 성공 시 응답 본문, 실패 시 null.
-    private IEnumerator SendGemini(string prompt, float temperature, int maxTokens, string label, Action<string> onComplete)
-    {
-        string model = (geminiModel ?? "").Trim().Trim('"', '\'', '/', ' ');
-        if (model.StartsWith("models/")) model = model.Substring("models/".Length);
-        if (string.IsNullOrEmpty(model))
-        {
-            Debug.LogError("[Gemini] 모델 이름 비어있음");
-            onComplete?.Invoke(null);
-            yield break;
-        }
-
-        string url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GeminiKey}";
-        string body =
-            "{\"contents\":[{\"parts\":[{\"text\":" + EscapeJson(prompt) + "}]}]," +
-            "\"generationConfig\":{" +
-                $"\"temperature\":{temperature.ToString(System.Globalization.CultureInfo.InvariantCulture)}," +
-                $"\"maxOutputTokens\":{maxTokens}," +
-                "\"thinkingConfig\":{\"thinkingBudget\":0}" +
-            "}}";
-
-        int attempt = 0;
-        while (true)
-        {
-            string responseText = null;
-            long code = 0;
-            bool success = false;
-
-            using (UnityWebRequest req = new UnityWebRequest(url, "POST"))
-            {
-                req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
-                req.downloadHandler = new DownloadHandlerBuffer();
-                req.SetRequestHeader("Content-Type", "application/json; charset=utf-8");
-
-                yield return req.SendWebRequest();
-                code = req.responseCode;
-                responseText = req.downloadHandler.text;
-                success = req.result == UnityWebRequest.Result.Success;
-            }
-
-            if (success) { onComplete?.Invoke(responseText); yield break; }
-
-            if (code == 429 && attempt < gemini429MaxRetries)
-            {
-                float wait = ParseRetryDelaySeconds(responseText);
-                if (wait <= 0f) wait = gemini429FallbackWait;
-                wait = Mathf.Clamp(wait, 1f, 120f) + 1f;
-                Debug.LogWarning($"[Gemini] {label} 429. {wait:0}s 후 재시도 ({attempt + 1}/{gemini429MaxRetries})");
-                yield return new WaitForSeconds(wait);
-                attempt++;
-                continue;
-            }
-
-            Debug.LogWarning($"[Gemini] {label} 실패({code}):\n{responseText}");
-            onComplete?.Invoke(null);
-            yield break;
-        }
-    }
-
-    // Gemini 응답 본문에서 candidates[0].content.parts[0].text 추출 — 정규식/JsonUtility 없이
-    private static string ExtractGeminiText(string json) =>
-        ExtractStringField(json, "text") ?? "";
-
-    // 여러 줄 응답에서 마지막 한글 라인만 단일 이름으로
-    private static string CleanName(string raw)
-    {
-        if (string.IsNullOrEmpty(raw)) return "";
-
-        string[] lines = raw.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-        string picked = null;
-        for (int i = lines.Length - 1; i >= 0; i--)
-        {
-            string t = lines[i].Trim();
-            if (t.Length == 0 || t.StartsWith("**") || t.StartsWith("##")) continue;
-            if (t.StartsWith("THOUGHTS", StringComparison.OrdinalIgnoreCase)) continue;
-            if (ContainsHangul(t)) { picked = t; break; }
-        }
-        if (picked == null) return "";
-
-        int s = -1, e = -1;
-        for (int i = 0; i < picked.Length; i++)
-        {
-            if (IsHangul(picked[i])) { if (s < 0) s = i; e = i; }
-            else if (s >= 0) break;
-        }
-        return s < 0 ? "" : picked.Substring(s, e - s + 1);
-    }
-
-    private static void ExtractHangulNames(string raw, int wanted, List<string> outList)
-    {
-        if (string.IsNullOrEmpty(raw)) return;
-        foreach (string line in raw.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (outList.Count >= wanted) break;
-            string t = line.Trim();
-            if (t.StartsWith("THOUGHTS", StringComparison.OrdinalIgnoreCase)) continue;
-
-            int s = -1, e = -1;
-            for (int i = 0; i < t.Length; i++)
-            {
-                if (IsHangul(t[i])) { if (s < 0) s = i; e = i; }
-                else if (s >= 0) break;
-            }
-            if (s >= 0) outList.Add(t.Substring(s, e - s + 1));
-        }
-    }
-
-    private static void FillFallback(List<string> list, int count)
-    {
-        while (list.Count < count) list.Add("이름없음");
-    }
-
-    private static float ParseRetryDelaySeconds(string json)
-    {
-        if (string.IsNullOrEmpty(json)) return 0f;
-        int i = json.IndexOf("\"retryDelay\"");
-        if (i < 0) return 0f;
-        i = json.IndexOf('"', i + 12);
-        if (i < 0) return 0f;
-        i = json.IndexOf('"', i + 1) + 1;
-        int e = json.IndexOf('"', i);
-        if (e < 0) return 0f;
-        string v = json.Substring(i, e - i);
-        if (v.EndsWith("s")) v = v.Substring(0, v.Length - 1);
-        return float.TryParse(v, System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture, out float seconds) ? seconds : 0f;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 공통 HTTP / 파싱 유틸
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private IEnumerator SendMeshyWithRetry(string url, string method, string body, string label, Action<string> onComplete)
-    {
-        int attempt = 0;
-        while (true)
-        {
-            UnityWebRequest req;
-            if (method == "GET") req = UnityWebRequest.Get(url);
-            else
-            {
-                req = new UnityWebRequest(url, method);
-                req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body ?? ""));
-                req.downloadHandler = new DownloadHandlerBuffer();
-                req.SetRequestHeader("Content-Type", "application/json");
-            }
-            req.SetRequestHeader("Authorization", "Bearer " + ApiKey);
-
-            using (req)
-            {
-                yield return req.SendWebRequest();
-                long code = req.responseCode;
-
-                if (req.result == UnityWebRequest.Result.Success)
-                {
-                    onComplete?.Invoke(req.downloadHandler.text);
-                    yield break;
-                }
-
-                bool retriable = code == 429 || (code >= 500 && code <= 504);
-                if (!retriable || attempt >= maxRetries)
-                {
-                    Debug.LogError($"[Meshy] {label} 실패({code}): {req.error}\n{req.downloadHandler.text}");
-                    onComplete?.Invoke(null);
-                    yield break;
-                }
-
-                float delay = baseRetryDelay * Mathf.Pow(2f, attempt);
-                Debug.LogWarning($"[Meshy] {label} {code} 재시도 #{attempt + 1} ({delay:0.0}s 후)");
-                yield return new WaitForSeconds(delay);
-                attempt++;
-            }
-        }
-    }
-
-    // 응답에서 첫 번째 https://... URL 토큰만 잡아냄
-    private static string ExtractFirstUrl(string json)
-    {
-        if (string.IsNullOrEmpty(json)) return null;
-        int s = json.IndexOf("https://");
-        if (s < 0) return null;
-        int e = s;
-        while (e < json.Length && json[e] != '"' && json[e] != ' ' && json[e] != '\n' && json[e] != '\r') e++;
-        return json.Substring(s, e - s);
-    }
-
-    // "field": "value" 문자열 필드 추출 (JSON 트리 파싱 없이).
-    //
-    // 값의 이스케이프는 반드시 되돌려야 한다. 배치 이름은 "가\n나\n다"처럼 한 문자열에 담겨 오는데,
-    // 되돌리지 않으면 줄바꿈이 역슬래시+n 두 글자로 남아 전부 한 줄이 된다.
-    // 그러면 이름을 줄 단위로 끊는 쪽이 첫 이름만 건지고 나머지는 "이름없음"으로 떨어졌다.
-    // 닫는 따옴표를 찾을 때도 이스케이프된 따옴표(\")에 걸려 값이 잘리지 않도록 한 글자씩 읽는다.
-    private static string ExtractStringField(string json, string field)
-    {
-        if (string.IsNullOrEmpty(json)) return null;
-        int i = json.IndexOf("\"" + field + "\"");
-        if (i < 0) return null;
-        i = json.IndexOf(':', i + field.Length + 2);
-        if (i < 0) return null;
-        i++;
-        while (i < json.Length && (json[i] == ' ' || json[i] == '\t')) i++;
-        if (i >= json.Length || json[i] != '"') return null;
-
-        var value = new StringBuilder();
-        for (int p = i + 1; p < json.Length; p++)
-        {
-            char c = json[p];
-            if (c == '"') return value.ToString();
-            if (c != '\\') { value.Append(c); continue; }
-
-            if (++p >= json.Length) break;
-            switch (json[p])
-            {
-                case 'n': value.Append('\n'); break;
-                case 'r': value.Append('\r'); break;
-                case 't': value.Append('\t'); break;
-                case 'b': value.Append('\b'); break;
-                case 'f': value.Append('\f'); break;
-                case 'u':
-                    int code;
-                    if (p + 4 < json.Length &&
-                        int.TryParse(json.Substring(p + 1, 4), System.Globalization.NumberStyles.HexNumber,
-                                     System.Globalization.CultureInfo.InvariantCulture, out code))
-                    {
-                        value.Append((char)code);
-                        p += 4;
-                    }
-                    break;
-                // \" \\ \/ 는 뒤 글자가 곧 값이다.
-                default: value.Append(json[p]); break;
-            }
-        }
-        return null;
-    }
-
-    private static bool ContainsHangul(string s)
-    {
-        for (int i = 0; i < s.Length; i++) if (IsHangul(s[i])) return true;
-        return false;
-    }
-
-    private static bool IsHangul(char c) => c >= 0xAC00 && c <= 0xD7A3;
-
-    private static string EscapeJson(string s)
-    {
-        if (s == null) return "null";
-        var sb = new StringBuilder(s.Length + 8);
-        sb.Append('"');
-        foreach (char c in s)
-        {
-            switch (c)
-            {
-                case '\\': sb.Append("\\\\"); break;
-                case '"':  sb.Append("\\\""); break;
-                case '\n': sb.Append("\\n");  break;
-                case '\r': sb.Append("\\r");  break;
-                case '\t': sb.Append("\\t");  break;
-                default:
-                    if (c < 0x20) sb.AppendFormat("\\u{0:x4}", (int)c);
-                    else sb.Append(c);
-                    break;
-            }
-        }
-        sb.Append('"');
-        return sb.ToString();
     }
 }

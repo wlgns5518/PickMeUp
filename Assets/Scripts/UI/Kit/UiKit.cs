@@ -264,7 +264,7 @@ public static class UiKit
     // ---- 숫자 ---------------------------------------------------------------
 
     // "3,361,233"
-    public static string Amount(long value) => value.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+    public static string Amount(long value) => TextFormat.Amount(value);
 
     // 0~1을 "12.5%"로. 소수 첫째 자리까지, 뒤의 0은 지운다.
     public static string Percent(float ratio)

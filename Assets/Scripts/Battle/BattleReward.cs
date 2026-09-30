@@ -6,7 +6,7 @@ using UnityEngine;
 // 유닛 인스턴스는 전투 후 파괴될 수 있으므로 결과창이 읽을 값은 여기로 복사해 둔다.
 //
 // 기여도는 참전한 전원이 남긴다(쓰러진 동료 포함). 정산은 살아서 판을 끝낸 쪽만 받는다 —
-// 어느 쪽이 어디까지인지는 BattleManager.Settle 참조.
+// 어느 쪽이 어디까지인지는 BattleSettlement.GrantExperience 참조.
 public class BattleReward
 {
     public CharacterSO Character;
@@ -42,7 +42,7 @@ public class BattleRewardSettings
     [Min(0)] public int expOnVictory = 20;
     [Tooltip("패배/무승부로 끝났을 때 살아남은 참가자가 받는 기본 경험치.")]
     [Min(0)] public int expOnDefeat = 5;
-    [Tooltip("처치 1회당 경험치. 가한 피해는 경험치로 쳐주지 않는다 — 이유는 BattleManager.Settle 참조.")]
+    [Tooltip("처치 1회당 경험치. 가한 피해는 경험치로 쳐주지 않는다 — 이유는 BattleSettlement.GrantExperience 참조.")]
     [Min(0)] public int expPerKill = 8;
     [Tooltip("MVP 추가 경험치.")]
     [Min(0)] public int mvpExpBonus = 10;

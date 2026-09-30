@@ -116,19 +116,19 @@ public class BattleHud : MonoBehaviour
     private void OnEnable()
     {
         EnsureBuilt();
-        BattleManager.OnBattleStarted += HandleBattleStarted;
-        BattleManager.OnBattleEnded += HandleBattleEnded;
+        BattleEvents.Started += HandleBattleStarted;
+        BattleEvents.Ended += HandleBattleEnded;
         UnitController.OnAnyUnitDied += HandleUnitDied;
 
         // 도메인 리로드로 패널을 새로 만든 경우 전투는 이미 시작돼 있어 OnBattleStarted가 다시 오지 않는다.
         // 그대로 두면 파티 패널이 빈 채로 남으므로 여기서 한 번 더 붙여준다.
-        if (BattleManager.Instance != null && BattleManager.Instance.IsRunning) HandleBattleStarted();
+        if (GameServices.Battle.Peek != null && GameServices.Battle.Peek.IsRunning) HandleBattleStarted();
     }
 
     private void OnDisable()
     {
-        BattleManager.OnBattleStarted -= HandleBattleStarted;
-        BattleManager.OnBattleEnded -= HandleBattleEnded;
+        BattleEvents.Started -= HandleBattleStarted;
+        BattleEvents.Ended -= HandleBattleEnded;
         UnitController.OnAnyUnitDied -= HandleUnitDied;
     }
 
@@ -172,8 +172,9 @@ public class BattleHud : MonoBehaviour
     {
         // UnitRegistry.Allies는 죽은 유닛이 빠지는 살아있는 목록이라 슬롯 고정용으로 쓸 수 없다.
         // BattleManager가 시작 시점에 붙잡아 둔 명단을 단일 출처로 쓴다.
-        if (BattleManager.Instance == null) return;
-        partyPanel?.Bind(BattleManager.Instance.AllyRoster);
+        IBattleSession battle = GameServices.Battle.Peek;
+        if (battle == null) return;
+        partyPanel?.Bind(battle.AllyRoster);
 
         // 적은 전투 시작 시점의 전체 최대 체력이 기준이다. 여기서 붙잡아야 바가 실제로 비어 간다.
         enemyBar?.Bind(UnitRegistry.Enemies);

@@ -17,31 +17,14 @@ public class WeaponCatalog : ScriptableObject
 
     public List<WeaponDefinition> weapons = new List<WeaponDefinition>();
 
-    private static WeaponCatalog cached;
-    private static bool searched;
+    private static readonly ResourceSlot<WeaponCatalog> Slot = new ResourceSlot<WeaponCatalog>(ResourceName,
+        $"[WeaponCatalog] Assets/Equipment/Resources/{ResourceName}.asset 이 없다. " +
+        "메뉴 PickMeUp/Equipment/Import Weapon Models 로 만들 수 있다.");
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetCache()
-    {
-        cached = null;
-        searched = false;
-    }
+    private static void ResetCache() => Slot.Reset();
 
-    public static WeaponCatalog Instance
-    {
-        get
-        {
-            if (cached != null) return cached;
-            if (searched) return null;
-
-            searched = true;
-            cached = Resources.Load<WeaponCatalog>(ResourceName);
-            if (cached == null)
-                Debug.LogWarning($"[WeaponCatalog] Assets/Equipment/Resources/{ResourceName}.asset 이 없다. " +
-                                 "메뉴 PickMeUp/Equipment/Import Weapon Models 로 만들 수 있다.");
-            return cached;
-        }
-    }
+    public static WeaponCatalog Instance => Slot.Value;
 
     public static WeaponDefinition Find(string weaponName)
     {

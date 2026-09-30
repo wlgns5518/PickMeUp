@@ -1,78 +1,32 @@
 using System;
 using System.Collections.Generic;
-using UnityEngine;
 
 // 지금 가지고 있는 캐릭터 전원 — 런타임 판.
 //
-// CharacterRosterSO는 에셋이라 "시작 명단 템플릿"으로만 두고, 실제 보유 목록은 여기서 굴린다.
-// 소환으로 늘고 합성으로 줄어드는 목록을 에셋에 직접 쓰면 에디터에서 한 번 플레이할 때마다
-// 원본 명단이 영구히 바뀐다. PartyRoster가 사망 기록을 런타임에만 들고 있는 것과 같은 이유다.
-//
-// 보유 명단(여기) / 출전 편성(PartyDeck) / 사망 기록(PartyRoster)은 서로 다른 것이다.
-// 이쪽은 "가진 캐릭터 전부", 저쪽은 "이번에 내보낼 사람", 나머지는 "다시는 못 쓰는 사람".
+// 입구일 뿐이다. 명단은 OwnedRosterStore가 들고, 명단에서 빠질 때 함께 치울 것(편성, 장비, 3D 몸)은
+// GameServices가 Removed에 이어 둔다. 생성자로 의존성을 받을 수 있는 코드는 IOwnedRoster(GameServices.Roster)를 받는다.
 public static class OwnedRoster
 {
-    private static readonly List<CharacterSO> members = new List<CharacterSO>();
+    private static OwnedRosterStore State => GameServices.RosterState;
 
-    public static IReadOnlyList<CharacterSO> Members => members;
+    public static IReadOnlyList<CharacterSO> Members => State.Members;
 
-    public static int Count => members.Count;
+    public static int Count => State.Count;
 
     // 명단이 바뀌면 카드 UI가 다시 그려야 한다.
-    public static event Action Changed;
-
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetOnPlay()
+    public static event Action Changed
     {
-        // 도메인 리로드를 끈 에디터에서 이전 플레이의 명단이 남지 않도록 비운다.
-        members.Clear();
-        // 씬과 함께 사라진 UI의 구독이 남아 있으면 죽은 참조를 계속 부르게 된다.
-        Changed = null;
+        add => State.Changed += value;
+        remove => State.Changed -= value;
     }
 
-    /// 시작 명단을 얹는다. 두 번 불려도 결과가 같도록 이미 있는 캐릭터는 건너뛴다
-    /// (메인 씬과 전투 씬 양쪽에 RosterBootstrap이 하나씩 있다).
-    public static void Seed(IReadOnlyList<CharacterSO> roster)
-    {
-        if (roster == null) return;
+    /// 시작 명단을 얹는다. 두 번 불려도 결과가 같다.
+    public static void Seed(IReadOnlyList<CharacterSO> roster) => State.Seed(roster);
 
-        bool changed = false;
-        for (int i = 0; i < roster.Count; i++)
-        {
-            CharacterSO so = roster[i];
-            if (so == null || members.Contains(so)) continue;
+    public static bool Contains(CharacterSO character) => State.Contains(character);
 
-            members.Add(so);
-            changed = true;
-        }
-
-        if (changed) Changed?.Invoke();
-    }
-
-    public static bool Contains(CharacterSO character) => character != null && members.Contains(character);
-
-    public static bool Add(CharacterSO character)
-    {
-        if (character == null || members.Contains(character)) return false;
-
-        members.Add(character);
-        Changed?.Invoke();
-        return true;
-    }
+    public static bool Add(CharacterSO character) => State.Add(character);
 
     /// 명단에서 뺀다. 합성 재료가 사라지는 통로다.
-    /// 편성에 올라가 있던 캐릭터면 거기서도 함께 뺀다 — 가지고 있지도 않은 사람이
-    /// 출전 슬롯에 남아 있으면 전투에 그대로 끌려 나간다.
-    /// 들고 있던 제작 장비는 무기창고로 돌아온다. 사라진 사람 손에 걸린 칼은 다시 꺼낼 길이 없다.
-    /// 세워 둔 3D 몸도 메모리에서 내린다. 씬을 넘어 살아남는 것이라 여기서 놓지 않으면 세션 내내 남는다.
-    public static bool Remove(CharacterSO character)
-    {
-        if (character == null || !members.Remove(character)) return false;
-
-        PartyDeck.RemoveEverywhere(character);
-        EquipmentInventory.UnequipAll(character);
-        MeshyBodyService.Release(character);
-        Changed?.Invoke();
-        return true;
-    }
+    public static bool Remove(CharacterSO character) => State.Remove(character);
 }

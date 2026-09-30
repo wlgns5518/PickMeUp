@@ -80,7 +80,7 @@ public class PartyCommandInput : MonoBehaviour
     {
         PartyCommand.Tick();
 
-        BattleManager battle = BattleManager.Instance;
+        IBattleSession battle = GameServices.Battle.Peek;
         if (battle == null || !battle.IsRunning) return;
 
         Mouse mouse = Mouse.current;

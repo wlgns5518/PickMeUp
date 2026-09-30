@@ -1,20 +1,20 @@
-using System;
-using System.Text;
-using UnityEngine;
-
-// Meshy에게 "무엇을 만들어 달라"고 말하는 내용 한 벌.
+// Meshy에게 "몸을 만들어 달라"고 말하는 내용 한 벌.
 //
 // 몸을 굽는 입구가 둘이라서 여기에 모아 둔다 — 기존 캐릭터를 에디터 메뉴로 굽는 입구
-// (MeshyModelPipeline)와, 소환 직후에 뒤에서 굽는 입구(MeshyBodyService). 두 입구는 통신 방식이
-// 다를 뿐(Task와 코루틴) 주문 내용도 결과물(GLB 한 장)도 같다. 프롬프트가 갈리면 같은 직업인데도
-// 어느 입구로 구웠느냐에 따라 다른 모습이 나온다.
+// (MeshyModelPipeline)와, 소환 직후에 뒤에서 굽는 입구(MeshyBodyService). 두 입구 모두 MeshyBodyBaker로
+// 같은 주문을 넣고 결과물(GLB 한 장)도 같다. 프롬프트가 갈리면 같은 직업인데도 어느 입구로 구웠느냐에
+// 따라 다른 모습이 나온다.
+//
+// 여기 있는 것은 "무엇을 주문하는가"뿐이다. Meshy와 어떻게 말하는지(주소, 응답 모양, 상태 판정)는
+// MeshyProtocol이, 실제로 보내고 기다리는 일은 MeshyClient가 맡는다.
 public static class MeshyBodyRecipe
 {
-    public const string BaseUrl = "https://api.meshy.ai/openapi/v1";
+    public const string SheetEndpoint = MeshyProtocol.TextToImage;
+    public const string MeshEndpoint = MeshyProtocol.MultiImageTo3D;
+    public const string RigEndpoint = MeshyProtocol.Rigging;
 
-    public const string SheetEndpoint = "text-to-image";
-    public const string MeshEndpoint = "multi-image-to-3d";
-    public const string RigEndpoint = "rigging";
+    private const string SheetModel = "nano-banana-pro";
+    private const string MeshModel = "meshy-7";
 
     // 리깅에 넘기는 키. Y Bot(믹사모 기본 체형)과 같은 눈높이라야 기존 애니메이션이 어색하지 않고,
     // 카메라와 내비메시 에이전트 높이도 그대로 쓸 수 있다.
@@ -111,11 +111,7 @@ public static class MeshyBodyRecipe
     // ── 요청 본문 ────────────────────────────────────────────────────────
 
     public static string SheetBody(string prompt) =>
-        "{\"ai_model\":\"nano-banana-pro\"" +
-        ",\"prompt\":" + EscapeJson(prompt) +
-        ",\"pose_mode\":\"" + PoseMode + "\"" +
-        ",\"generate_multi_view\":true" +
-        ",\"remove_background\":true}";
+        MeshyRequests.TextToImage(SheetModel, prompt, poseMode: PoseMode, generateMultiView: true, removeBackground: true);
 
     // 여러 장을 받는 쪽으로 보낸다. 한 장짜리 엔드포인트는 다시점 그림 태스크를 입력으로 받지 않고,
     // 정면 한 장만 넘기면 뒷면을 지어내게 되어 등이 뭉개진다.
@@ -123,119 +119,24 @@ public static class MeshyBodyRecipe
     // origin_at=bottom이 중요하다 — 원점이 발밑에 서 있어야 Unity에서 바닥에 세울 때
     // 캐릭터가 땅에 박히거나 떠 있지 않는다.
     public static string MeshBody(string sheetTaskId) =>
-        "{\"input_task_id\":" + EscapeJson(sheetTaskId) +
-        ",\"ai_model\":\"meshy-7\"" +
-        ",\"pose_mode\":\"" + PoseMode + "\"" +
-        ",\"should_texture\":true" +
-        ",\"texture_resolution\":\"2k\"" +
-        ",\"enable_pbr\":false" +
-        ",\"should_remesh\":true" +
-        ",\"topology\":\"triangle\"" +
-        ",\"target_polycount\":" + TargetPolycount +
-        ",\"target_formats\":[\"glb\",\"fbx\"]" +
-        ",\"auto_size\":true" +
-        ",\"origin_at\":\"bottom\"}";
+        new JsonBody()
+            .Add("input_task_id", sheetTaskId)
+            .Add("ai_model", MeshModel)
+            .Add("pose_mode", PoseMode)
+            .Add("should_texture", true)
+            .Add("texture_resolution", "2k")
+            .Add("enable_pbr", false)
+            .Add("should_remesh", true)
+            .Add("topology", "triangle")
+            .Add("target_polycount", TargetPolycount)
+            .AddStrings("target_formats", "glb", "fbx")
+            .Add("auto_size", true)
+            .Add("origin_at", "bottom")
+            .ToString();
 
     public static string RigBody(string meshTaskId) =>
-        "{\"input_task_id\":" + EscapeJson(meshTaskId) +
-        ",\"height_meters\":" + CharacterHeightMeters.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "}";
-
-    // ── 응답 모양 ────────────────────────────────────────────────────────
-    //
-    // 손으로 문자열을 뒤지지 않고 JsonUtility에 [Serializable] 클래스로 넘긴다 — 이 파이프라인은
-    // 태스크 셋을 사슬처럼 엮기 때문에, 중간 한 곳에서 필드 하나를 잘못 읽으면 뒤가 통째로
-    // 조용히 어긋난다.
-
-    [Serializable] public class CreateResponse { public string result; }
-    [Serializable] public class TaskError { public string message; }
-    [Serializable] public class BalanceResponse { public int balance; }
-
-    [Serializable]
-    public class ImageTask
-    {
-        public string status;
-        public int progress;
-        public string[] image_urls;
-        public TaskError task_error;
-    }
-
-    [Serializable] public class ModelUrls { public string glb; public string fbx; public string obj; }
-
-    [Serializable]
-    public class TextureUrls
-    {
-        public string base_color;
-        public string normal;
-        public string metallic;
-        public string roughness;
-    }
-
-    [Serializable]
-    public class ModelTask
-    {
-        public string status;
-        public int progress;
-        public ModelUrls model_urls;
-        public TextureUrls[] texture_urls;
-        public string thumbnail_url;
-        public TaskError task_error;
-    }
-
-    [Serializable]
-    public class RigResult
-    {
-        public string rigged_character_fbx_url;
-        public string rigged_character_glb_url;
-    }
-
-    [Serializable]
-    public class RigTask
-    {
-        public string status;
-        public int progress;
-        public RigResult result;
-        public TaskError task_error;
-    }
-
-    // ── 상태 판정 ────────────────────────────────────────────────────────
-
-    public static bool IsDone(string status) =>
-        Is(status, "SUCCEEDED") || Is(status, "SUCCESS") || Is(status, "COMPLETED") || Is(status, "DONE");
-
-    public static bool IsDead(string status) =>
-        Is(status, "FAILED") || Is(status, "CANCELED") || Is(status, "CANCELLED") ||
-        Is(status, "EXPIRED") || Is(status, "ERROR");
-
-    private static bool Is(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
-
-    // ── JSON 문자열 ──────────────────────────────────────────────────────
-
-    // 읽는 쪽은 JsonUtility가 맡는다. 보내는 쪽은 필드가 몇 개 안 되므로 직접 짜되,
-    // 문자열만은 반드시 이쪽을 거친다 — 프롬프트에 따옴표나 줄바꿈이 섞이면 요청이 통째로 깨진다.
-    public static string EscapeJson(string value)
-    {
-        if (value == null) return "null";
-
-        var sb = new StringBuilder(value.Length + 2);
-        sb.Append('"');
-        foreach (char c in value)
-        {
-            switch (c)
-            {
-                case '"':  sb.Append("\\\""); break;
-                case '\\': sb.Append("\\\\"); break;
-                case '\b': sb.Append("\\b");  break;
-                case '\f': sb.Append("\\f");  break;
-                case '\n': sb.Append("\\n");  break;
-                case '\r': sb.Append("\\r");  break;
-                case '\t': sb.Append("\\t");  break;
-                default:
-                    if (c < 0x20) sb.Append("\\u").Append(((int)c).ToString("x4"));
-                    else sb.Append(c);
-                    break;
-            }
-        }
-        sb.Append('"');
-        return sb.ToString();
-    }
+        new JsonBody()
+            .Add("input_task_id", meshTaskId)
+            .Add("height_meters", CharacterHeightMeters)
+            .ToString();
 }

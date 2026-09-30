@@ -56,15 +56,15 @@ public class PartyFollowCamera : MonoBehaviour
     private void OnEnable()
     {
         hasSmoothedPose = false;
-        BattleManager.OnBattleStarted += HandleBattleStarted;
+        BattleEvents.Started += HandleBattleStarted;
 
         // 도메인 리로드나 늦은 활성화로 시작 이벤트를 놓쳤을 수 있다. 이미 전투 중이면 여기서 잡는다.
-        if (BattleManager.Instance != null && BattleManager.Instance.IsRunning) HandleBattleStarted();
+        if (GameServices.Battle.Peek != null && GameServices.Battle.Peek.IsRunning) HandleBattleStarted();
     }
 
     private void OnDisable()
     {
-        BattleManager.OnBattleStarted -= HandleBattleStarted;
+        BattleEvents.Started -= HandleBattleStarted;
     }
 
     // 전투 시작 시점에는 파티 명단의 첫 번째 아군을 본다.
@@ -73,7 +73,7 @@ public class PartyFollowCamera : MonoBehaviour
     {
         if (focusTarget != null) return;
 
-        BattleManager manager = BattleManager.Instance;
+        IBattleSession manager = GameServices.Battle.Peek;
         if (manager == null) return;
 
         IReadOnlyList<UnitController> roster = manager.AllyRoster;
@@ -153,8 +153,8 @@ public class PartyFollowCamera : MonoBehaviour
         Quaternion targetRotation = Quaternion.Euler(lookRotationEuler);
         smoothedRotation = Quaternion.Slerp(smoothedRotation, targetRotation, rotationSpeed * Time.deltaTime);
 
-        // 흔들림은 지금 보고 있는 캐릭터에게 일어난 한 방에서만 나온다(CombatImpulse.Emit이 거른다).
-        if (CombatImpulse.TrySample(position, out Vector3 shakeOffset, out Quaternion shakeRotation))
+        // 흔들림은 지금 보고 있는 캐릭터에게 일어난 한 방에서만 나온다(ICombatShake.Emit이 거른다).
+        if (GameServices.Shake.Current.TrySample(position, out Vector3 shakeOffset, out Quaternion shakeRotation))
         {
             transform.SetPositionAndRotation(smoothedPosition + shakeOffset, smoothedRotation * shakeRotation);
             return;

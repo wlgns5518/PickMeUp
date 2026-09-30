@@ -1,4 +1,3 @@
-using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -58,7 +57,7 @@ public static class WeaponGripBaker
         Quaternion rotation;
         MeasureGrip(definition.model, definition.type, HandOf(definition), out position, out rotation);
 
-        EnsureFolder(OutputFolder);
+        EditorAssetFolders.Ensure(OutputFolder);
 
         GameObject root = BuildRoot(definition.name, definition.model, position, rotation, 1f);
         AuthorHandPoints(root, definition);
@@ -765,14 +764,5 @@ public static class WeaponGripBaker
         }
 
         return count > 0 ? sum / count : mesh.bounds.center;
-    }
-
-    private static void EnsureFolder(string folder)
-    {
-        if (AssetDatabase.IsValidFolder(folder)) return;
-
-        string parent = Path.GetDirectoryName(folder).Replace('\\', '/');
-        EnsureFolder(parent);
-        AssetDatabase.CreateFolder(parent, Path.GetFileName(folder));
     }
 }

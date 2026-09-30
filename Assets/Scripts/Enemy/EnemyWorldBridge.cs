@@ -831,7 +831,7 @@ public static class EnemyWorldBridge
             // 동료 하나가 판에서 빠지는 순간이라 화면에도 남긴다. 실제로 무너뜨렸을 때만이다.
             if (pins && ally.TryForceStagger(hit.forceStaggerDuration))
             {
-                CombatImpulse.Emit(ally, PinShake);
+                GameServices.Shake.Current.Emit(ally, PinShake);
             }
 
             // 물린 아군에게 면역 시간을 건다. 피해보다 먼저 걸면 안 된다 —

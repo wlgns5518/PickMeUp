@@ -47,31 +47,14 @@ public class NeonUISkin : ScriptableObject
         messageCornerBottomLeft != null && messageCornerBottomRight != null &&
         messageEdgeTop != null && messageEdgeBottom != null && messageEdgeLeft != null && messageEdgeRight != null;
 
-    private static NeonUISkin cached;
-    private static bool searched;
+    private static readonly ResourceSlot<NeonUISkin> Slot = new ResourceSlot<NeonUISkin>(ResourceName,
+        $"[NeonUISkin] Assets/UI/Resources/{ResourceName}.asset 이 없어 UI를 단색으로 그립니다.");
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetCache()
-    {
-        cached = null;
-        searched = false;
-    }
+    private static void ResetCache() => Slot.Reset();
 
     // 없으면 null. 호출하는 쪽(HudFactory)이 단색으로 대신 그린다.
-    public static NeonUISkin Current
-    {
-        get
-        {
-            if (cached != null) return cached;
-            if (searched) return null;
-
-            searched = true;
-            cached = Resources.Load<NeonUISkin>(ResourceName);
-            if (cached == null)
-                Debug.LogWarning($"[NeonUISkin] Assets/UI/Resources/{ResourceName}.asset 이 없어 UI를 단색으로 그립니다.");
-            return cached;
-        }
-    }
+    public static NeonUISkin Current => Slot.Value;
 
 #if UNITY_EDITOR
     // 에셋을 새로 만들거나 인스펙터에서 Reset을 누르면 킷 폴더에서 파일 이름으로 채운다.

@@ -94,16 +94,7 @@ public static class VillageGroundTextures
         return Save(m);
     }
 
-    private static Material Lit(string name)
-    {
-        string path = $"{Folder}/{name}.mat";
-        var m = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (m != null) return m;
-        Directory.CreateDirectory(Folder);
-        m = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = name };
-        AssetDatabase.CreateAsset(m, path);
-        return m;
-    }
+    private static Material Lit(string name) => EditorMaterials.LoadOrCreateLit($"{Folder}/{name}.mat", name);
 
     private static void SetNormal(Material m, Texture2D normal, float strength)
     {

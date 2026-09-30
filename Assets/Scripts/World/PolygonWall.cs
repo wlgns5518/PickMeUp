@@ -115,8 +115,7 @@ public class PolygonWall : MonoBehaviour
     {
         if (mesh == null) return;
 
-        if (Application.isPlaying) Destroy(mesh);
-        else DestroyImmediate(mesh);
+        UnityObjects.Destroy(mesh);
         mesh = null;
     }
 
@@ -170,11 +169,11 @@ public class PolygonWall : MonoBehaviour
     // 세운 것은 씬에 저장하지 않는다 — VillageBlockout과 같은 이유로, 값이 바뀌면 다시 세운다.
     private void BuildModules()
     {
-        if (modules != null) Kill(modules.gameObject);
+        if (modules != null) UnityObjects.Destroy(modules.gameObject);
         modules = null;
         // 리로드 뒤에는 필드가 비어 있어 이름으로 옛 묶음을 찾아 치운다.
         Transform stale = transform.Find(ModulesName);
-        if (stale != null) Kill(stale.gameObject);
+        if (stale != null) UnityObjects.Destroy(stale.gameObject);
 
         bool useModules = segmentPrefab != null;
         GetComponent<MeshRenderer>().enabled = !useModules;
@@ -257,16 +256,8 @@ public class PolygonWall : MonoBehaviour
         return filter != null && filter.sharedMesh != null ? filter.sharedMesh.bounds : new Bounds(Vector3.up * 0.5f, Vector3.one);
     }
 
-    private static void Kill(Object target)
-    {
-        if (Application.isPlaying) Destroy(target);
-        else DestroyImmediate(target);
-    }
-
     private void Generate(Mesh target)
     {
-        target.Clear();
-
         int count = Mathf.Max(3, sides);
         var vertices = new List<Vector3>();
         var uvs = new List<Vector2>();
@@ -317,13 +308,8 @@ public class PolygonWall : MonoBehaviour
                 new Vector3(thickness, totalHeight, length));
         }
 
-        target.SetVertices(vertices);
-        target.SetUVs(0, uvs);
-        target.subMeshCount = 2;
-        target.SetTriangles(wallTriangles, 0);
-        target.SetTriangles(pillarTriangles, 1);
-        target.RecalculateNormals();
-        target.RecalculateBounds();
+        // 서브메시 0은 벽, 1은 기둥 — 렌더러의 재질 두 장(wallMaterial, pillarMaterial)과 순서가 같다.
+        MeshAssembly.Write(target, vertices, uvs, MeshAssembly.Recalculate.Default, wallTriangles, pillarTriangles);
     }
 
     // 면의 [from, to] 비율 구간만 벽 판으로 세운다. 모서리 쪽 끝은 기둥 안으로 반 두께만큼 파고든다(이음매).

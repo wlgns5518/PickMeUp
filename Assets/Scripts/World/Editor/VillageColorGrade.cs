@@ -5,7 +5,7 @@ using UnityEngine;
 //   - 픽셀 옮기기: 견본(돌담·널·지붕) 평균에 견준 밝기 비율을 목표 색에 곱하고, 원래 색을 조금 남겨 돌마다 색 편차를 살린다.
 internal static class VillageColorGrade
 {
-    public static float Luminance(Color c) => c.r * 0.299f + c.g * 0.587f + c.b * 0.114f;
+    public static float Luminance(Color c) => ColorMath.Luminance(c);
 
     /// 텍스처 평균(sRGB). 읽기 불가 텍스처도 되도록 작은 렌더 텍스처에 줄여 그린 뒤 읽는다.
     public static Color MeanColor(Texture texture)

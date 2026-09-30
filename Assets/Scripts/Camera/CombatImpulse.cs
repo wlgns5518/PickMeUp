@@ -17,7 +17,7 @@ using UnityEngine;
 // 물려서 무너지는 순간, 죽음.
 [DisallowMultipleComponent]
 [RequireComponent(typeof(CinemachineImpulseSource))]
-public class CombatImpulse : MonoBehaviour
+public class CombatImpulse : MonoBehaviour, ICombatShake
 {
     [Tooltip("세기 1일 때 카메라가 밀리는 거리(미터). 부르는 쪽은 0~1 사이로 세기를 넘긴다 " +
              "(스킬 적중 0.5 → 약 14cm, 죽음 0.8 → 약 22cm).")]
@@ -37,8 +37,6 @@ public class CombatImpulse : MonoBehaviour
     // 이 채널만 듣는다. 다른 연출(컷신 등)이 Impulse를 쓰게 돼도 전투 흔들림과 섞이지 않게 한다.
     private const int Channel = 1 << 3;
 
-    private static CombatImpulse instance;
-
     private CinemachineImpulseSource source;
     private PartyFollowCamera followCamera;
     private float lastEmitTime = -999f;
@@ -51,14 +49,15 @@ public class CombatImpulse : MonoBehaviour
         if (configureSource) ConfigureSource();
     }
 
+    // 켜져 있는 동안만 흔들기 자리에 앉는다. 꺼지면 아무것도 흔들지 않는 대역이 대신한다(NullCombatShake).
     private void OnEnable()
     {
-        instance = this;
+        GameServices.Shake.TryRegister(this);
     }
 
     private void OnDisable()
     {
-        if (instance == this) instance = null;
+        GameServices.Shake.Unregister(this);
     }
 
     private void ConfigureSource()
@@ -72,16 +71,16 @@ public class CombatImpulse : MonoBehaviour
 
     // 전투 코드가 부르는 입구. character는 이 한 방의 주인공이다 — 스킬을 맞힌 쪽, 흘려낸 쪽,
     // 물린 쪽, 쓰러진 쪽. 카메라가 그 캐릭터를 비추고 있을 때만 흔든다.
-    // 카메라가 없는 씬(테스트, 마을)에서는 아무 일도 하지 않는다.
+    // 카메라가 없는 씬(테스트, 마을)에서는 이 컴포넌트 대신 NullCombatShake가 불린다.
     //
     // strength는 0~1. 방향은 조금씩 흔들어 준다 — 매번 같은 방향으로 밀리면 흔들림이 아니라
     // 카메라가 한쪽으로 튀는 것으로 보인다.
-    public static void Emit(UnitController character, float strength)
+    public void Emit(UnitController character, float strength)
     {
-        if (instance == null || character == null || strength <= 0f) return;
-        if (!instance.IsFocused(character)) return;
+        if (character == null || strength <= 0f) return;
+        if (!IsFocused(character)) return;
 
-        instance.EmitInternal(character.transform.position, Mathf.Clamp01(strength));
+        EmitInternal(character.transform.position, Mathf.Clamp01(strength));
     }
 
     private bool IsFocused(UnitController character)
@@ -105,12 +104,8 @@ public class CombatImpulse : MonoBehaviour
     }
 
     // 카메라가 LateUpdate에서 부른다.
-    public static bool TrySample(Vector3 listener, out Vector3 offset, out Quaternion rotation)
+    public bool TrySample(Vector3 listener, out Vector3 offset, out Quaternion rotation)
     {
-        offset = Vector3.zero;
-        rotation = Quaternion.identity;
-        if (instance == null) return false;
-
         return CinemachineImpulseManager.Instance.GetImpulseAt(listener, true, Channel, out offset, out rotation);
     }
 }

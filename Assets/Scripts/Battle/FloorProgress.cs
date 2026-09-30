@@ -1,10 +1,9 @@
 using UnityEngine;
 
-// 어느 층까지 깼는지, 그리고 지금 어느 층에 들어가는지를 들고 있다.
+// 어느 층까지 깼는지, 그리고 지금 어느 층에 들어가는지.
 //
-// 층은 자동으로 이어지지 않는다. 플레이어가 메인 씬에서 직접 고르고,
-// 전투가 끝나면 다시 메인 씬으로 돌아온다.
-// 그래서 여기 있는 값은 "진행 중인 런"이 아니라 "해금 상태"에 가깝다.
+// 층의 번호 규칙(구간, 전투 씬 이름)은 여기 있고, 굴러가는 값(깬 층, 고른 층)은 FloorProgressStore가 든다.
+// 생성자로 의존성을 받을 수 있는 코드는 IFloorProgress(GameServices.Floors)를 받는다.
 public static class FloorProgress
 {
     public const int FirstFloor = 1;
@@ -17,24 +16,16 @@ public static class FloorProgress
     // 같은 구간의 맵에서 일반 전투로 치른다.
     public const int FloorsPerStage = 5;
 
+    private static FloorProgressStore State => GameServices.FloorState;
+
     // 깬 층 중 가장 높은 번호. 0이면 아직 아무 층도 깨지 못한 상태.
-    public static int HighestCleared { get; private set; }
+    public static int HighestCleared => State.HighestCleared;
 
     // 메인 씬에서 고른 층. 전투 씬의 스포너가 이 값을 읽어 적을 배치한다.
-    // 씬을 넘어가야 하므로 static으로 들고 간다.
-    public static int SelectedFloor { get; private set; } = FirstFloor;
+    public static int SelectedFloor => State.SelectedFloor;
 
     // 깬 층의 바로 다음 층까지 선택할 수 있다. 꼭대기를 넘지는 않는다.
-    public static int HighestUnlocked => Mathf.Min(HighestCleared + 1, LastFloor);
-
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetOnPlay()
-    {
-        // 도메인 리로드를 끈 에디터에서 이전 플레이의 값이 남지 않도록 비운다.
-        // 실제 해금 상태는 세이브에서 다시 읽어 온다.
-        HighestCleared = 0;
-        SelectedFloor = FirstFloor;
-    }
+    public static int HighestUnlocked => State.HighestUnlocked;
 
     // 층이 속한 구간의 첫 층. 7층이면 6.
     public static int StageFirstFloor(int floor)
@@ -52,29 +43,12 @@ public static class FloorProgress
         return $"Floor{first}~{last}";
     }
 
-    public static bool IsUnlocked(int floor)
-    {
-        return floor >= FirstFloor && floor <= HighestUnlocked;
-    }
+    public static bool IsUnlocked(int floor) => State.IsUnlocked(floor);
 
-    public static bool TrySelect(int floor)
-    {
-        if (!IsUnlocked(floor)) return false;
+    public static bool TrySelect(int floor) => State.TrySelect(floor);
 
-        SelectedFloor = floor;
-        return true;
-    }
-
-    public static void MarkCleared(int floor)
-    {
-        if (floor < FirstFloor) return;
-        HighestCleared = Mathf.Clamp(Mathf.Max(HighestCleared, floor), 0, LastFloor);
-    }
+    public static void MarkCleared(int floor) => State.MarkCleared(floor);
 
     // 세이브에서 읽어온 해금 상태를 얹는다.
-    public static void RestoreCleared(int highestCleared)
-    {
-        HighestCleared = Mathf.Clamp(highestCleared, 0, LastFloor);
-        if (SelectedFloor > HighestUnlocked) SelectedFloor = HighestUnlocked;
-    }
+    public static void RestoreCleared(int highestCleared) => State.RestoreCleared(highestCleared);
 }

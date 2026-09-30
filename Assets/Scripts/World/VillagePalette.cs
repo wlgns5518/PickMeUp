@@ -31,8 +31,5 @@ public static class VillagePalette
     public static readonly Color Gold = Hex(0xC5A85A);
     public static readonly Color WarmOrange = Hex(0xB87342);
 
-    private static Color Hex(int rgb)
-    {
-        return new Color(((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f, 1f);
-    }
+    private static Color Hex(int rgb) => ColorMath.Hex(rgb);
 }

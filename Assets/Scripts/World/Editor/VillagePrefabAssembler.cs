@@ -749,11 +749,7 @@ private static void BuildTraining(Builder b)
 
     // ---- 조립 도구 -------------------------------------------------------------
 
-    private static Vector3 Dir(float bearing)
-    {
-        float radians = bearing * Mathf.Deg2Rad;
-        return new Vector3(Mathf.Sin(radians), 0f, Mathf.Cos(radians));
-    }
+    private static Vector3 Dir(float bearing) => Compass.Direction(bearing);
 
     // 파츠 메시 하나의 치수. 파츠 자기 공간(발밑 원점, 미터)이다.
     private sealed class Shape
@@ -876,14 +872,7 @@ private static void BuildTraining(Builder b)
     // 여기 숫자를 고치면 다음 조립에 그대로 반영된다. 색은 다크 판타지 팔레트(VillagePalette).
     private static Material NamedMaterial(string name)
     {
-        string path = $"{MaterialRoot}/{name}.mat";
-        var material = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (material == null)
-        {
-            Directory.CreateDirectory(MaterialRoot);
-            material = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = name };
-            AssetDatabase.CreateAsset(material, path);
-        }
+        Material material = EditorMaterials.LoadOrCreateLit($"{MaterialRoot}/{name}.mat", name);
 
         material.DisableKeyword("_EMISSION");
         material.SetColor("_EmissionColor", Color.black);
@@ -1184,7 +1173,7 @@ private static void BuildTraining(Builder b)
             go.transform.SetParent(parent, false);
             go.transform.localPosition = center;
             go.transform.localScale = size;
-            go.GetComponent<MeshFilter>().sharedMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
+            go.GetComponent<MeshFilter>().sharedMesh = BuiltinMeshes.Cube;
             var renderer = go.GetComponent<MeshRenderer>();
             renderer.sharedMaterial = material;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -1384,13 +1373,7 @@ private static void BuildTraining(Builder b)
                 triangles.Add(c); triangles.Add(a + 1); triangles.Add(c + 1);
             }
 
-            var mesh = new Mesh { name = name };
-            mesh.SetVertices(vertices);
-            mesh.SetUVs(0, uvs);
-            mesh.SetTriangles(triangles, 0);
-            mesh.RecalculateNormals();
-            mesh.RecalculateBounds();
-            return mesh;
+            return MeshAssembly.Create(name, vertices, uvs, triangles);
         }
     }
 }

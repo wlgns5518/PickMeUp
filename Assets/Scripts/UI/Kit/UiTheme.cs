@@ -101,8 +101,7 @@ public static class UiTheme
 
     // ---- 도우미 -------------------------------------------------------------
 
-    public static Color Hex(int rgb) =>
-        new Color(((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f, 1f);
+    public static Color Hex(int rgb) => ColorMath.Hex(rgb);
 
     public static Color WithAlpha(Color color, float alpha) => new Color(color.r, color.g, color.b, alpha);
 

@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
@@ -29,23 +31,25 @@ public class FacilityGate : MonoBehaviour, IPointerClickHandler, IPointerEnterHa
     private IFacilityWindow window;
     private HoverHighlight highlight;
 
+    // 시설 → 누르면 열릴 창의 종류. 여는 창이 있는 시설은 이 표 한 곳에만 적는다.
+    //
+    // 예전에는 "창이 있는가"(HasWindow)와 "어느 창인가"(FindWindow)가 switch 두 벌이라, 시설을 하나 늘릴 때
+    // 한쪽만 고치면 누를 수는 있는데 아무것도 안 열리는(또는 그 반대) 건물이 생겼다.
+    // 훈련소는 누르지 않는다. 편성은 마을 왼쪽 아래 편성 버튼(PartyBarHud)과 층 선택의 "파티 변경"으로 연다.
+    private static readonly Dictionary<VillageBlockout.Kind, Type> WindowTypes = new Dictionary<VillageBlockout.Kind, Type>
+    {
+        { VillageBlockout.Kind.Summoning,         typeof(SummonUI) },
+        { VillageBlockout.Kind.Synthesis,         typeof(SynthesisUI) },
+        // 시공의 틈은 원정을 떠나는 자리다. 어느 던전으로 갈지부터 고른다(DungeonSelectUI → 층 선택).
+        { VillageBlockout.Kind.Rift,              typeof(DungeonSelectUI) },
+        { VillageBlockout.Kind.EquipmentWorkshop, typeof(EquipmentWorkshopUI) },
+        // 제작소에서 만든 장비를 영웅에게 들리는 자리.
+        { VillageBlockout.Kind.Armory,            typeof(ArmoryUI) },
+    };
+
     /// 이 시설을 누르면 열릴 창이 있는지. VillageBlockout이 어느 구역에 이 부품을 붙일지 정할 때 쓴다.
     /// 여는 창이 있는 시설을 여기 한 곳에만 적어 두면 마을 배치 코드는 목록을 몰라도 된다.
-    public static bool HasWindow(VillageBlockout.Kind kind)
-    {
-        switch (kind)
-        {
-            case VillageBlockout.Kind.Summoning:
-            case VillageBlockout.Kind.Synthesis:
-            case VillageBlockout.Kind.Rift:
-            case VillageBlockout.Kind.EquipmentWorkshop:
-            case VillageBlockout.Kind.Armory:
-                return true;
-            // 훈련소는 누르지 않는다. 편성은 마을 왼쪽 아래 편성 버튼(PartyBarHud)과 층 선택의 "파티 변경"으로 연다.
-            default:
-                return false;
-        }
-    }
+    public static bool HasWindow(VillageBlockout.Kind kind) => WindowTypes.ContainsKey(kind);
 
     // AddComponent 직후에 불린다. Awake는 이미 지났으므로 실제 준비는 Start에서 한다.
     public void Bind(VillageBlockout.Kind facilityKind)
@@ -78,26 +82,10 @@ public class FacilityGate : MonoBehaviour, IPointerClickHandler, IPointerEnterHa
             Debug.LogWarning("[FacilityGate] 콜라이더가 없어 시설을 누를 수 없습니다.", this);
     }
 
-    private static IFacilityWindow FindWindow(VillageBlockout.Kind kind)
-    {
-        switch (kind)
-        {
-            case VillageBlockout.Kind.Summoning:
-                return FindAnyObjectByType<SummonUI>(FindObjectsInactive.Include);
-            case VillageBlockout.Kind.Synthesis:
-                return FindAnyObjectByType<SynthesisUI>(FindObjectsInactive.Include);
-            // 시공의 틈은 원정을 떠나는 자리다. 어느 던전으로 갈지부터 고른다(DungeonSelectUI → 층 선택).
-            case VillageBlockout.Kind.Rift:
-                return FindAnyObjectByType<DungeonSelectUI>(FindObjectsInactive.Include);
-            case VillageBlockout.Kind.EquipmentWorkshop:
-                return FindAnyObjectByType<EquipmentWorkshopUI>(FindObjectsInactive.Include);
-            // 제작소에서 만든 장비를 영웅에게 들리는 자리.
-            case VillageBlockout.Kind.Armory:
-                return FindAnyObjectByType<ArmoryUI>(FindObjectsInactive.Include);
-            default:
-                return null;
-        }
-    }
+    private static IFacilityWindow FindWindow(VillageBlockout.Kind kind) =>
+        WindowTypes.TryGetValue(kind, out Type type)
+            ? FindAnyObjectByType(type, FindObjectsInactive.Include) as IFacilityWindow
+            : null;
 
     public void OnPointerClick(PointerEventData eventData)
     {

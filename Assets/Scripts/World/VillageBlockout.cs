@@ -214,9 +214,8 @@ public class VillageBlockout : MonoBehaviour
     private static readonly Color PlazaInner  = VillagePalette.DarkStone * 0.85f;
     private static readonly Color PlazaRing   = VillagePalette.LightStone;
 
-    private readonly Dictionary<Color, Material> materials = new Dictionary<Color, Material>();
-    private readonly Dictionary<Color, Material> glowMaterials = new Dictionary<Color, Material>();
-    private readonly List<Mesh> meshes = new List<Mesh>();
+    // 코드로 찍어낸 머티리얼과 메시. 다시 세울 때 지우고, 프리팹으로 구울 때 에셋으로 옮긴다.
+    private readonly BlockoutResources generated = new BlockoutResources();
 
     private void Reset()
     {
@@ -486,20 +485,39 @@ public class VillageBlockout : MonoBehaviour
         // 도형은 기준 크기로 짜 두고 통째로 늘린다. 인스펙터에서 size만 만져도 구역이 커진다.
         root.localScale = Vector3.one * (district.size / DesignSize(style));
 
-        switch (style)
+        if (Placeholders.TryGetValue(style, out Placeholder placeholder)) placeholder.build(this, root);
+    }
+
+    // 구역마다 에셋이 없을 때 세울 임시 도형과, 그 도형을 짤 때 기준으로 삼은 반지름.
+    //
+    // 예전에는 "무엇을 세우나"와 "기준 반지름이 얼마인가"가 switch 두 벌이라, 구역을 하나 늘릴 때
+    // 한쪽만 고치면 도형은 서는데 크기가 기본값(18)으로 어긋났다. 한 줄에 같이 적는다.
+    private readonly struct Placeholder
+    {
+        public readonly float designSize;
+        public readonly System.Action<VillageBlockout, Transform> build;
+
+        public Placeholder(float designSize, System.Action<VillageBlockout, Transform> build)
         {
-            case Kind.Plaza:     BuildPlaza(root); break;
-            case Kind.Rift:      BuildRift(root); break;
-            case Kind.Synthesis: BuildSynthesis(root); break;
-            case Kind.Armory:    BuildArmory(root); break;
-            case Kind.Summoning: BuildSummoning(root); break;
-            case Kind.Alchemy:   BuildAlchemy(root); break;
-            case Kind.Airdock:   BuildAirdock(root); break;
-            case Kind.Training:  BuildTraining(root); break;
-            case Kind.Workshop:  BuildWorkshop(root); break;
-            case Kind.EquipmentWorkshop: BuildWorkshop(root); break; // 도형은 공방시설과 같다.
+            this.designSize = designSize;
+            this.build = build;
         }
     }
+
+    private static readonly Dictionary<Kind, Placeholder> Placeholders = new Dictionary<Kind, Placeholder>
+    {
+        { Kind.Plaza,             new Placeholder(30f, (v, root) => v.BuildPlaza(root)) },
+        { Kind.Rift,              new Placeholder(13f, (v, root) => v.BuildRift(root)) },
+        { Kind.Synthesis,         new Placeholder(18f, (v, root) => v.BuildSynthesis(root)) },
+        { Kind.Armory,            new Placeholder(16f, (v, root) => v.BuildArmory(root)) },
+        { Kind.Summoning,         new Placeholder(16f, (v, root) => v.BuildSummoning(root)) },
+        { Kind.Alchemy,           new Placeholder(17f, (v, root) => v.BuildAlchemy(root)) },
+        { Kind.Airdock,           new Placeholder(20f, (v, root) => v.BuildAirdock(root)) },
+        { Kind.Training,          new Placeholder(22f, (v, root) => v.BuildTraining(root)) },
+        { Kind.Workshop,          new Placeholder(20f, (v, root) => v.BuildWorkshop(root)) },
+        // 도형은 공방시설과 같다.
+        { Kind.EquipmentWorkshop, new Placeholder(20f, (v, root) => v.BuildWorkshop(root)) },
+    };
 
     // 건물을 몇 레벨 모양으로 세울지. 실행 중에는 세이브의 시설 레벨(FacilityLevels)을 따르고, 편집 중에는
     // 목록의 level(미리보기)을 쓴다 — 편집 중에 세이브 파일을 읽으면 씬을 열 때마다 개발자 세이브가 모양을 바꾼다.
@@ -531,24 +549,9 @@ public class VillageBlockout : MonoBehaviour
         }
     }
 
-    // 각 구역을 짤 때 기준으로 삼은 반지름.
-    private static float DesignSize(Kind kind)
-    {
-        switch (kind)
-        {
-            case Kind.Plaza:     return 30f;
-            case Kind.Rift:      return 13f;
-            case Kind.Synthesis: return 18f;
-            case Kind.Armory:    return 16f;
-            case Kind.Summoning: return 16f;
-            case Kind.Alchemy:   return 17f;
-            case Kind.Airdock:   return 20f;
-            case Kind.Training:  return 22f;
-            case Kind.Workshop:  return 20f;
-            case Kind.EquipmentWorkshop: return 20f;
-            default:             return 18f;
-        }
-    }
+    // 각 구역을 짤 때 기준으로 삼은 반지름. 임시 도형이 없는 구역(거리, 숙소 …)은 18.
+    private static float DesignSize(Kind kind) =>
+        Placeholders.TryGetValue(kind, out Placeholder placeholder) ? placeholder.designSize : 18f;
 
     // 성벽 안을 통째로 덮는 바닥 한 장.
     // 구역마다 길을 내서 가운데로 모으는 대신, 이 바닥이 구역들을 그대로 이어 준다.
@@ -597,7 +600,7 @@ public class VillageBlockout : MonoBehaviour
                 // 성벽 선에서 잘라 낸다 — 잘린 가장자리는 벽 속에 묻혀 연석이 없어도 보이지 않는다.
                 if (roadEdgeMaterial != null)
                     Flat(root, name + " 연석", baseY + LotEdgeLift, RectMesh(lot.center, lot.size + Vector2.one * (LotEdge * 2f), name), roadEdgeMaterial);
-                Flat(root, name, baseY + LotLift, RectMesh(lot.center, lot.size, name), lotMaterial != null ? lotMaterial : Mat(LotColor));
+                Flat(root, name, baseY + LotLift, RectMesh(lot.center, lot.size, name), lotMaterial != null ? lotMaterial : generated.Solid(LotColor));
             }
         }
 
@@ -608,7 +611,7 @@ public class VillageBlockout : MonoBehaviour
             string name = string.IsNullOrEmpty(road.label) ? "길" : road.label;
             if (roadEdgeMaterial != null && roadEdge > 0f)
                 Flat(root, name + " 연석", baseY + RoadEdgeLift, StripMesh(road.points, road.width + roadEdge * 2f, name), roadEdgeMaterial);
-            Flat(root, name, baseY + RoadLift, StripMesh(road.points, road.width, name), roadMaterial != null ? roadMaterial : Mat(RoadColor));
+            Flat(root, name, baseY + RoadLift, StripMesh(road.points, road.width, name), roadMaterial != null ? roadMaterial : generated.Solid(RoadColor));
         }
     }
 
@@ -776,26 +779,18 @@ public class VillageBlockout : MonoBehaviour
             triangles.Add(b + 2); triangles.Add(b + 3); triangles.Add(b + 1);
         }
 
-        var mesh = new Mesh { name = "Clipped " + name, hideFlags = HideFlags.DontSave };
-        meshes.Add(mesh);
-        mesh.SetVertices(vertices);
-        mesh.SetUVs(0, uvs);
-        mesh.SetTriangles(triangles, 0);
-        mesh.RecalculateNormals();
-        mesh.RecalculateBounds();
+        Mesh mesh = MeshAssembly.Create("Clipped " + name, vertices, uvs, triangles,
+            MeshAssembly.Recalculate.Default, HideFlags.DontSave);
+        generated.Track(mesh);
         return MeshPiece(root, name, center, mesh, color, false);
     }
 
     private Mesh FlatMesh(string name, List<Vector3> vertices, List<Vector2> uvs, List<int> triangles)
     {
-        var mesh = new Mesh { name = name, hideFlags = HideFlags.DontSave };
-        meshes.Add(mesh);
-        mesh.SetVertices(vertices);
-        mesh.SetUVs(0, uvs);
-        mesh.SetTriangles(triangles, 0);
-        mesh.RecalculateNormals();
-        mesh.RecalculateTangents();   // 재질의 노멀맵용
-        mesh.RecalculateBounds();
+        // 재질의 노멀맵용으로 탄젠트까지 구한다.
+        Mesh mesh = MeshAssembly.Create(name, vertices, uvs, triangles,
+            MeshAssembly.Recalculate.ForNormalMap, HideFlags.DontSave);
+        generated.Track(mesh);
         return mesh;
     }
 
@@ -888,7 +883,7 @@ public class VillageBlockout : MonoBehaviour
         Mark(go);
 
         go.AddComponent<MeshFilter>().sharedMesh = mesh;
-        go.AddComponent<MeshRenderer>().sharedMaterial = Mat(color);
+        go.AddComponent<MeshRenderer>().sharedMaterial = generated.Solid(color);
         // 그 위에 서야 하는 바닥에는 콜라이더도 물린다.
         if (solid) go.AddComponent<MeshCollider>().sharedMesh = mesh;
         return go;
@@ -904,7 +899,7 @@ public class VillageBlockout : MonoBehaviour
         float step = sweep / (closed ? steps : steps);
 
         var mesh = new Mesh { name = name, hideFlags = HideFlags.DontSave };
-        meshes.Add(mesh);
+        generated.Track(mesh);
 
         var vertices = new List<Vector3>();
         var uvs = new List<Vector2>();
@@ -966,12 +961,8 @@ public class VillageBlockout : MonoBehaviour
             AddCap(triangles, 0, ringCount, bottomStart + ringCount - 1, bottomCenter, false);
         }
 
-        mesh.SetVertices(vertices);
-        mesh.SetUVs(0, uvs);
-        mesh.SetTriangles(triangles, 0);
-        mesh.RecalculateNormals();
-        mesh.RecalculateTangents();   // 바닥 재질(groundMaterial)의 노멀맵용
-        mesh.RecalculateBounds();
+        // 바닥 재질(groundMaterial)의 노멀맵용으로 탄젠트까지 구한다.
+        MeshAssembly.Write(mesh, vertices, uvs, MeshAssembly.Recalculate.ForNormalMap, triangles);
         return mesh;
     }
 
@@ -1458,11 +1449,7 @@ public class VillageBlockout : MonoBehaviour
 
     // ---- 도형 만들기 ----------------------------------------------------
 
-    private static Vector3 Dir(float bearing)
-    {
-        float radians = bearing * Mathf.Deg2Rad;
-        return new Vector3(Mathf.Sin(radians), 0f, Mathf.Cos(radians));
-    }
+    private static Vector3 Dir(float bearing) => Compass.Direction(bearing);
 
     private float GroundY(Vector3 local)
     {
@@ -1490,9 +1477,7 @@ public class VillageBlockout : MonoBehaviour
     //
     // GameObject.CreatePrimitive를 쓰지 않는 이유: 그쪽은 늘 콜라이더를 붙여서 나오는데,
     // 여기서 만드는 것의 상당수는 콜라이더가 필요 없고(난간, 바닥 문양) 실린더는 붙어 나온
-    // 캡슐을 버리고 상자를 다시 다는 구조였다. 도형 수백 개를 세울 때마다 컴포넌트를 붙였다 떼는
-    // 셈이라, 값을 조금 고칠 때마다 다시 만드는 에디터 작업에서 특히 체감된다.
-    // 메시는 어차피 유니티 기본 도형 넷뿐이므로 한 번 꺼내 캐시해 두고 공유한다.
+    // 캡슐을 버리고 상자를 다시 다는 구조였다. 메시는 공용 캐시(BuiltinMeshes)에서 꺼내 쓴다.
     private GameObject Prim(Transform parent, PrimitiveType type, string name,
         Vector3 center, Vector3 scale, Color color, Vector3 euler = default, bool solid = true, bool glow = false)
     {
@@ -1502,8 +1487,8 @@ public class VillageBlockout : MonoBehaviour
         go.transform.localRotation = Quaternion.Euler(euler);
         go.transform.localScale = scale;
 
-        go.GetComponent<MeshFilter>().sharedMesh = PrimitiveMesh(type);
-        go.GetComponent<MeshRenderer>().sharedMaterial = glow ? GlowMat(color) : Mat(color);
+        go.GetComponent<MeshFilter>().sharedMesh = BuiltinMeshes.Get(type);
+        go.GetComponent<MeshRenderer>().sharedMaterial = glow ? generated.Glow(color) : generated.Solid(color);
 
         // 부딪힐 일 없는 것(solid=false)에는 아예 달지 않는다.
         if (solid)
@@ -1526,23 +1511,6 @@ public class VillageBlockout : MonoBehaviour
 
         Mark(go);
         return go;
-    }
-
-    // 유니티 기본 도형의 메시. CreatePrimitive로 한 번만 꺼내 캐시한다.
-    // 여기 담기는 것은 유니티 내장 에셋이라 ClearGenerated에서 지우면 안 된다(meshes 목록과 별개).
-    private static readonly Dictionary<PrimitiveType, Mesh> PrimitiveMeshes =
-        new Dictionary<PrimitiveType, Mesh>();
-
-    private static Mesh PrimitiveMesh(PrimitiveType type)
-    {
-        if (PrimitiveMeshes.TryGetValue(type, out Mesh cached) && cached != null) return cached;
-
-        GameObject sample = GameObject.CreatePrimitive(type);
-        Mesh mesh = sample.GetComponent<MeshFilter>().sharedMesh;
-        Kill(sample);
-
-        PrimitiveMeshes[type] = mesh;
-        return mesh;
     }
 
     private GameObject Box(Transform parent, string name, Vector3 center, Vector3 size, Color color,
@@ -1631,7 +1599,7 @@ public class VillageBlockout : MonoBehaviour
         finally
         {
             // 임시 루트와 그 안의 사본을 치우고, 편집용 배치를 원래대로 다시 세운다.
-            Kill(root);
+            UnityObjects.Destroy(root);
             Rebuild();
         }
     }
@@ -1648,14 +1616,12 @@ public class VillageBlockout : MonoBehaviour
         UnityEditor.AssetDatabase.DeleteAsset(containerPath);
 
         Object container = null;
-        foreach (Material material in materials.Values) AddGenerated(material, containerPath, ref container);
-        foreach (Material material in glowMaterials.Values) AddGenerated(material, containerPath, ref container);
-        for (int i = 0; i < meshes.Count; i++) AddGenerated(meshes[i], containerPath, ref container);
+        foreach (Object resource in generated.All) AddGenerated(resource, containerPath, ref container);
 
         // 이제 이것들은 에셋이다. 캐시에 그대로 두면 다음 Rebuild의 ClearGenerated가
         // DestroyImmediate로 지우려 들고, 에셋은 그렇게 지울 수 없어 예외가 난다.
         // 목록에서 놓아주면 Rebuild가 편집용 임시 머티리얼을 새로 만들어 쓴다.
-        ForgetGenerated();
+        generated.Forget();
 
         if (container == null) return;
 
@@ -1704,71 +1670,13 @@ public class VillageBlockout : MonoBehaviour
     {
         // 이 오브젝트 밑은 전부 이 스크립트가 만든 것으로 본다.
         for (int i = transform.childCount - 1; i >= 0; i--)
-            Kill(transform.GetChild(i).gameObject);
+            UnityObjects.Destroy(transform.GetChild(i).gameObject);
     }
 
     // 임시로 찍어낸 머티리얼과 메시. 에셋이 아니라서 직접 지우지 않으면 그대로 쌓인다.
     private void ClearGenerated()
     {
-        foreach (Material material in materials.Values) Kill(material);
-        foreach (Material material in glowMaterials.Values) Kill(material);
-        foreach (Mesh mesh in meshes) Kill(mesh);
-        ForgetGenerated();
-    }
-
-    // 지우지 않고 목록만 비운다. 구워서 에셋이 된 것들을 놓아줄 때 쓴다 —
-    // 에셋은 DestroyImmediate로 지울 수 없어서, 캐시에 남겨 두면 다음 Rebuild가 예외를 낸다.
-    private void ForgetGenerated()
-    {
-        materials.Clear();
-        glowMaterials.Clear();
-        meshes.Clear();
-    }
-
-    private Material Mat(Color color)
-    {
-        if (materials.TryGetValue(color, out Material cached) && cached != null) return cached;
-
-        Material material = NewMaterial(color);
-        materials[color] = material;
-        return material;
-    }
-
-    private Material GlowMat(Color color)
-    {
-        if (glowMaterials.TryGetValue(color, out Material cached) && cached != null) return cached;
-
-        Material material = NewMaterial(color);
-        material.EnableKeyword("_EMISSION");
-        material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
-        if (material.HasProperty("_EmissionColor")) material.SetColor("_EmissionColor", color * 1.6f);
-        glowMaterials[color] = material;
-        return material;
-    }
-
-    private static Material NewMaterial(Color color)
-    {
-        // URP가 없는 프로젝트에서도 색은 나오도록 빌트인 셰이더로 떨어진다.
-        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-        if (shader == null) shader = Shader.Find("Standard");
-
-        var material = new Material(shader)
-        {
-            name = "Blockout " + ColorUtility.ToHtmlStringRGB(color),
-            hideFlags = HideFlags.DontSave   // 에셋으로 남기지 않는다
-        };
-        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
-        if (material.HasProperty("_Color")) material.SetColor("_Color", color);
-        if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.12f);
-        if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", 0.12f);
-        return material;
-    }
-
-    private static void Kill(Object target)
-    {
-        if (target == null) return;
-        if (Application.isPlaying) Destroy(target);
-        else DestroyImmediate(target);
+        generated.DestroyAll();
     }
 
     // ---- 구역별 임시 도형 ------------------------------------------------

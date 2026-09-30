@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
@@ -30,8 +31,9 @@ using UnityEngine;
 // 진행 중인 await가 통째로 사라지므로, 굽는 동안에는 어셈블리 리로드를 잠가 둔다.
 public static class MeshyModelPipeline
 {
-    // 무엇을 주문하는지(프롬프트, 자세, 키, 폴리곤 수, 크레딧 어림값)는 전부 MeshyBodyRecipe에 있다.
-    // 빌드에서 도는 쪽(MeshyBodyService)과 같은 것을 봐야 두 길이 같은 사람을 만든다.
+    // 무엇을 주문하는지(프롬프트, 자세, 키, 폴리곤 수, 크레딧 어림값)는 전부 MeshyBodyRecipe에,
+    // 주문을 넣고 받아 오는 사슬은 MeshyBodyBaker에 있다. 빌드에서 도는 쪽(MeshyBodyService)과 같은 것을
+    // 써야 두 길이 같은 사람을 만든다. 여기 남는 것은 메뉴, 확인 창, 진행 막대뿐이다.
 
     // ── 메뉴 ─────────────────────────────────────────────────────────────
 
@@ -104,7 +106,7 @@ public static class MeshyModelPipeline
         int balance;
         try
         {
-            balance = await MeshyApi.Balance();
+            balance = await MeshyClient.Shared.BalanceAsync();
         }
         catch (Exception e)
         {
@@ -153,40 +155,42 @@ public static class MeshyModelPipeline
         // 새 id가 붙어 방금 구운 몸이 남의 것이 된다. 굽기 전에 에셋에 박아 둔다.
         character.EnsureId();
         AssetDatabase.SaveAssetIfDirty(character);
-        string id = character.Id;
 
         Report(label, "초상화를 읽는 중", 0.05f);
-        string appearance = await CharacterAppearance.Describe(character);
+        string appearance = await CharacterAppearance.DescribeAsync(character, PortraitPng(character));
 
-        Report(label, "전신 시트를 그리는 중", 0.10f);
-        string sheetTask = await MeshyApi.CreateModelSheet(appearance);
-        MeshyBodyRecipe.ImageTask sheet = await MeshyApi.Await<MeshyBodyRecipe.ImageTask>(
-            MeshyBodyRecipe.SheetEndpoint, sheetTask, (p, s) => Report(label, $"전신 시트 {s}", 0.10f + p * 0.15f));
-
-        if (sheet.image_urls == null || sheet.image_urls.Length == 0)
-            throw new Exception("전신 시트가 비어서 돌아왔다.");
-
-        Report(label, "메시를 뽑는 중", 0.25f);
-        string meshTask = await MeshyApi.CreateMesh(sheetTask);
-        await MeshyApi.Await<MeshyBodyRecipe.ModelTask>(
-            MeshyBodyRecipe.MeshEndpoint, meshTask, (p, s) => Report(label, $"메시 {s}", 0.25f + p * 0.35f));
-
-        Report(label, "뼈를 넣는 중", 0.60f);
-        string rigTask = await MeshyApi.CreateRig(meshTask);
-        MeshyBodyRecipe.RigTask rig = await MeshyApi.Await<MeshyBodyRecipe.RigTask>(
-            MeshyBodyRecipe.RigEndpoint, rigTask, (p, s) => Report(label, $"리깅 {s}", 0.60f + p * 0.30f));
-
-        if (rig.result == null || string.IsNullOrEmpty(rig.result.rigged_character_glb_url))
-            throw new Exception("리깅이 끝났는데 GLB 주소가 없다.");
-
-        Report(label, "받아 오는 중", 0.92f);
-
-        // 소환 쪽과 같은 자리에 같은 방식으로 놓는다 — 옆에 다 받은 뒤에 갈아 끼운다.
-        await MeshyApi.Download(rig.result.rigged_character_glb_url, CharacterModelStore.TempPathFor(id));
-        if (!CharacterModelStore.Commit(id))
-            throw new Exception("GLB를 받았는데 저장소에 앉히지 못했다(빈 파일).");
+        // 소환 쪽(MeshyBodyService)과 같은 사슬, 같은 자리 — 옆에 다 받은 뒤에 갈아 끼운다.
+        await Baker.BakeAsync(character.Id, appearance,
+            (stage, progress, status) => Report(label, StepLabel(stage, status), progress));
 
         EditorUtility.ClearProgressBar();
+    }
+
+    private static readonly MeshyBodyBaker Baker = new MeshyBodyBaker();
+
+    private static string StepLabel(MeshyBodyBaker.Stage stage, string status)
+    {
+        switch (stage)
+        {
+            case MeshyBodyBaker.Stage.Sheet: return $"전신 시트 {status}";
+            case MeshyBodyBaker.Stage.Mesh:  return $"메시 {status}";
+            case MeshyBodyBaker.Stage.Rig:   return $"리깅 {status}";
+            default:                         return "받아 오는 중";
+        }
+    }
+
+    // 에디터에서는 임포트된 텍스처를 거치지 않고 원본 PNG 파일을 그대로 읽는다(압축·축소 전의 그림).
+    // 스프라이트가 물려 있으면 그쪽이 정답이다. 에셋을 옮기면 문자열 경로는 낡지만 참조는 따라간다.
+    private static byte[] PortraitPng(CharacterSO character)
+    {
+        string path = character.portrait != null
+            ? AssetDatabase.GetAssetPath(character.portrait)
+            : character.portraitAssetPath;
+
+        if (string.IsNullOrEmpty(path)) return null;
+
+        string full = Path.GetFullPath(path);
+        return File.Exists(full) ? File.ReadAllBytes(full) : null;
     }
 
     private static void Report(string label, string step, float progress)

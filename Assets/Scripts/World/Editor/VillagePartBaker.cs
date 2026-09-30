@@ -279,26 +279,24 @@ public static class VillagePartBaker
             string taskId = null;
             if (!overwrite && File.Exists(ConceptTaskPath(part.id))) taskId = File.ReadAllText(ConceptTaskPath(part.id)).Trim();
 
+            MeshyClient meshy = MeshyClient.Shared;
             if (string.IsNullOrEmpty(taskId))
             {
-                string body =
-                    "{\"ai_model\":" + MeshyBodyRecipe.EscapeJson(ImageModel) +
-                    ",\"prompt\":" + MeshyBodyRecipe.EscapeJson("Game asset: " + part.subject + ArchStyle) +
-                    ",\"aspect_ratio\":\"1:1\"" +
-                    // 배경이 남으면 3D 생성기가 배경까지 형태로 읽는다.
-                    ",\"remove_background\":true}";
+                // 배경이 남으면 3D 생성기가 배경까지 형태로 읽는다.
+                string body = MeshyRequests.TextToImage(ImageModel, "Game asset: " + part.subject + ArchStyle,
+                    aspectRatio: "1:1", removeBackground: true);
 
-                taskId = await MeshyApi.CreateImage(body);
+                taskId = await meshy.CreateImageAsync(body);
                 Directory.CreateDirectory(RawDir(part.id));
                 File.WriteAllText(ConceptTaskPath(part.id), taskId);
             }
 
-            MeshyBodyRecipe.ImageTask task = await MeshyApi.Await<MeshyBodyRecipe.ImageTask>(
-                MeshyBodyRecipe.SheetEndpoint, taskId, null);
-            if (task.image_urls == null || task.image_urls.Length == 0)
+            MeshyProtocol.ImageTask task = await meshy.AwaitTaskAsync<MeshyProtocol.ImageTask>(
+                MeshyProtocol.TextToImage, taskId);
+            if (task.FirstImageUrl == null)
                 throw new Exception("그림이 비어서 돌아왔다.");
 
-            await MeshyApi.Download(task.image_urls[0], ConceptPath(part.id));
+            await meshy.DownloadAsync(task.FirstImageUrl, ConceptPath(part.id));
             // 새 그림이 생기면 옛 그림으로 주문한 3D는 더 이상 이 그림과 맞지 않는다.
             File.Delete(ModelTaskPath(part.id));
             Debug.Log($"[VillagePartBaker] {part.id} 컨셉 완료 (태스크 {taskId}).");
@@ -350,6 +348,7 @@ public static class VillagePartBaker
     {
         try
         {
+            MeshyClient meshy = MeshyClient.Shared;
             string taskId = null;
             if (!overwrite && File.Exists(ModelTaskPath(part.id))) taskId = File.ReadAllText(ModelTaskPath(part.id)).Trim();
 
@@ -357,22 +356,23 @@ public static class VillagePartBaker
             {
                 // 그림 주소는 며칠 지나면 만료된다. 받아 둔 그림을 그대로 실어 보낸다.
                 string image = "data:image/png;base64," + Convert.ToBase64String(File.ReadAllBytes(ConceptPath(part.id)));
-                string body =
-                    "{\"image_url\":" + MeshyBodyRecipe.EscapeJson(image) +
-                    ",\"ai_model\":\"" + MeshModel + "\"" +
-                    ",\"should_remesh\":true" +
-                    ",\"topology\":\"triangle\"" +
-                    ",\"target_polycount\":" + part.polycount +
-                    ",\"should_texture\":true" +
+                string body = new JsonBody()
+                    .Add("image_url", image)
+                    .Add("ai_model", MeshModel)
+                    .Add("should_remesh", true)
+                    .Add("topology", "triangle")
+                    .Add("target_polycount", part.polycount)
+                    .Add("should_texture", true)
                     // 모바일에서도 돌릴 것이라 베이스 컬러 한 장만 쓴다.
-                    ",\"enable_pbr\":false" +
-                    ",\"target_formats\":[\"fbx\"]}";
+                    .Add("enable_pbr", false)
+                    .AddStrings("target_formats", "fbx")
+                    .ToString();
 
                 // 3D는 몇 분씩 걸리므로 슬롯은 주문하는 동안만 잡는다. 기다리는 동안의 폴링은 429를 알아서 기다린다.
                 await Slots.WaitAsync();
                 try
                 {
-                    taskId = await MeshyApi.CreateModelFromImage(body);
+                    taskId = await meshy.CreateModelFromImageAsync(body);
                 }
                 finally
                 {
@@ -382,16 +382,16 @@ public static class VillagePartBaker
                 File.WriteAllText(ModelTaskPath(part.id), taskId);
             }
 
-            MeshyBodyRecipe.ModelTask task = await MeshyApi.Await<MeshyBodyRecipe.ModelTask>(
-                MeshyApi.ImageTo3DEndpoint, taskId, null);
+            MeshyProtocol.ModelTask task = await meshy.AwaitTaskAsync<MeshyProtocol.ModelTask>(
+                MeshyProtocol.ImageTo3D, taskId);
 
             if (task.model_urls == null || string.IsNullOrEmpty(task.model_urls.fbx))
                 throw new Exception("FBX 주소가 없다.");
             if (task.texture_urls == null || task.texture_urls.Length == 0 || string.IsNullOrEmpty(task.texture_urls[0].base_color))
                 throw new Exception("베이스 컬러 주소가 없다.");
 
-            await MeshyApi.Download(task.model_urls.fbx, RawModelPath(part.id));
-            await MeshyApi.Download(task.texture_urls[0].base_color, RawAlbedoPath(part.id));
+            await meshy.DownloadAsync(task.model_urls.fbx, RawModelPath(part.id));
+            await meshy.DownloadAsync(task.texture_urls[0].base_color, RawAlbedoPath(part.id));
             lock (done) done.Add(part.id);
             Debug.Log($"[VillagePartBaker] {part.id} 3D 받음 (태스크 {taskId}).");
         }
@@ -713,13 +713,7 @@ public static class VillagePartBaker
     // (베이스 컬러를 발광에 또 걸고 metallic이 1로 온다. 캐릭터 몸에서 겪은 것과 같다).
     private static Material WriteMaterial(Part part)
     {
-        string path = MaterialPath(part.id);
-        var material = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (material == null)
-        {
-            material = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = part.id };
-            AssetDatabase.CreateAsset(material, path);
-        }
+        Material material = EditorMaterials.LoadOrCreateLit(MaterialPath(part.id), part.id);
 
         material.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(AlbedoPath(part.id)));
         material.SetColor("_BaseColor", Color.white);
