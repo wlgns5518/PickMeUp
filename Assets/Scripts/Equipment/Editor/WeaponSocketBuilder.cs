@@ -1,5 +1,4 @@
 using UnityEditor;
-using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -15,9 +14,9 @@ using UnityEngine.SceneManagement;
 // 자리는 HandSocket이 손뼈에서 재는 그 자리 그대로다. 그래서 프리팹에 놓아 둔 소켓과
 // 런타임에 만들어지는 소켓이 언제나 같은 곳에 선다.
 //
-// 소켓만으로는 반쪽이다. 양손 무기의 반대 손과 활시위를 잡는 손은 IK가 옮기므로,
-// WeaponHandIK를 붙이고 Animator 레이어의 IK Pass도 같이 켜 준다 — 꺼져 있으면 OnAnimatorIK가
-// 아예 호출되지 않아서, 손은 그냥 애니메이션대로 허공에 남는다.
+// 소켓만으로는 반쪽이다. 양손 무기의 반대 손과 활시위를 잡는 손은 IK가 옮기므로
+// WeaponHandIK도 같이 붙인다 — 없으면 손은 그냥 애니메이션대로 허공에 남는다.
+// (팔은 WeaponHandIK가 LateUpdate에서 직접 풀므로 Animator 레이어의 IK Pass는 필요 없다.)
 //
 // 쓰는 법: 캐릭터 프리팹(또는 씬의 캐릭터)을 고르고 PickMeUp/Equipment/Add Weapon Sockets.
 public static class WeaponSocketBuilder
@@ -58,7 +57,6 @@ public static class WeaponSocketBuilder
         var equipper = go.GetComponentInChildren<WeaponEquipper>();
         Link(equipper, right, left);
         AttachHandIK(animator, equipper);
-        EnableIKPass(animator);
         return true;
     }
 
@@ -87,7 +85,6 @@ public static class WeaponSocketBuilder
 
             var animator = contents.GetComponentInChildren<Animator>();
             AttachHandIK(animator, equipper);
-            EnableIKPass(animator);
 
             PrefabUtility.SaveAsPrefabAsset(contents, path);
             return true;
@@ -174,7 +171,7 @@ public static class WeaponSocketBuilder
         serialized.ApplyModifiedProperties();
     }
 
-    // 손 IK는 Animator가 붙은 GameObject에 있어야 한다 — OnAnimatorIK는 거기로만 온다.
+    // 손 IK는 Animator가 붙은 GameObject에 둔다 — 그 Animator의 팔뼈를 찾아 옮긴다.
     private static void AttachHandIK(Animator animator, WeaponEquipper equipper)
     {
         if (animator == null) return;
@@ -186,38 +183,6 @@ public static class WeaponSocketBuilder
         var serialized = new SerializedObject(ik);
         serialized.FindProperty("equipment").objectReferenceValue = equipper;
         serialized.ApplyModifiedProperties();
-    }
-
-    // IK Pass가 꺼져 있으면 OnAnimatorIK 자체가 호출되지 않는다. 무기 컨트롤러는 전부
-    // 같은 베이스에서 갈라져 나오므로, 베이스 레이어 하나만 켜면 무기를 바꿔도 유지된다.
-    private static void EnableIKPass(Animator animator)
-    {
-        if (animator == null) return;
-        EnableIKPass(animator.runtimeAnimatorController);
-
-        WeaponAnimationLibrary library = Resources.Load<WeaponAnimationLibrary>(WeaponAnimationLibrary.ResourceName);
-        if (library == null) return;
-
-        for (int i = 0; i < library.entries.Count; i++)
-        {
-            WeaponAnimationLibrary.Entry entry = library.entries[i];
-            if (entry != null) EnableIKPass(entry.controller);
-        }
-    }
-
-    private static void EnableIKPass(RuntimeAnimatorController runtime)
-    {
-        var overrides = runtime as AnimatorOverrideController;
-        if (overrides != null) runtime = overrides.runtimeAnimatorController;
-
-        var controller = runtime as AnimatorController;
-        if (controller == null || controller.layers.Length == 0 || controller.layers[0].iKPass) return;
-
-        // layers는 복사본을 돌려주므로 고친 배열을 다시 넣어야 저장된다.
-        AnimatorControllerLayer[] layers = controller.layers;
-        layers[0].iKPass = true;
-        controller.layers = layers;
-        EditorUtility.SetDirty(controller);
     }
 
     // 소켓을 손바닥 쪽으로 얼마나 밀지는 캐릭터가 들고 있다. 없으면 기본값.

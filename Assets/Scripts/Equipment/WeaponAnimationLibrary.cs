@@ -36,7 +36,9 @@ public class WeaponAnimationLibrary : ScriptableObject
 
     [Tooltip("주무기 종류와 무관하게, 보조 손에 방패가 들렸을 때만 갈아 끼우는 클립들. " +
              "막기 자세가 여기 들어간다 — 방패 없이 무기로 받아내는 직군(패링·무기 방어)은 " +
-             "기본 클립을 그대로 쓰고, 방패를 든 유닛만 방패를 앞으로 세우는 자세로 바뀐다.")]
+             "무기 컨트롤러가 정한 막기 클립을 쓰고, 방패를 든 유닛만 방패를 앞으로 세우는 자세로 바뀐다. " +
+             "원본과 같은 클립을 적은 줄(BlockHit·BlockBreak)은 무기 컨트롤러가 갈아 끼운 무기용 반응을 " +
+             "기본 컨트롤러의 방패용 반응으로 되돌리는 줄이다.")]
     public List<ShieldClip> shieldClips = new List<ShieldClip>();
 
     private static readonly ResourceSlot<WeaponAnimationLibrary> Slot =

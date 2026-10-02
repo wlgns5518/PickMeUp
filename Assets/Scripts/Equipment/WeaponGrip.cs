@@ -18,6 +18,10 @@ using UnityEngine;
 //   Spear (주손은 소켓에 걸리고)
 //   └ SecondaryGrip (반대 손이 IK로 따라가는 지점 — WeaponHandIK)
 //
+// 장병기는 그 지점이 하나가 아니다. 찌를 때 앞손은 자루를 타고 미끄러지므로, 한 점에 묶어 두면
+// 클립이 손을 둔 자리와 어긋난다. 그래서 자루의 어느 구간을 잡아도 되는지(secondarySlide)를 같이 적어 두고,
+// 그 안에서 애니메이션의 손에 가장 가까운 곳을 잡게 한다(ClosestSecondaryPoint).
+//
 // 활은 손이 하는 일이 아예 다르다. 활은 왼손에 걸려 있고, 오른손은 활이 아니라 시위를 잡는다.
 //
 //   Bow (hand = Left)
@@ -40,6 +44,10 @@ public class WeaponGrip : MonoBehaviour
     [Tooltip("반대 손이 따라가는 지점. 양손 무기에만 있다. 비어 있으면 반대 손은 애니메이션대로 둔다.")]
     [SerializeField] private Transform secondaryGrip;
 
+    [Tooltip("반대 손이 자루를 따라 옮겨 잡을 수 있는 구간. 주손 그립(루트)에서 자루(+Y)를 따라 x ~ y (m). " +
+             "둘 다 0이면 SecondaryGrip 한 점만 잡는다. 구간이 주손을 가로지르면 주손이 쥔 자리는 비워 둔다.")]
+    [SerializeField] private Vector2 secondarySlide;
+
     [Header("Bow")]
     [Tooltip("시위가 풀려 있을 때 화살(과 그것을 잡은 손)이 있는 자리.")]
     [SerializeField] private Transform stringRest;
@@ -61,8 +69,30 @@ public class WeaponGrip : MonoBehaviour
     public Transform StringDraw { get { return stringDraw; } }
     public Transform Model { get { return model; } }
 
+    public Vector2 SecondarySlide { get { return secondarySlide; } }
+
     // 반대 손이 잡을 곳이 있는가(양손 무기).
     public bool HasSecondaryGrip { get { return secondaryGrip != null; } }
+
+    // 주손이 쥔 자리에서 반대 손이 이만큼(m)은 떨어져 잡는다. 주먹 하나가 차지하는 폭이다.
+    public const float MainHandClearance = 0.12f;
+
+    // 반대 손이 잡을 수 있는 자리 가운데 point에 가장 가까운 곳.
+    //
+    // 미끄러질 구간이 없는 무기(양손검)는 언제나 SecondaryGrip 그 자리다. 구간이 있으면 point를
+    // 자루 축에 내려 그 구간 안으로 물린다 — 손이 자루를 타고 움직이는 클립을 그대로 따라가기 위해서다.
+    public Vector3 ClosestSecondaryPoint(Vector3 point)
+    {
+        if (secondaryGrip == null) return transform.position;
+        if (secondarySlide.x >= secondarySlide.y) return secondaryGrip.position;
+
+        // 자루 축은 표식을 지나는 +Y다. 표식을 자루 옆으로 옮겨 두었으면 그 옆 거리는 그대로 지킨다.
+        Vector3 anchor = transform.InverseTransformPoint(secondaryGrip.position);
+        float along = Mathf.Clamp(transform.InverseTransformPoint(point).y, secondarySlide.x, secondarySlide.y);
+        if (Mathf.Abs(along) < MainHandClearance) along = along >= 0f ? MainHandClearance : -MainHandClearance;
+
+        return transform.TransformPoint(new Vector3(anchor.x, along, anchor.z));
+    }
 
     // 시위를 당기는 무기인가. 활이면 두 표식이 모두 있어야 한다 — 하나만 있으면 당길 구간을 알 수 없다.
     public bool HasBowString { get { return stringRest != null && stringDraw != null; } }
@@ -124,6 +154,11 @@ public class WeaponGrip : MonoBehaviour
         secondaryGrip = newSecondaryGrip;
     }
 
+    public void BindSecondarySlide(Vector2 newSecondarySlide)
+    {
+        secondarySlide = newSecondarySlide;
+    }
+
     public void BindBowString(Transform rest, Transform draw)
     {
         stringRest = rest;
@@ -147,6 +182,14 @@ public class WeaponGrip : MonoBehaviour
             Gizmos.color = Color.cyan;
             Gizmos.DrawWireSphere(secondaryGrip.position, length * 0.12f);
             Gizmos.DrawLine(grip.position, secondaryGrip.position);
+
+            // 반대 손이 옮겨 잡을 수 있는 구간.
+            if (secondarySlide.x < secondarySlide.y)
+            {
+                Vector3 anchor = transform.InverseTransformPoint(secondaryGrip.position);
+                Gizmos.DrawLine(transform.TransformPoint(new Vector3(anchor.x, secondarySlide.x, anchor.z)),
+                                transform.TransformPoint(new Vector3(anchor.x, secondarySlide.y, anchor.z)));
+            }
         }
 
         if (!HasBowString) return;

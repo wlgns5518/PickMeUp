@@ -81,6 +81,7 @@ MonoBehaviour:
   hand: 0
   gripPoint: {fileID: 2475846467703928277}
   secondaryGrip: {fileID: 3763047613605425064}
+  secondarySlide: {x: -0.535214, y: 0.93816173}
   stringRest: {fileID: 0}
   stringDraw: {fileID: 0}
   model: {fileID: 3896534563869737123}

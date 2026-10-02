@@ -15,7 +15,8 @@ using UnityEngine;
 // 무기마다 다른 보정값은 코드가 아니라 무기 프리팹이 들고 있다.
 //
 // 남은 한 손이 하는 일도 무기가 정한다.
-//   · 양손 무기: 반대 손이 보조 그립(WeaponGrip.SecondaryGrip)을 따라간다.
+//   · 양손 무기: 반대 손이 보조 그립(WeaponGrip.SecondaryGrip)을 잡는다 — 늘 잡는 것은 아니고,
+//     재생 중인 동작이 그 손을 자루 곁에 둘 때만이다. 달리거나 맞을 때는 한 손으로 든다.
 //   · 활: 활은 왼손에 걸려 있고, 오른손은 활이 아니라 시위를 잡는다. 공격이 시작되면
 //     시위를 당긴 자리로 옮겨 가고(DrawAmount), 쏘는 순간 시위를 따라 앞으로 풀리며 손을 놓는다.
 // 실제로 손을 옮기는 것은 WeaponHandIK다. 여기서는 "어디를 잡아야 하는가"만 알려 준다.
@@ -193,22 +194,23 @@ public class WeaponEquipper : MonoBehaviour
 
     public Transform SocketOf(EquipHand hand) => Of(hand).Socket;
 
-    // 반대 손이 따라가야 할 지점이 있는가. 양손 무기를 들었고 그 반대 손이 비어 있을 때만이다 —
+    // 반대 손이 잡을 수 있는 자루가 있는가. 양손 무기를 들었고 그 반대 손이 비어 있을 때만이다 —
     // 방패를 들고 있는 손을 자루로 끌어오면 방패가 몸을 가로질러 날아간다.
-    public bool TryGetSecondaryGrip(out EquipHand freeHand, out Transform target)
+    // 자루의 어디를, 언제 잡을지는 받아 간 쪽(WeaponHandIK)이 그 무기의 그립에 물어 정한다.
+    public bool TryGetSecondaryGrip(out EquipHand freeHand, out WeaponGrip grip)
     {
-        if (TrySecondary(right, left, out freeHand, out target)) return true;
-        return TrySecondary(left, right, out freeHand, out target);
+        if (TrySecondary(right, left, out freeHand, out grip)) return true;
+        return TrySecondary(left, right, out freeHand, out grip);
     }
 
-    private static bool TrySecondary(Hand holder, Hand other, out EquipHand freeHand, out Transform target)
+    private static bool TrySecondary(Hand holder, Hand other, out EquipHand freeHand, out WeaponGrip grip)
     {
         freeHand = other.Side;
-        target = null;
+        grip = null;
         if (holder.Grip == null || !holder.Grip.HasSecondaryGrip) return false;
         if (other.Definition != null) return false;
 
-        target = holder.Grip.SecondaryGrip;
+        grip = holder.Grip;
         return true;
     }
 

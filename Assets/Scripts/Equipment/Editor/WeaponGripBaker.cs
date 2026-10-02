@@ -174,17 +174,19 @@ public static class WeaponGripBaker
             // 한손 무기인데 표식이 남아 있으면 반대 손이 공연히 끌려간다.
             if (existing != null) Object.DestroyImmediate(existing.gameObject);
             grip.BindSecondaryGrip(null);
+            grip.BindSecondarySlide(Vector2.zero);
             return;
         }
+
+        // 자루를 벗어난 자리를 잡으면 손이 허공을 쥔다. 모델이 실제로 뻗어 있는 구간 안으로 물린다.
+        float min, max;
+        MeasureGripAxisExtent(contents, out min, out max);
 
         bool created = existing == null;
         if (created)
         {
             existing = NewChild(contents.transform, SecondaryGripName);
 
-            // 자루를 벗어난 자리를 잡으면 손이 허공을 쥔다. 모델이 실제로 뻗어 있는 구간 안으로 물린다.
-            float min, max;
-            MeasureGripAxisExtent(contents, out min, out max);
             float y = Mathf.Clamp(offset, min + 0.03f, Mathf.Max(min + 0.03f, max - 0.10f));
 
             existing.localPosition = new Vector3(0f, y, 0f);
@@ -192,6 +194,28 @@ public static class WeaponGripBaker
         }
 
         grip.BindSecondaryGrip(existing);
+
+        // 미끄러질 구간도 표식과 같은 규칙이다. 손으로 적어 둔 값이 있으면 그대로 두고, 비어 있을 때만 채운다.
+        if (created || grip.SecondarySlide == Vector2.zero)
+            grip.BindSecondarySlide(SecondarySlide(type, min, max));
+    }
+
+    // 반대 손이 자루를 타고 옮겨 잡을 수 있는 구간(주손 그립에서 자루를 따라 m).
+    //
+    // 장병기만 있다. 창 클립은 찌를 때 앞손이 주손 위 0.12~0.70m를 오가고(미끄러진다), 자루를 가로로 들어
+    // 막을 때는 0.95m까지 벌어진다 — 장병기도 같은 클립을 쓴다. 주손 뒤쪽을 잡는 클립이 들어와도
+    // 따라갈 수 있게 뒤로도 열어 둔다. 날과 자루 끝은 구간에서 뺀다.
+    // 양손검은 손잡이가 주먹 둘 폭이라 미끄러질 데가 없다 — 표식 한 점만 잡는다.
+    private static Vector2 SecondarySlide(WeaponType type, float min, float max)
+    {
+        if (type != WeaponType.Spear && type != WeaponType.Polearm) return Vector2.zero;
+
+        float back = Mathf.Max(-0.75f, min + 0.05f);
+        float front = Mathf.Min(1.05f, max - 0.25f);
+
+        // 주손 뒤로 주먹 하나 놓을 자리도 안 나오는 짧은 자루는 앞쪽만 쓴다.
+        if (back > -WeaponGrip.MainHandClearance) back = WeaponGrip.MainHandClearance;
+        return front > back ? new Vector2(back, front) : Vector2.zero;
     }
 
     // 두 손으로 드는 무기에서 반대 손이 잡는 지점. 주손 그립에서 자루를 따라 얼마나 떨어져 있는가(m).

@@ -57,3 +57,7 @@ MonoBehaviour:
     shield: {fileID: 7400000, guid: a4add09e0624e804baeb05a615a478d8, type: 2}
   - original: {fileID: 7400000, guid: 57fc859810e355e4faf5e228b1ad8479, type: 2}
     shield: {fileID: 7400000, guid: ce17fb0217a6f72448cfeec8c4fd3c5b, type: 2}
+  - original: {fileID: 7400000, guid: 6c7f20ff164433f48bd93a548e225e8b, type: 2}
+    shield: {fileID: 7400000, guid: 6c7f20ff164433f48bd93a548e225e8b, type: 2}
+  - original: {fileID: 7400000, guid: 2de5422e46364ee4cb2793f169905f22, type: 2}
+    shield: {fileID: 7400000, guid: 2de5422e46364ee4cb2793f169905f22, type: 2}
