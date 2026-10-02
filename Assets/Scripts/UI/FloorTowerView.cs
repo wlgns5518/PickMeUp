@@ -8,12 +8,12 @@ using UnityEngine.UI;
 
 // 층 선택의 탑 — 1층이 맨 아래, 꼭대기 층이 맨 위다. 위로 굴리면 위층이, 아래로 굴리면 아래층이 보인다.
 //
-//                 /\          ← 100층 위의 지붕
-//        ☁      /____\
+//                 /\          ← 100층 위의 첨탑
+//      ◯ ☁      /____\         달은 창에 붙어 있어 아무리 올라가도 탑 왼쪽 어깨 뒤에 떠 있다.
 //            ┌──────────┐     한 층 = 돌벽 한 칸 + 창 둘 + 층 번호 판.
 //            │ ▢ [12층] ▢│    깬 층은 창에 불이 켜져 있고, 잠긴 층은 벽과 창이 어둡다.
 //            ├──────────┤     지금 도전할 층은 창 불빛이 더 밝고, 파티 표시에서 고리가 퍼져 나간다.
-//     ☁      │ ▣ [11층] ▣│  ▐ 탑 옆 하늘은 구간(다섯 층)마다 그 전장의 색. 구름은 탑보다 느리게 흘러 높이가 느껴진다.
+//     ☁      │ ▣ [11층] ▣│  ▐ 탑 옆 하늘은 구간(다섯 층)마다 그 전장의 색. 먹구름은 탑보다 느리게 흘러 높이가 느껴진다.
 //            └─┬──────┬─┘  ▐ 오른쪽 막대는 탑 전체와 지금 보는 자리. 누르거나 끌어서 건너뛴다.
 //      ▁▁▁▁▁▁▁▁│  문  │▁▁▁▁  ← 1층 아래의 입구와 땅
 //
@@ -45,11 +45,13 @@ public class FloorTowerView : MonoBehaviour
     // ── 한 층 안 ──
     private const float WindowOffset = 168f;
     private const float WindowWidth = 64f;
-    private const float WindowHeight = 88f;
+    private const float WindowHeight = 100f;
     private const float WindowY = RowHeight * 0.46f;
-    private const float GlowSize = 150f;
+    private const float GlowSize = 130f;
     private const float PlaqueWidth = 150f;
     private const float PlaqueHeight = 52f;
+    // 번호 판은 쇠판이다 — 모서리를 거의 세운다.
+    private const int PlaqueRadius = 4;
     private const float BadgeSize = 46f;
     private const float BadgeX = -PlaqueWidth * 0.5f - 6f;
     private const float PulseSize = 64f;
@@ -58,6 +60,7 @@ public class FloorTowerView : MonoBehaviour
     private const float RoofWidth = TowerWidth * 1.28f;
     private const float RoofSink = 10f;       // 지붕 아래 변을 꼭대기 층 벽에 이만큼 묻는다
     private const float SkyAboveRoof = 70f;
+    private const float RoofHazeAlpha = 0.28f;
     private const float BaseWallHeight = RowHeight * 2f;
     private const float BaseWidth = TowerWidth + 32f;
     private const float GroundHeight = 96f;
@@ -66,6 +69,13 @@ public class FloorTowerView : MonoBehaviour
     // ── 하늘 ──
     private const int CloudsPerStage = 2;
     private const float CloudParallax = 0.22f;
+    // 달은 창에 붙어 있다(아무리 올라가도 같은 자리) — 탑 왼쪽 어깨 뒤에 반쯤 걸친다.
+    private const float MoonSize = 230f;
+    private const float MoonX = 170f;
+    private const float MoonTop = 190f;
+    // 창 위아래를 어둡게 눌러 탑이 어둠 속으로 이어지게 한다.
+    private const float ShadeTopHeight = 150f;
+    private const float ShadeBottomHeight = 120f;
 
     // ── 오른쪽 막대·버튼 ──
     private const float GaugeWidth = 18f;
@@ -81,26 +91,31 @@ public class FloorTowerView : MonoBehaviour
     private const float GlideSmoothTime = 0.18f;
     private const float PulsePeriod = 1.8f;
 
-    // 돌·청동·불빛 색. 탑은 어느 구간이든 같은 돌이다 — 구간 색은 하늘이 맡는다.
-    private static readonly Color StoneFallback = new Color32(0x6E, 0x68, 0x61, 0xFF);
-    private static readonly Color LedgeColor = new Color32(0x35, 0x31, 0x2D, 0xFF);
-    private static readonly Color LedgeLight = new Color32(0x9A, 0x92, 0x86, 0xFF);
-    private static readonly Color LockedWall = new Color(0.4f, 0.42f, 0.52f, 1f);
-    private static readonly Color LockedWindow = new Color(0.2f, 0.21f, 0.27f, 1f);
-    private static readonly Color WindowFallback = new Color32(0xF2, 0xB8, 0x5C, 0xFF);
-    private static readonly Color Candle = new Color32(0xFF, 0xB0, 0x48, 0xFF);
-    private static readonly Color PlaqueFill = new Color32(0x24, 0x20, 0x1C, 0xFF);
-    private static readonly Color Bronze = new Color32(0xB0, 0x8D, 0x57, 0xFF);
-    private static readonly Color PlaqueText = new Color32(0xF3, 0xE6, 0xC8, 0xFF);
-    private static readonly Color SkyBase = new Color32(0x0C, 0x11, 0x1D, 0xFF);
-    // 탑 아래는 저녁 하늘, 꼭대기는 밤하늘. 구간 색은 그 위에 조금만 얹는다.
-    private static readonly Color SkyLow = new Color32(0x44, 0x5F, 0x80, 0xFF);
-    private static readonly Color SkyHigh = new Color32(0x0A, 0x0D, 0x22, 0xFF);
-    private static readonly Color Horizon = new Color32(0x9C, 0xAE, 0xC2, 0xFF);
-    private const float StageTintInSky = 0.3f;
+    // 돌·쇠·불빛 색. 탑은 어느 구간이든 같은 돌이다 — 구간 색은 하늘이 맡는다.
+    // 마을(VillagePalette)과 같은 다크 판타지: 차갑고 어두운 돌, 검은 쇠, 불씨 같은 창불.
+    private static readonly Color StoneFallback = new Color32(0x3A, 0x42, 0x46, 0xFF);
+    private static readonly Color LedgeColor = new Color32(0x12, 0x15, 0x18, 0xFF);
+    private static readonly Color LedgeLight = new Color32(0x4E, 0x58, 0x5C, 0xFF);
+    private static readonly Color LockedWall = new Color(0.5f, 0.55f, 0.66f, 1f);
+    private static readonly Color LockedWindow = new Color(0.34f, 0.38f, 0.48f, 1f);
+    private static readonly Color WindowFallback = new Color32(0xC8, 0x79, 0x3A, 0xFF);
+    private static readonly Color Ember = new Color32(0xE8, 0x87, 0x3A, 0xFF);
+    private static readonly Color PlaqueFill = new Color32(0x0E, 0x10, 0x12, 0xFF);
+    private static readonly Color TarnishedGold = new Color32(0x8C, 0x7A, 0x4E, 0xFF);
+    private static readonly Color PlaqueText = new Color32(0xD9, 0xD2, 0xC0, 0xFF);
+    private static readonly Color SkyBase = new Color32(0x06, 0x08, 0x0C, 0xFF);
+    // 탑 아래는 안개 낀 어스름, 꼭대기는 칠흑. 구간 색은 그 위에 조금만 얹는다 — 많이 얹으면 하늘이 알록달록해진다.
+    private static readonly Color SkyLow = new Color32(0x22, 0x30, 0x38, 0xFF);
+    private static readonly Color SkyHigh = new Color32(0x05, 0x06, 0x0C, 0xFF);
+    private static readonly Color Horizon = new Color32(0x4A, 0x5A, 0x5C, 0xFF);
+    private const float StageTintInSky = 0.12f;
     private const float StarFullAltitude = 0.75f; // 탑 높이의 이 비율부터 별이 다 보인다
-    private static readonly Color GroundTop = new Color32(0x4A, 0x6E, 0x3A, 0xFF);
-    private static readonly Color GroundBottom = new Color32(0x22, 0x30, 0x1C, 0xFF);
+    private static readonly Color GroundTop = new Color32(0x1F, 0x26, 0x22, 0xFF);
+    private static readonly Color GroundBottom = new Color32(0x08, 0x0B, 0x0A, 0xFF);
+    // 구름·달은 그림 위에 색을 곱해 하늘에 가라앉힌다.
+    private static readonly Color CloudTint = new Color32(0x9A, 0xA6, 0xB2, 0xFF);
+    private static readonly Color MoonTint = new Color32(0xC9, 0xD6, 0xDC, 0xFF);
+    private static readonly Color MoonGlow = new Color32(0x6F, 0x9A, 0xA8, 0xFF);
 
     // 줄 자리 계산. 층이 몇 개든, 창 높이가 얼마든 같은 식이다(FloorTowerLayoutTests가 이것만 따로 본다).
     // 스크롤 값은 ScrollRect 내용물이 위로 올라간 거리다 — 0이면 꼭대기가 보이고, 클수록 아래층이 보인다.
@@ -204,6 +219,7 @@ public class FloorTowerView : MonoBehaviour
     private readonly Dictionary<int, StageSky> skies = new Dictionary<int, StageSky>();
     private readonly List<int> leaving = new List<int>();
 
+    private RectTransform moon;
     private RectTransform roof;
     private float roofHeight;
     private RectTransform towerBase;
@@ -286,9 +302,10 @@ public class FloorTowerView : MonoBehaviour
         scroll.onValueChanged.AddListener(_ => UpdateVisible());
         UiKit.SetContentHeight(content, layout.ContentHeight);
 
-        // 뒤에서부터 하늘 → 구름 → 지붕·입구 → 층.
+        // 뒤에서부터 하늘 → 달 → 구름 → 지붕·입구 → 층.
         skyLayer = UiKit.Node(content, "Sky");
         UiKit.Fill(skyLayer);
+        BuildMoon();
         cloudLayer = UiKit.Node(content, "Clouds");
         UiKit.Fill(cloudLayer);
         structureLayer = UiKit.Node(content, "Structure");
@@ -324,8 +341,34 @@ public class FloorTowerView : MonoBehaviour
 
         BuildRoof(roofSprite);
         BuildBase();
+        BuildShade();
         BuildGauge(panel);
         BuildJumpButton(panel);
+    }
+
+    // 달 하나. 내용물 안에 있어야 하늘 위·구름 아래에 그려지므로, 굴린 만큼 되밀어 창의 같은 자리에 붙든다(UpdateVisible).
+    private void BuildMoon()
+    {
+        Sprite sprite = art != null ? art.moon : null;
+        if (sprite == null) return;
+
+        moon = UiKit.Node(content, "Moon");
+        // 달무리 — 가운데 절반이 꽉 찬 원이라 달 크기의 두 배로 깔면 달 가장자리에서부터 옅어진다.
+        Image glow = UiKit.Image(moon, "Glow", UiSprites.Shadow(64, 64), UiTheme.WithAlpha(MoonGlow, 0.3f));
+        UiKit.Fill(glow.rectTransform, -MoonSize * 0.5f);
+        UiKit.Image(moon, "Disc", sprite, MoonTint);
+    }
+
+    // 창 위아래 가장자리의 어둠. 내용물 밖(창)에 붙어 굴려도 움직이지 않는다.
+    private void BuildShade()
+    {
+        Image top = UiKit.Image(viewport, "ShadeTop", null, Color.white, false);
+        UiKit.TopStretch(top.rectTransform, 0f, ShadeTopHeight);
+        top.gameObject.AddComponent<UiGradient>().Set(new Color(0f, 0f, 0f, 0.6f), new Color(0f, 0f, 0f, 0f));
+
+        Image bottom = UiKit.Image(viewport, "ShadeBottom", null, Color.white, false);
+        UiKit.BottomStretch(bottom.rectTransform, 0f, ShadeBottomHeight);
+        bottom.gameObject.AddComponent<UiGradient>().Set(new Color(0f, 0f, 0f, 0f), new Color(0f, 0f, 0f, 0.65f));
     }
 
     private static void AddTrigger(EventTrigger trigger, EventTriggerType type, UnityEngine.Events.UnityAction<BaseEventData> action)
@@ -354,10 +397,10 @@ public class FloorTowerView : MonoBehaviour
         // 양쪽 끝을 어둡게 눌러 둥근 기둥처럼 보이게 한다(빛은 왼쪽 위에서).
         Image left = UiKit.Image(wall.rectTransform, "ShadeLeft", null, Color.white, false);
         UiKit.Fill(left.rectTransform, 0f, 0f, width - ShadeWidth, 0f);
-        left.gameObject.AddComponent<UiGradient>().SetHorizontal(new Color(0f, 0f, 0f, 0.45f), new Color(0f, 0f, 0f, 0f));
+        left.gameObject.AddComponent<UiGradient>().SetHorizontal(new Color(0f, 0f, 0f, 0.6f), new Color(0f, 0f, 0f, 0f));
         Image right = UiKit.Image(wall.rectTransform, "ShadeRight", null, Color.white, false);
         UiKit.Fill(right.rectTransform, width - ShadeWidth, 0f, 0f, 0f);
-        right.gameObject.AddComponent<UiGradient>().SetHorizontal(new Color(0f, 0f, 0f, 0f), new Color(0f, 0f, 0f, 0.6f));
+        right.gameObject.AddComponent<UiGradient>().SetHorizontal(new Color(0f, 0f, 0f, 0f), new Color(0f, 0f, 0f, 0.78f));
         return wall;
     }
 
@@ -380,7 +423,9 @@ public class FloorTowerView : MonoBehaviour
         row.Wall.raycastTarget = true;
 
         // 고른 층은 벽이 조금 밝아진다. 무엇을 골랐는지는 번호 판 테두리가 말한다.
-        row.Highlight = UiKit.Image(row.Wall.rectTransform, "Highlight", null, new Color(1f, 1f, 1f, 0.08f), false);
+        // 선형 색공간에서는 어두운 벽에 흰색을 조금만 얹어도 뿌옇게 뜬다(0.03이면 밝기가 반은 더 오른다) —
+        // 달빛 색을 아주 옅게 얹어 차갑게 밝힌다.
+        row.Highlight = UiKit.Image(row.Wall.rectTransform, "Highlight", null, UiTheme.WithAlpha(MoonGlow, 0.012f), false);
 
         CreateLedge(row.Root, TowerWidth, RowHeight - LedgeHeight);
 
@@ -391,7 +436,7 @@ public class FloorTowerView : MonoBehaviour
         for (int i = 0; i < 2; i++)
         {
             float x = i == 0 ? -WindowOffset : WindowOffset;
-            row.Glows[i] = UiKit.Image(row.Root, "Glow_" + i, glowSprite, Candle, false);
+            row.Glows[i] = UiKit.Image(row.Root, "Glow_" + i, glowSprite, Ember, false);
             PlaceOnTower(row.Glows[i].rectTransform, x, WindowY, GlowSize, GlowSize);
 
             row.Windows[i] = windowSprite != null
@@ -401,12 +446,12 @@ public class FloorTowerView : MonoBehaviour
         }
 
         // 층 번호 판. 탑에 적힌 글자는 이것뿐이다.
-        row.Plaque = UiKit.Panel(row.Root, "Plaque", PlaqueFill, 10, Bronze, 10);
+        row.Plaque = UiKit.Panel(row.Root, "Plaque", PlaqueFill, PlaqueRadius, TarnishedGold, 10);
         PlaceOnTower(row.Plaque.Rect, 0f, WindowY, PlaqueWidth, PlaqueHeight);
         row.Number = UiKit.Text(row.Plaque.Rect, "Number", string.Empty, UiTheme.FontHeading, PlaqueText, TextAlignmentOptions.Center);
         row.Lock = UiKit.Glyph(row.Plaque.Rect, "Lock", UiSprites.Glyph.Lock, UiTheme.TextMuted);
         UiKit.RightMiddle(row.Lock.rectTransform, 10f, 18f, 18f);
-        row.Ring = UiKit.Line(row.Plaque.Rect, "Selection", UiTheme.Selection, 15, (int)UiTheme.SelectionWidth);
+        row.Ring = UiKit.Line(row.Plaque.Rect, "Selection", UiTheme.Selection, PlaqueRadius + 5, (int)UiTheme.SelectionWidth);
         UiKit.Fill(row.Ring.rectTransform, -5f);
 
         // 지금 도전할 층의 파티 표시. 번호 판 왼쪽 끝에 걸친다(퍼지는 고리는 pulse가 따로 그린다).
@@ -454,10 +499,14 @@ public class FloorTowerView : MonoBehaviour
     {
         if (sprite == null) return;
 
-        Image image = UiKit.Image(structureLayer, "Roof", sprite, Color.white);
-        roof = image.rectTransform;
+        roof = UiKit.Node(structureLayer, "Roof");
         float bottom = layout.TopOf(layout.LastFloor) + RoofSink;
         UiKit.Place(roof, new Vector2(0.5f, 1f), new Vector2(0.5f, 0f), new Vector2(TowerX, -bottom), new Vector2(RoofWidth, roofHeight));
+
+        // 검은 첨탑이 칠흑 하늘에 묻힌다. 뒤에 옅은 달빛 안개를 깔아 윤곽을 띄운다.
+        Image haze = UiKit.Image(roof, "Haze", UiSprites.Shadow(64, 64), UiTheme.WithAlpha(MoonGlow, RoofHazeAlpha), false);
+        UiKit.Fill(haze.rectTransform, -RoofWidth * 0.2f, -roofHeight * 0.1f, -RoofWidth * 0.2f, -roofHeight * 0.05f);
+        UiKit.Image(roof, "Spire", sprite, Color.white);
     }
 
     // 1층 아래 — 조금 넓은 기단 벽에 문, 그 아래 땅.
@@ -634,6 +683,10 @@ public class FloorTowerView : MonoBehaviour
             UiKit.Place(pulse, new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f),
                 new Vector2(TowerX + BadgeX, -(layout.TopOf(current) + WindowY)), new Vector2(PulseSize, PulseSize));
 
+        if (moon != null)
+            UiKit.Place(moon, new Vector2(0f, 1f), new Vector2(0.5f, 0.5f), new Vector2(MoonX, -(scrollY + MoonTop)),
+                new Vector2(MoonSize, MoonSize));
+
         DriftClouds(scrollY, view);
         UpdateGaugeWindow(scrollY, view);
         UpdateJumpButton(scrollY, view);
@@ -666,13 +719,14 @@ public class FloorTowerView : MonoBehaviour
             row.Windows[i].color = unlocked ? lit : lit * LockedWindow;
             // 지금 도전할 층은 불빛이 더 크고 밝다(깜빡이지 않는다 — 움직이는 것은 파티 표시의 고리 하나로 충분하다).
             row.Glows[i].enabled = unlocked;
-            row.Glows[i].color = UiTheme.WithAlpha(Candle, isCurrent ? 0.8f : 0.35f);
+            // 불빛은 창 둘레에만 — 세게 넓게 깔면 벽 한 층이 통째로 뿌옇게 뜬다.
+            row.Glows[i].color = UiTheme.WithAlpha(Ember, isCurrent ? 0.34f : 0.14f);
             row.Glows[i].rectTransform.localScale = Vector3.one * (isCurrent ? 1.12f : 1f);
         }
 
         row.Number.text = floor + "층";
         row.Number.color = unlocked ? PlaqueText : UiTheme.TextMuted;
-        row.Plaque.Border.color = isCurrent ? UiTheme.Primary : unlocked ? Bronze : Bronze * LockedWall;
+        row.Plaque.Border.color = isCurrent ? UiTheme.Primary : unlocked ? TarnishedGold : TarnishedGold * LockedWall;
         row.Lock.enabled = !unlocked;
         UiKit.Fill(row.Number.rectTransform, 0f, 0f, unlocked ? 0f : 18f, 0f);
         row.Ring.enabled = selected;
@@ -725,7 +779,7 @@ public class FloorTowerView : MonoBehaviour
             sky.CloudTops[i] = (layout.TopOf(last) - top) + bandHeight * Mathf.Lerp(0.15f, 0.85f, (i + Hash(stage, i * 3 + 3)) / CloudsPerStage);
             UiKit.Place(cloud.rectTransform, new Vector2(0f, 1f), new Vector2(0.5f, 0.5f), new Vector2(x, -sky.CloudTops[i]),
                 new Vector2(size, height));
-            cloud.color = new Color(1f, 1f, 1f, (reached ? 0.8f : 0.45f) * Mathf.Lerp(0.6f, 1f, Hash(stage, i * 3 + 4)));
+            cloud.color = UiTheme.WithAlpha(CloudTint, (reached ? 0.85f : 0.5f) * Mathf.Lerp(0.6f, 1f, Hash(stage, i * 3 + 4)));
         }
     }
 
@@ -776,7 +830,8 @@ public class FloorTowerView : MonoBehaviour
         {
             Color tint = FloorStages.ColorOfStage(stage);
             bool reached = FloorStages.FirstFloorOf(stage) <= current;
-            gaugeSegments[stage].color = reached ? tint : Color.Lerp(UiTheme.SurfaceSunken, tint, 0.3f);
+            // 구간 색을 그대로 칠하면 막대만 무지개처럼 튄다. 어두운 바탕에 섞어 가라앉힌다.
+            gaugeSegments[stage].color = Color.Lerp(UiTheme.SurfaceSunken, tint, reached ? 0.6f : 0.18f);
         }
 
         float ratio = (current - layout.FirstFloor + 0.5f) / layout.FloorCount;

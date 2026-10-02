@@ -36,3 +36,4 @@ MonoBehaviour:
   towerRoof: {fileID: 21300000, guid: 6f7591ae649c15e419b831c297a493df, type: 3}
   towerDoor: {fileID: 21300000, guid: d33c21789cc93814ca419b725377e54b, type: 3}
   cloud: {fileID: 21300000, guid: 06f73b48a2cb96247a27909a3a11befa, type: 3}
+  moon: {fileID: 21300000, guid: 618e79ebad434d0478503ad169cdc5d9, type: 3}

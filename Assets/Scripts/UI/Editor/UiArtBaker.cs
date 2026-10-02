@@ -53,10 +53,12 @@ public static class UiArtBaker
         public string field;   // UiIconLibrary의 칸 이름
         public Shape shape;
         public string subject;
+        public bool soft;      // 소품인데 반투명한 가장자리가 곧 모양인 것(구름) — 알파를 굳히지 않는다
 
-        public Art(string group, string file, string field, Shape shape, string subject)
+        public Art(string group, string file, string field, Shape shape, string subject, bool soft = false)
         {
             this.group = group; this.file = file; this.field = field; this.shape = shape; this.subject = subject;
+            this.soft = soft;
         }
     }
 
@@ -136,25 +138,42 @@ public static class UiArtBaker
             "the right half holds the portal and the left half is darker open space."),
 
         // ---- 층 선택의 탑 ---------------------------------------------------------
+        //
+        // 탑은 마을과 같은 다크 판타지다 — 차갑고 어두운 돌, 검은 쇠, 불씨 같은 창불. 밝은 벽돌·파란 고깔 지붕·
+        // 뭉게구름은 동화책처럼 보였다. 벽은 너무 검으면 층 번호 판과 잠긴 층(어둡게 눌러 칠한다)이 안 갈리니 중간 어둡기로.
         new Art(Tower, "tower_wall", "towerWall", Shape.Texture,
-            "Seamless tileable texture of a medieval fantasy tower wall: weathered warm grey stone blocks laid in regular " +
-            "horizontal courses with thin dark mortar lines, each block slightly different in tone, subtle chips and a little moss. " +
-            "Flat front orthographic view with no perspective, even soft light from the top-left, the blocks fill the whole " +
-            "frame edge to edge. No windows, no doors, no objects."),
+            "Seamless tileable texture of an ancient gothic tower wall: large rough-hewn blocks of cold blue-grey and " +
+            "charcoal basalt laid in regular horizontal courses with deep black mortar joints, each block slightly different " +
+            "in tone, cracked and chipped edges, soot stains and faint dark water streaks. Mid-dark overall value so the " +
+            "block shapes stay readable. Flat front orthographic view with no perspective, dim even cold light from the " +
+            "top-left, the blocks fill the whole frame edge to edge. No windows, no doors, no objects, no moss, no plants." + Grim),
         new Art(Tower, "tower_window", "towerWindow", Shape.Prop,
-            "A single tall arched window of a stone tower seen straight from the front: a carved light grey stone frame " +
-            "with a rounded arch top and a small stone sill, leaded glass panes glowing with warm golden candlelight from inside."),
+            "A single narrow gothic lancet window of a dark stone tower seen straight from the front: a heavy pointed-arch " +
+            "frame of blackened carved stone with a small worn sill, black wrought-iron bars and tracery over old glass, " +
+            "a dim smouldering amber-orange firelight glowing from deep inside." + Grim),
         new Art(Tower, "tower_roof", "towerRoof", Shape.Prop,
-            "The pointed cone-shaped roof of a tall round fantasy stone tower seen straight from the front: overlapping dark " +
-            "blue slate tiles, a ring of stone battlements along its wide base, a thin golden spire on the tip with a small " +
-            "red pennant flag. Only the roof itself, its bottom edge is a straight horizontal line."),
+            "The top of a tall round gothic tower seen straight from the front: a steep sharp conical spire of black slate " +
+            "shingles with wrought-iron ridges and spikes, small stone gargoyles crouching on a ring of jagged crenellated " +
+            "dark stone battlements along its wide base, a thin black iron finial on the tip holding a small pale teal " +
+            "glowing crystal. No flag, no banner. Only the roof itself, its bottom edge is a straight horizontal line." + Grim),
         new Art(Tower, "tower_door", "towerDoor", Shape.Prop,
-            "The grand entrance of a stone tower seen straight from the front: a tall arched double door of dark oak planks " +
-            "with black iron bands and ring handles, set in a carved stone archway, three wide stone steps in front of it."),
+            "The grand entrance of a gothic tower seen straight from the front: a tall pointed-arch double gate of blackened " +
+            "oak planks with heavy riveted black iron bands and iron ring handles, set in an archway of dark carved stone " +
+            "with worn rune carvings, an iron brazier with low orange embers on each side, three wide cracked dark stone " +
+            "steps in front of it." + Grim),
+        // 구름과 달은 화면에서 색을 곱해 쓴다(곱하기라 어둡게만 칠할 수 있다) — 그림은 밝은 쪽으로 받는다.
         new Art(Tower, "sky_cloud", "cloud", Shape.Prop,
-            "A single soft fluffy white cumulus cloud, wider than tall, gently lit from above with light grey-blue shading " +
-            "underneath, on a plain solid dark navy background."),
+            "A single wide ragged storm cloud, much wider than tall, heavy and brooding, torn wispy edges trailing off " +
+            "like smoke, soft feathered edges with no outline, pale ashen grey with darker grey shading underneath, " +
+            "on a plain solid dark navy background.", soft: true),
+        new Art(Tower, "sky_moon", "moon", Shape.Prop,
+            "A large full moon seen straight on: a perfectly round pale bone-white disc with grey craters and dark maria, " +
+            "faint cold blue tint, slightly darker along one edge, no glow and no halo around it, on a plain solid black background."),
     };
+
+    private const string Grim =
+        " Grim gothic dark fantasy concept art mood: desaturated cold palette, heavy shadows, gritty weathered surfaces, " +
+        "ominous and ancient, nothing cute or cartoonish, no bright cheerful colors.";
 
     private const string IconStyle =
         " Game UI item icon for a fantasy mobile RPG, painted semi-realistic style with crisp clean edges, " +
@@ -169,7 +188,7 @@ public static class UiArtBaker
         "No text, no letters, no border, no frame, no vignette, no watermark.";
 
     private const string PropStyle =
-        " 2D game art for a fantasy mobile RPG, painted semi-realistic style with crisp clean edges and rich colors, " +
+        " 2D game art for a fantasy mobile RPG, painted semi-realistic style with clean edges, " +
         "front orthographic view with no perspective. A single object centered, the whole object fully inside the frame. " +
         "Plain background. No text, no numbers, no letters, no border, no frame, no cast shadow.";
 
@@ -333,7 +352,7 @@ public static class UiArtBaker
         {
             case Shape.Banner: png = FitBanner(raw, art.file); break;
             case Shape.Texture: png = FitTexture(raw, art.file); break;
-            case Shape.Prop: png = TrimProp(raw, art.file); break;
+            case Shape.Prop: png = TrimProp(raw, art.file, !art.soft); break;
             default: png = TrimIcon(raw, art.file); break;
         }
 
@@ -429,7 +448,7 @@ public static class UiArtBaker
 
     // 소품: 투명 여백만 잘라 내용물 그대로의 비율로, 긴 변이 PropMaxSize를 넘지 않게 줄인다.
     // 아이콘처럼 정사각 여백을 두지 않는 이유 — 지붕의 아래 변, 문의 계단 끝을 탑 벽에 딱 맞춰 놓아야 한다.
-    private static byte[] TrimProp(byte[] raw, string label)
+    private static byte[] TrimProp(byte[] raw, string label, bool harden)
     {
         var source = new Texture2D(2, 2, TextureFormat.RGBA32, false);
         Texture2D result = null;
@@ -444,6 +463,7 @@ public static class UiArtBaker
                 Debug.LogWarning($"[UiArtBaker] {label} 배경이 지워지지 않고 왔다 — 가장자리 색을 직접 뺀다.");
                 KeyOutBorderColor(pixels, w, h);
             }
+            if (harden) HardenAlpha(pixels);
 
             RectInt bounds = OpaqueBounds(pixels, w, h);
             if (bounds.width <= 0) throw new Exception($"{label} 그림이 통째로 투명하다.");
@@ -463,6 +483,14 @@ public static class UiArtBaker
             UnityEngine.Object.DestroyImmediate(source);
             if (result != null) UnityEngine.Object.DestroyImmediate(result);
         }
+    }
+
+    // 어두운 그림은 배경 제거가 속까지 살짝 비치게(알파 200~250) 돌려준다 — 검은 지붕 너머로 별이 비쳤다.
+    // 반 넘게 찬 칸은 꽉 채우고, 그 아래(가장자리)만 두 배로 올려 부드러운 테를 남긴다.
+    private static void HardenAlpha(Color32[] px)
+    {
+        for (int i = 0; i < px.Length; i++)
+            px[i].a = (byte)Mathf.Min(255, px[i].a * 2);
     }
 
     // 배너: 가운데를 2:1로 잘라 1024x512로 줄인다. 배경을 지우지 않은 한 장짜리 그림이다.

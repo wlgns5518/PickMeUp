@@ -52,8 +52,10 @@ public class UiIconLibrary : ScriptableObject
     public Sprite towerRoof;
     [Tooltip("1층 아래 탑 입구의 문과 계단.")]
     public Sprite towerDoor;
-    [Tooltip("탑 옆 하늘을 지나가는 구름.")]
+    [Tooltip("탑 옆 하늘을 지나가는 구름. 밝은 잿빛 그림이라 화면에서 어둡게 칠해 쓴다.")]
     public Sprite cloud;
+    [Tooltip("탑 뒤에 떠 있는 달.")]
+    public Sprite moon;
 
     private static readonly ResourceSlot<UiIconLibrary> Slot = new ResourceSlot<UiIconLibrary>(ResourceName,
         $"[UiIconLibrary] Resources/{ResourceName}.asset 이 없어 아이콘을 글자로 그립니다.");
