@@ -34,6 +34,11 @@ public static class MeshyBodyRecipe
 
     // 초상화는 허리 위만 있다. 하체는 존재하지 않으므로 읽어 올 수 없고 지어내는 수밖에 없는데,
     // 아무렇게나 지어내면 상의는 중세 가죽인데 하의는 청바지가 된다. "위와 같은 시대·재질로"를 붙인다.
+    //
+    // 무기와 무기를 담는 것(칼집·화살통·단검 띠)은 그림에 보여도 적지 않게 한다. 전신 시트 쪽에서
+    // "No weapon"이라고 해도, 이 설명에 "허리에 칼집을 찼다"가 들어 있으면 그쪽이 이긴다 — 칼집이 메시에
+    // 눌러붙어 나오고, 전투에서는 손에 든 무기와 따로 허리에 하나가 더 달린다(아엘리아·엘리온이 그랬다).
+    // 무기는 손뼈 소켓에 따로 걸리고(WeaponEquipper), 무엇을 드는지는 그림이 아니라 장비가 정한다.
     public const string AppearanceInstruction =
         "You are writing the input prompt for a 3D character generator. " +
         "Look at this character illustration (it shows only the upper body). " +
@@ -43,6 +48,10 @@ public static class MeshyBodyRecipe
         "accessories such as belts, straps, pauldrons, gloves. " +
         "Then invent a lower body that matches the upper body's style and era: trousers or skirt, belt, boots, " +
         "with concrete colors and materials. " +
+        "The character is unarmed: leave out every weapon and everything made to carry one, even if the illustration " +
+        "clearly shows it — no sword, dagger, knife, axe, mace, spear, bow, arrows, staff, wand or shield, " +
+        "and no scabbard, sheath, quiver, holster or weapon harness. Do not invent any either. " +
+        "Describe belts and straps as plain, with nothing hanging from them, and the hands as empty. " +
         "Do NOT mention background, pose, lighting, camera, framing, or art style. " +
         "Output only the description paragraph.";
 
@@ -58,8 +67,10 @@ public static class MeshyBodyRecipe
     // 펴는 각도가 어긋나면 모든 팔 동작이 그만큼 틀어진다 — 한 번은 50도 접힌 채로 싸웠다.
     // 겨드랑이와 옆구리가 떨어져 있어 메시가 붙어 나오지 않고 리깅도 팔을 가려내기 쉽다.
     //
-    // 손에는 아무것도 들리지 않게 한다. 무기는 손뼈 소켓에 따로 걸리므로(WeaponEquipper),
-    // 메시에 칼이 붙어 나오면 칼을 두 자루 든 캐릭터가 된다.
+    // 손에는 아무것도 들리지 않게 하고, 허리와 등에도 아무것도 달리지 않게 한다. 무기는 손뼈 소켓에
+    // 따로 걸리므로(WeaponEquipper), 메시에 칼이나 칼집이 붙어 나오면 칼을 두 자루 든 캐릭터가 된다.
+    // 여기서는 물건 이름(칼집 등)을 늘어놓지 않는다 — 그림 생성기는 "없다"고 적은 낱말을 오히려 그려 넣기도 한다.
+    // 무엇을 빼는지 낱낱이 적는 일은 외형 설명을 쓰는 쪽(AppearanceInstruction)이 맡는다.
     //
     // 손은 쥔 주먹으로 시킨다. 리깅에 손가락 뼈가 들어오지 않아서(Meshy의 자동 리깅이 그렇다)
     // 메시에 구워진 손 모양이 그 캐릭터의 영구적인 손 모양이 된다 — 편 손으로 구우면 칼을
@@ -74,7 +85,7 @@ public static class MeshyBodyRecipe
                "T-pose: standing upright and symmetrical, both arms stretched straight out to the sides " +
                "at shoulder height, perfectly horizontal, elbows straight, palms facing down, " +
                "both legs straight and slightly apart, both feet flat on the ground and fully visible. " +
-               "No weapon, no props, nothing held. " +
+               "No weapon, no props, nothing held, nothing hanging from the belt, nothing strapped to the back. " +
                "Clean even neutral lighting, no cast shadows, no background scenery. " +
                "Game-ready semi-realistic fantasy character, adult proportions, not chibi, not cute. " +
                "Single character only, no text, no logo, no watermark.";
@@ -84,8 +95,8 @@ public static class MeshyBodyRecipe
     // 적어도 하체와 직업 복장은 갖춘 사람이 나온다.
     public static string AppearanceFromJob(JobType job)
     {
-        return $"An adult human {EnglishJob(job)} in practical fantasy clothing, " +
-               "with a full head of hair, a plain tunic or jacket, a leather belt, " +
+        return $"An adult human {EnglishJob(job)}, unarmed, in practical fantasy clothing, " +
+               "with a full head of hair, a plain tunic or jacket, a plain leather belt, " +
                "sturdy trousers and worn leather boots.";
     }
 
