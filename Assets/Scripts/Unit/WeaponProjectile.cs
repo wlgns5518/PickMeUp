@@ -36,14 +36,18 @@ public class WeaponProjectile : MonoBehaviour
 
     // 투사체는 공격 한 번에 하나씩 나간다. 매번 Instantiate/Destroy 하면 교전이 몰릴 때
     // 그 빈도만큼 힙이 늘었다 줄었다 한다(BloodEffectPool이 코루틴을 걷어낸 것과 같은 이유).
-    private static readonly Dictionary<GameObject, List<WeaponProjectile>> pools = new Dictionary<GameObject, List<WeaponProjectile>>();
+    // 프리팹별로 쉬고 있는 화살만 쌓고, 방금 돌아온 것부터 다시 쏜다(LIFO).
+    private static readonly Dictionary<GameObject, Stack<WeaponProjectile>> freeStacks = new Dictionary<GameObject, Stack<WeaponProjectile>>();
     private static Transform holder;
+
+    // 회수될 때 돌아갈 스택. 날아가는 중일 때만 채워 두어 두 번 돌려놓지 않게 한다.
+    private Stack<WeaponProjectile> home;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetPools()
     {
         // 도메인 리로드를 끈 에디터에서 지난 플레이의 죽은 참조가 남지 않도록 비운다.
-        pools.Clear();
+        freeStacks.Clear();
         holder = null;
     }
 
@@ -132,6 +136,10 @@ public class WeaponProjectile : MonoBehaviour
         victim = TargetRef.None;
         attacker = null;
         gameObject.SetActive(false);
+
+        if (home == null) return;
+        home.Push(this);
+        home = null;
     }
 
     private static WeaponProjectile Take(GameObject prefab)
@@ -139,21 +147,23 @@ public class WeaponProjectile : MonoBehaviour
         // 씬이 바뀌면 홀더와 그 아래 화살이 통째로 파괴된다. 죽은 참조가 쌓이지 않도록 함께 비운다.
         if (holder == null)
         {
-            pools.Clear();
+            freeStacks.Clear();
             holder = new GameObject("Projectiles").transform;
         }
 
-        List<WeaponProjectile> pool;
-        if (!pools.TryGetValue(prefab, out pool))
+        Stack<WeaponProjectile> freeStack;
+        if (!freeStacks.TryGetValue(prefab, out freeStack))
         {
-            pool = new List<WeaponProjectile>();
-            pools[prefab] = pool;
+            freeStack = new Stack<WeaponProjectile>();
+            freeStacks[prefab] = freeStack;
         }
 
-        for (int i = 0; i < pool.Count; i++)
+        while (freeStack.Count > 0)
         {
-            WeaponProjectile candidate = pool[i];
-            if (candidate != null && !candidate.gameObject.activeSelf) return candidate;
+            WeaponProjectile candidate = freeStack.Pop();
+            if (candidate == null) continue;
+            candidate.home = freeStack;
+            return candidate;
         }
 
         GameObject instance = Instantiate(prefab, holder);
@@ -165,7 +175,7 @@ public class WeaponProjectile : MonoBehaviour
         foreach (Collider c in instance.GetComponentsInChildren<Collider>(true)) c.enabled = false;
 
         instance.SetActive(false);
-        pool.Add(arrow);
+        arrow.home = freeStack;
         return arrow;
     }
 }

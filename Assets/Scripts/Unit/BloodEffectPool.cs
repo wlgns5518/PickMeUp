@@ -14,7 +14,9 @@ public class BloodEffectPool : MonoBehaviour, IBloodEffects
     private static readonly int BloodColorId = Shader.PropertyToID("_Color");      // BFX_Blood - 튀는 피 메시
     private static readonly int DecalTintColorId = Shader.PropertyToID("_TintColor"); // BFX_Decal - 바닥 자국
 
-    private readonly Dictionary<GameObject, List<GameObject>> pools = new Dictionary<GameObject, List<GameObject>>();
+    // 프리팹별로 쉬고 있는 인스턴스만 쌓는다. 방금 돌려받은 것을 먼저 꺼내므로(LIFO)
+    // 꺼낼 때 리스트를 훑지 않고, 캐시에 남아 있을 확률이 높은 인스턴스를 다시 쓴다.
+    private readonly Dictionary<GameObject, Stack<GameObject>> freeStacks = new Dictionary<GameObject, Stack<GameObject>>();
     // 인스턴스별 셰이더 설정 캐시 — 타격마다 GetComponentInChildren으로 계층을 다시 훑지 않도록 한다.
     private readonly Dictionary<GameObject, BFX_BloodSettings> settingsByInstance = new Dictionary<GameObject, BFX_BloodSettings>();
     // 색을 갈아끼울 머티리얼 캐시. 프리팹은 종족 구분 없이 공유하고 풀도 프리팹 단위라,
@@ -34,6 +36,8 @@ public class BloodEffectPool : MonoBehaviour, IBloodEffects
     // WaitForSeconds를 새로 만들었는데, 타격 한 번마다 힙 할당이 두 번씩 생기는 구조였다.
     private readonly List<GameObject> activeInstances = new List<GameObject>();
     private readonly List<float> activeExpireTimes = new List<float>();
+    // 꺼진 인스턴스를 돌려놓을 스택. 위 두 리스트와 같은 인덱스를 쓴다.
+    private readonly List<Stack<GameObject>> activeFreeStacks = new List<Stack<GameObject>>();
 
     // 씬에 놓인 풀이 없을 때 GameServices가 부른다. 만든 풀은 Awake에서 스스로 자리에 앉는다.
     public static IBloodEffects CreateHost()
@@ -76,17 +80,13 @@ public class BloodEffectPool : MonoBehaviour, IBloodEffects
             DeactivateAt(0); // 가장 오래된 것부터 회수 (추가 순서 = 오래된 순서)
         }
 
-        List<GameObject> pool = GetOrCreatePool(prefab);
-        GameObject instanceObject = FindInactiveInstance(pool);
+        Stack<GameObject> freeStack = GetOrCreateFreeStack(prefab);
+        GameObject instanceObject = PopFree(freeStack);
         if (instanceObject == null)
         {
             instanceObject = Instantiate(prefab, transform);
             instanceObject.SetActive(false);
-            pool.Add(instanceObject);
         }
-
-        int activeIndex = activeInstances.IndexOf(instanceObject);
-        if (activeIndex >= 0) RemoveActiveAt(activeIndex);
 
         ApplyBloodColor(instanceObject, bloodColor);
         instanceObject.transform.SetPositionAndRotation(position, rotation);
@@ -94,6 +94,7 @@ public class BloodEffectPool : MonoBehaviour, IBloodEffects
 
         activeInstances.Add(instanceObject);
         activeExpireTimes.Add(Time.time + GetLifetime(instanceObject));
+        activeFreeStacks.Add(freeStack);
         enabled = true;
 
         return instanceObject;
@@ -102,14 +103,14 @@ public class BloodEffectPool : MonoBehaviour, IBloodEffects
     private void DeactivateAt(int index)
     {
         GameObject instanceObject = activeInstances[index];
-        RemoveActiveAt(index);
-        if (instanceObject != null) instanceObject.SetActive(false);
-    }
-
-    private void RemoveActiveAt(int index)
-    {
+        Stack<GameObject> freeStack = activeFreeStacks[index];
         activeInstances.RemoveAt(index);
         activeExpireTimes.RemoveAt(index);
+        activeFreeStacks.RemoveAt(index);
+
+        if (instanceObject == null) return;
+        instanceObject.SetActive(false);
+        freeStack.Push(instanceObject);
     }
 
     // maxLifetime으로 강제 클램프하고, 셰이더 자체 페이드 타이머(DecalLifeTimeSeconds)도
@@ -191,29 +192,31 @@ public class BloodEffectPool : MonoBehaviour, IBloodEffects
         return result;
     }
 
-    private static GameObject FindInactiveInstance(List<GameObject> pool)
+    // 바깥에서 파괴된 인스턴스는 건너뛴다.
+    private static GameObject PopFree(Stack<GameObject> freeStack)
     {
-        for (int i = 0; i < pool.Count; i++)
+        while (freeStack.Count > 0)
         {
-            if (!pool[i].activeSelf) return pool[i];
+            GameObject instanceObject = freeStack.Pop();
+            if (instanceObject != null) return instanceObject;
         }
 
         return null;
     }
 
-    private List<GameObject> GetOrCreatePool(GameObject prefab)
+    private Stack<GameObject> GetOrCreateFreeStack(GameObject prefab)
     {
-        if (pools.TryGetValue(prefab, out List<GameObject> existingPool)) return existingPool;
+        if (freeStacks.TryGetValue(prefab, out Stack<GameObject> existingStack)) return existingStack;
 
-        List<GameObject> pool = new List<GameObject>(poolSizePerPrefab);
+        Stack<GameObject> freeStack = new Stack<GameObject>(poolSizePerPrefab);
         for (int i = 0; i < poolSizePerPrefab; i++)
         {
             GameObject pooledInstance = Instantiate(prefab, transform);
             pooledInstance.SetActive(false);
-            pool.Add(pooledInstance);
+            freeStack.Push(pooledInstance);
         }
 
-        pools[prefab] = pool;
-        return pool;
+        freeStacks[prefab] = freeStack;
+        return freeStack;
     }
 }
