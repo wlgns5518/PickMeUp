@@ -222,10 +222,12 @@ public class WeaponHandIK : MonoBehaviour
 
         // 잡는 거리와 놓는 거리가 다르다. 하나로 두면 달리기처럼 손이 그 언저리를 스치는 동작에서
         // 걸음마다 잡았다 놓는다. 둘 다 주손에서 먼 자리일수록 넉넉해진다(gripLeverage).
+        // 두 거리는 사람 크기(배율 1) 기준의 미터다. 마을 주민처럼 몸을 키워 세우면 손과 자루 사이도 그만큼 벌어지므로 같이 키운다.
+        float bodyScale = transform.lossyScale.y;
         float distance = Vector3.Distance(bone.position, position);
         float span = Vector3.Distance(position, grip.GripPoint.position);
-        float grab = Mathf.Max(gripDistance, span * gripLeverage);
-        float release = grab + Mathf.Max(0f, releaseDistance - gripDistance);
+        float grab = Mathf.Max(gripDistance * bodyScale, span * gripLeverage);
+        float release = grab + Mathf.Max(0f, releaseDistance - gripDistance) * bodyScale;
         gripping = distance < (gripping ? release : grab);
 
         weight = gripping ? secondaryGripWeight : 0f;
