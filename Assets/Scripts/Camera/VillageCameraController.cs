@@ -82,8 +82,9 @@ public class VillageCameraController : MonoBehaviour
     [SerializeField] private Vector2 boundsMax = new Vector2(120f, 120f);
 
     [Header("Zoom (FOV)")]
-    [Tooltip("가장 가깝게 당겼을 때의 시야각.")]
-    [SerializeField, Range(5f, 120f)] private float minFov = 20f;
+    [Tooltip("가장 가깝게 당겼을 때의 시야각. 20이면 거리 250m에서 화면 세로가 88m라 주민이 잘 안 보였다 — " +
+             "2026-10-31 사용자 요청으로 10(세로 44m, 두 배 확대)까지 당긴다.")]
+    [SerializeField, Range(5f, 120f)] private float minFov = 10f;
 
     [Tooltip("가장 멀리 뺐을 때의 시야각.")]
     [SerializeField, Range(5f, 120f)] private float maxFov = 60f;

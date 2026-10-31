@@ -38943,7 +38943,7 @@ MonoBehaviour:
   inertiaDamping: 6
   boundsMin: {x: -120, y: -120}
   boundsMax: {x: 120, y: 120}
-  minFov: 20
+  minFov: 10
   maxFov: 60
   startFov: 45
   pinchZoomSpeed: 60
