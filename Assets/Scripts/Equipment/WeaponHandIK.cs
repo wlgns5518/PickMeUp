@@ -116,9 +116,7 @@ public class WeaponHandIK : MonoBehaviour
         if (equipment == null) return false;
         if (equipment.BowGrip != null) return true;
 
-        EquipHand hand;
-        WeaponGrip grip;
-        return equipment.TryGetSecondaryGrip(out hand, out grip);
+        return equipment.TryGetSecondaryGrip(out _, out _);
     }
 
     // 애니메이션이 이번 프레임의 자세를 다 쓴 뒤다. 무기는 주손을 따라 제자리에 와 있고,

@@ -74,8 +74,6 @@ public class RhythmGame : MonoBehaviour
     private int resolvedNotes;
     private int hitCount;
     private int missCount;
-    private int perfectCount;
-    private int goodCount;
     private int score;
     private int combo;
     private int lastShownSecond = -1;
@@ -173,13 +171,6 @@ public class RhythmGame : MonoBehaviour
         StartRhythm();
     }
 
-    public void StartRhythm(Sprite sprite, PuzzleDifficulty diff)
-    {
-        // Sprite 파라미터는 PuzzleGame과 비슷한 외부 호출 형태를 유지하기 위한 자리입니다.
-        difficulty = diff;
-        StartRhythm();
-    }
-
     public void StartRhythm()
     {
         if (playArea == null) { Debug.LogError("[Rhythm] playArea is missing"); return; }
@@ -198,8 +189,6 @@ public class RhythmGame : MonoBehaviour
         resolvedNotes = 0;
         hitCount = 0;
         missCount = 0;
-        perfectCount = 0;
-        goodCount = 0;
         score = 0;
         combo = 0;
         displayedScore = 0f;
@@ -445,16 +434,8 @@ public class RhythmGame : MonoBehaviour
         hitCount++;
         resolvedNotes++;
         combo++;
-        if (judgment == Judgment.Perfect)
-        {
-            perfectCount++;
-            score += 100 + combo * 2;
-        }
-        else
-        {
-            goodCount++;
-            score += 60 + combo;
-        }
+        if (judgment == Judgment.Perfect) score += 100 + combo * 2;
+        else score += 60 + combo;
 
         ShowJudgment(judgment, clickedLane);
         UpdateResultUI(false);
@@ -1000,9 +981,7 @@ public class RhythmGame : MonoBehaviour
         if (totalSec == lastShownSecond) return;
 
         lastShownSecond = totalSec;
-        int m = totalSec / 60;
-        int s = totalSec % 60;
-        timerText.text = $"{m:00}:{s:00}";
+        timerText.text = TextFormat.Clock(totalSec);
     }
 
     private void UpdateResultUI(bool immediateScore)

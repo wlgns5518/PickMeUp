@@ -69,21 +69,7 @@ public static class VillageWallPalette
     {
         Material source = part.GetComponent<MeshRenderer>().sharedMaterial;
         Directory.CreateDirectory(Folder);
-        string path = $"{Folder}/{id}.mat";
-
-        var material = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (material == null)
-        {
-            material = new Material(source) { name = id };
-            AssetDatabase.CreateAsset(material, path);
-        }
-        else
-        {
-            material.shader = source.shader;
-            material.CopyPropertiesFromMaterial(source);
-            material.shaderKeywords = source.shaderKeywords;
-            material.enableInstancing = source.enableInstancing;
-        }
+        Material material = EditorMaterials.LoadOrCopy($"{Folder}/{id}.mat", source, id);
 
         material.SetColor("_BaseColor", Color.white);
         material.SetTexture("_BaseMap", Paint(id, part.GetComponent<MeshFilter>().sharedMesh));
@@ -119,21 +105,7 @@ public static class VillageWallPalette
             px[i] = painted;
         }
 
-        texture.SetPixels32(px);
-        texture.Apply();
-        File.WriteAllBytes(path, texture.EncodeToJPG(90));
-        Object.DestroyImmediate(texture);
-
-        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
-        var importer = (TextureImporter)AssetImporter.GetAtPath(path);
-        importer.textureType = TextureImporterType.Default;
-        importer.sRGBTexture = true;
-        importer.mipmapEnabled = true;
-        importer.wrapMode = TextureWrapMode.Clamp;
-        importer.maxTextureSize = width;
-        importer.textureCompression = TextureImporterCompression.Compressed;
-        importer.SaveAndReimport();
-        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        return EditorTextures.SaveJpg(texture, px, path, width, clamp: true);
     }
 
     // 파츠 공간은 미터라 무늬 크기가 파츠마다 비슷하다(세울 때 늘리면 같이 커진다).

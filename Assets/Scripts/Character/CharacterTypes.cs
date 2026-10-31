@@ -92,14 +92,6 @@ public class Constitution
     [Min(0f)] public float agilityGrowth = 1f;
 }
 
-[Serializable]
-public class FriendshipEntry
-{
-    public CharacterSO target;
-    // 음수: 악의적, 양수: 친밀
-    public int value;
-}
-
 public static class CharacterRules
 {
     // 별 등급별 한계 레벨

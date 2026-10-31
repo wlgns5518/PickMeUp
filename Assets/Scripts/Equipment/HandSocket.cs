@@ -62,11 +62,6 @@ public static class HandSocket
         return hand == EquipHand.Right ? EquipHand.Left : EquipHand.Right;
     }
 
-    public static AvatarIKGoal GoalFor(EquipHand hand)
-    {
-        return hand == EquipHand.Right ? AvatarIKGoal.RightHand : AvatarIKGoal.LeftHand;
-    }
-
     public static Transform GetHandBone(Animator animator, EquipHand hand)
     {
         if (animator == null || !animator.isHuman) return null;

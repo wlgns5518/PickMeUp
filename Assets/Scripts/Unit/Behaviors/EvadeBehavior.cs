@@ -122,8 +122,7 @@ public class EvadeBehavior : UnitBehavior
     private bool TryBeginLeap(Vector3 away)
     {
         // 도약도 벽을 확인한다. 뒤가 막혀 있으면 뛰어 봐야 벽에 붙어 제자리다.
-        Vector3 leapSpot;
-        if (!unit.TryFindRetreatSpot(away, unit.Stats.evadeRange, out away, out leapSpot)) return false;
+        if (!unit.TryFindRetreatSpot(away, unit.Stats.evadeRange, out away, out _)) return false;
 
         unit.CommitRetreatDirection(away);
 
@@ -138,7 +137,7 @@ public class EvadeBehavior : UnitBehavior
         leaping = true;
         leapDirection = away;
         leapRemaining = unit.DodgeAnimationDuration;
-        leapSpeed = unit.DodgeMoveSpeed(unit.Stats.evadeRange);
+        leapSpeed = unit.DodgeMoveSpeed;
         stateTimer = Mathf.Max(MinEvadeDuration, leapRemaining);
 
         // 뛰는 쪽의 정반대를 보게 맞춘다. 예전에는 겨누는 상대를 보면서 "위협의 반대쪽"으로

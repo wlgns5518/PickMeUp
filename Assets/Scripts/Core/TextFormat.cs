@@ -6,4 +6,7 @@ public static class TextFormat
 {
     /// 12345 → "12,345"
     public static string Amount(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
+
+    /// 75 → "01:15". 미니게임의 남은 시간.
+    public static string Clock(int totalSeconds) => $"{totalSeconds / 60:00}:{totalSeconds % 60:00}";
 }

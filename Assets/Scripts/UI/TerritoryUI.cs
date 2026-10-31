@@ -64,18 +64,6 @@ public class TerritoryUI : UiScreen
     private void OnEnable() => PlayerAccount.Changed += Refresh;
     private void OnDisable() => PlayerAccount.Changed -= Refresh;
 
-    public override void Show()
-    {
-        EnsureBuilt();
-        Refresh();
-        SetOpen(true);
-    }
-
-    public override void Hide()
-    {
-        SetOpen(false);
-    }
-
     // ---- 짓기 ---------------------------------------------------------------
 
     protected override void BuildContent(RectTransform root, Vector2 size)
@@ -184,7 +172,7 @@ public class TerritoryUI : UiScreen
 
     // ---- 갱신 ---------------------------------------------------------------
 
-    private void Refresh()
+    protected override void Refresh()
     {
         for (int i = 0; i < cards.Count; i++) Apply(cards[i]);
     }

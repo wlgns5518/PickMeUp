@@ -37,6 +37,20 @@ public class UiFlowPanel : MonoBehaviour
         public string Have;
         public string Need;
         public bool Met;
+
+        // 골드 줄. 아직 비용을 셀 수 없으면(재료가 덜 올라옴) 필요량을 "-"로 두고 막지 않는다.
+        public static Requirement Gold(long cost, bool known)
+        {
+            long gold = PlayerAccount.Balance(Currency.Gold);
+            return new Requirement
+            {
+                Icon = UiIconLibrary.Currency(Currency.Gold),
+                Label = "골드",
+                Have = UiKit.Amount(gold),
+                Need = known ? UiKit.Amount(cost) : "-",
+                Met = !known || gold >= cost,
+            };
+        }
     }
 
     private const float SectionHeaderHeight = 60f;

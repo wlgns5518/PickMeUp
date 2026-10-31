@@ -99,15 +99,9 @@ public partial class UnitController
                 direction.y = 0f;
             }
 
-            // 돌 방향을 못 찾았으면 붙들고 있을 이유가 없다. 여기서 false를 돌려주면
+            // 돌 방향을 못 찾았으면 붙들고 있을 이유가 없다(Faces가 true). 여기서 false를 돌려주면
             // 목적지가 잡히지 않는 동안 회전이 영영 코드에 묶인다.
-            if (direction.sqrMagnitude <= 0.0001f) return true;
-
-            Vector3 forward = transform.forward;
-            forward.y = 0f;
-            if (forward.sqrMagnitude <= 0.0001f) return true;
-
-            if (Vector3.Angle(forward, direction) <= toleranceDegrees) return true;
+            if (Faces(transform, direction, toleranceDegrees)) return true;
 
             Toward(transform.position + direction, u.rotationSpeed);
             return false;
@@ -122,6 +116,13 @@ public partial class UnitController
             Transform transform = u.transform;
             Vector3 direction = target.Position - transform.position;
             direction.y = 0f;
+            return Faces(transform, direction, toleranceDegrees);
+        }
+
+        // 수평으로 본 정면이 direction(높이를 뺀 방향)에서 toleranceDegrees 안인가.
+        // 방향이나 정면의 길이가 0이면 판단할 근거가 없으니 true로 둔다.
+        private static bool Faces(Transform transform, Vector3 direction, float toleranceDegrees)
+        {
             if (direction.sqrMagnitude <= 0.0001f) return true;
 
             Vector3 forward = transform.forward;

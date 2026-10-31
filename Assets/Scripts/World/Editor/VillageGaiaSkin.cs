@@ -158,20 +158,7 @@ public static class VillageGaiaSkin
 
         Material source = PartMaterial(id);
         Directory.CreateDirectory(Folder);
-        string path = $"{Folder}/{name}.mat";
-        var material = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (material == null)
-        {
-            material = new Material(source) { name = name };
-            AssetDatabase.CreateAsset(material, path);
-        }
-        else
-        {
-            material.shader = source.shader;
-            material.CopyPropertiesFromMaterial(source);
-            material.shaderKeywords = source.shaderKeywords;
-            material.enableInstancing = source.enableInstancing;
-        }
+        Material material = EditorMaterials.LoadOrCopy($"{Folder}/{name}.mat", source, name);
 
         // 팔레트 색이 텍스처에 이미 들어가 있어 틴트는 1이다.
         material.SetTexture("_BaseMap", Bake(id, skin, $"{Folder}/{name}.jpg"));
@@ -311,22 +298,12 @@ public static class VillageGaiaSkin
             dst[i] = painted;
         }
 
-        var texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        texture.SetPixels32(dst);
-        texture.Apply();
-        File.WriteAllBytes(HouseAtlas, texture.EncodeToJPG(90));
-        Object.DestroyImmediate(texture);
-        AssetDatabase.ImportAsset(HouseAtlas, ImportAssetOptions.ForceUpdate);
-        var importer = (TextureImporter)AssetImporter.GetAtPath(HouseAtlas);
-        importer.sRGBTexture = true;
-        importer.mipmapEnabled = true;
-        importer.maxTextureSize = size;
-        importer.textureCompression = TextureImporterCompression.Compressed;
-        importer.SaveAndReimport();
+        Texture2D atlas = EditorTextures.SaveJpg(new Texture2D(size, size, TextureFormat.RGBA32, false), dst,
+            HouseAtlas, size, clamp: false);
 
         Texture2D windows = BakeWindowMask(src, region, size);
         var house = AssetDatabase.LoadAssetAtPath<Material>(HouseMaterial);
-        if (house != null) LitHouse(house, AssetDatabase.LoadAssetAtPath<Texture2D>(HouseAtlas), windows);
+        if (house != null) LitHouse(house, atlas, windows);
         // 수레·짐 아틀라스는 나무가 거의 전부라 평균만 갈색 목재로 옮긴다.
         var wagon = AssetDatabase.LoadAssetAtPath<Material>(WagonMaterial);
         if (wagon != null)
@@ -367,19 +344,9 @@ public static class VillageGaiaSkin
             mask[index] = new Color32(v, v, v, 255);
         }
 
-        var texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        texture.SetPixels32(mask);
-        texture.Apply();
-        File.WriteAllBytes(WindowMask, texture.EncodeToJPG(90));
-        Object.DestroyImmediate(texture);
-        AssetDatabase.ImportAsset(WindowMask, ImportAssetOptions.ForceUpdate);
-        var importer = (TextureImporter)AssetImporter.GetAtPath(WindowMask);
-        importer.sRGBTexture = true;
-        importer.mipmapEnabled = true;
-        importer.maxTextureSize = 1024;   // 마스크라 반으로 충분하다
-        importer.textureCompression = TextureImporterCompression.Compressed;
-        importer.SaveAndReimport();
-        return AssetDatabase.LoadAssetAtPath<Texture2D>(WindowMask);
+        // 마스크라 1024(반)로 충분하다.
+        return EditorTextures.SaveJpg(new Texture2D(size, size, TextureFormat.RGBA32, false), mask,
+            WindowMask, 1024, clamp: false);
     }
 
     private static void LitHouse(Material house, Texture2D atlas, Texture2D windows)
@@ -464,21 +431,7 @@ public static class VillageGaiaSkin
             px[i] = painted;
         }
 
-        texture.SetPixels32(px);
-        texture.Apply();
-        File.WriteAllBytes(path, texture.EncodeToJPG(90));
-        Object.DestroyImmediate(texture);
-
-        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
-        var importer = (TextureImporter)AssetImporter.GetAtPath(path);
-        importer.textureType = TextureImporterType.Default;
-        importer.sRGBTexture = true;
-        importer.mipmapEnabled = true;
-        importer.wrapMode = TextureWrapMode.Clamp;
-        importer.maxTextureSize = width;
-        importer.textureCompression = TextureImporterCompression.Compressed;
-        importer.SaveAndReimport();
-        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        return EditorTextures.SaveJpg(texture, px, path, width, clamp: true);
     }
 
     private static float Luminance(Color c) => ColorMath.Luminance(c);

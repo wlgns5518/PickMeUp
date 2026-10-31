@@ -7,41 +7,13 @@
 //
 // 이 동작의 성질은 치유와 같다: 시전에 시간이 걸리고, 그동안 무방비이며,
 // 끊기면 마력만 버린다. 사제가 전열 뒤에 서 있어야 하는 이유가 여기서도 같다.
-public class ShieldBehavior : UnitBehavior
+public class ShieldBehavior : SupportCastBehavior
 {
-    private float stateTimer;
-
     public ShieldBehavior(UnitController context) : base(context)
     {
     }
 
-    // 서서 시전한다.
-    public override bool HoldsGround => true;
-
-    protected override void OnEnter()
-    {
-        // 시전 중에는 무방비다. 이동과 공격 잠금을 끊어야 이전 행동이 겹쳐 이어지지 않는다.
-        unit.InterruptCurrentAction();
-        unit.StopMovement();
-
-        unit.BeginShieldCast();
-        unit.TriggerHeal();
-        stateTimer = unit.HealAnimationDuration;
-    }
-
-    protected override BTStatus OnTick()
-    {
-        stateTimer -= AnimationDeltaTime;
-        if (stateTimer > 0f) return BTStatus.Running;
-
-        // 끝까지 마쳤다. 여기서야 보호막이 실제로 걸린다.
-        unit.CompleteShield();
-        return BTStatus.Success;
-    }
-
-    protected override void OnExit()
-    {
-        // 끊겼으면(피격, 사망) 마력만 나간다. CompleteShield가 이미 닫았으면 아무 일도 하지 않는다.
-        unit.CancelShieldCast();
-    }
+    protected override void Begin() => unit.BeginShieldCast();
+    protected override void Complete() => unit.CompleteShield();
+    protected override void Cancel() => unit.CancelShieldCast();
 }

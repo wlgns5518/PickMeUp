@@ -36,7 +36,6 @@ public static class VillagePrefabAssembler
     private static readonly Vector2Int All = new Vector2Int(1, 3);
     private static readonly Vector2Int Lv1 = new Vector2Int(1, 1);
     private static readonly Vector2Int Lv2 = new Vector2Int(2, 2);
-    private static readonly Vector2Int Upto2 = new Vector2Int(1, 2);
     private static readonly Vector2Int From2 = new Vector2Int(2, 3);
     private static readonly Vector2Int Lv3 = new Vector2Int(3, 3);
 

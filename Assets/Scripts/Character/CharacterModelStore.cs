@@ -56,12 +56,6 @@ public static class CharacterModelStore
         Commit(characterId);
     }
 
-    public static void Delete(string characterId)
-    {
-        if (!Exists(characterId)) return;
-        File.Delete(PathFor(characterId));
-    }
-
     // 캐릭터 id는 GUID라 원래 안전하지만, 옛 세이브가 이름으로 떨어지는 경로가 있어서 한 번 거른다.
     private static string Sanitize(string value)
     {

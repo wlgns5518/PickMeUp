@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.AI;
-using Random = UnityEngine.Random;
 
 // UnitController의 "한 번의 교전이 실제로 어떻게 굴러가는가" 쪽의 입구와 인스펙터 값.
 //
@@ -322,8 +321,6 @@ public partial class UnitController
 
     public float FlinchMultiplier => Slow.FlinchMultiplier;
 
-    public void ApplyHitFlinch() => Slow.ApplyFlinch();
-
     public void ApplySlow(float duration, float multiplier) => Slow.ApplySlow(duration, multiplier);
 
     // ---------------------------------------------------------------- 영창
@@ -359,8 +356,6 @@ public partial class UnitController
 
     // 칼이 닿은 순간 아주 짧게 애니메이션을 눌러 붙인다(HitStopPart 주석 참조).
     public void ApplyHitStop(float duration, float scale) => HitStop.Apply(duration, scale);
-
-    public void ClearHitStop() => HitStop.Clear();
 
     // 손에 쥔 것으로 직접 쳤다고 볼 거리 안인가. 화살·마법탄을 쏜 쪽은 멈추지 않는다.
     public bool IsWithinHitStopReach(Vector3 victimPosition) => HitStop.IsWithinReach(victimPosition);

@@ -139,14 +139,7 @@ public static class VillageDecor
         Directory.CreateDirectory(Folder);
 
         Material source = part.GetComponent<MeshRenderer>().sharedMaterial;
-        string materialPath = $"{Folder}/M_Banner_Blue.mat";
-        var material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
-        if (material == null)
-        {
-            material = new Material(source) { name = "M_Banner_Blue" };
-            AssetDatabase.CreateAsset(material, materialPath);
-        }
-        else material.CopyPropertiesFromMaterial(source);
+        Material material = EditorMaterials.LoadOrCopy($"{Folder}/M_Banner_Blue.mat", source, "M_Banner_Blue");
         Texture2D blue = BlueCloth(source.GetTexture("_BaseMap") as Texture2D);
         material.SetTexture("_BaseMap", blue);
         material.SetTexture("_MainTex", blue);   // 옛 슬롯도 맞춘다 — CopyPropertiesFromMaterial이 붉은 원본으로 되돌려 놓는다
@@ -184,19 +177,7 @@ public static class VillageDecor
             painted.a = 1f;
             px[i] = Color.Lerp(c, painted, weight);
         }
-        texture.SetPixels32(px);
-        texture.Apply();
-        File.WriteAllBytes(path, texture.EncodeToJPG(90));
-        Object.DestroyImmediate(texture);
-        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
-        var importer = (TextureImporter)AssetImporter.GetAtPath(path);
-        importer.sRGBTexture = true;
-        importer.mipmapEnabled = true;
-        importer.wrapMode = TextureWrapMode.Clamp;
-        importer.maxTextureSize = 1024;
-        importer.textureCompression = TextureImporterCompression.Compressed;
-        importer.SaveAndReimport();
-        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        return EditorTextures.SaveJpg(texture, px, path, 1024, clamp: true);
     }
 
     // ---- 마을 안 ----------------------------------------------------------------------
@@ -280,16 +261,7 @@ public static class VillageDecor
             if (terrain.SampleHeight(spot) + terrain.transform.position.y < -1f) continue;
 
             float scale = 0.9f + (float)random.NextDouble() * 0.45f;
-            kept.Add(new TreeInstance
-            {
-                prototypeIndex = picks[random.Next(picks.Count)],
-                position = new Vector3((spot.x - origin.x) / size.x, 0f, (spot.z - origin.z) / size.z),
-                widthScale = scale,
-                heightScale = scale,
-                rotation = (float)(random.NextDouble() * Mathf.PI * 2f),
-                color = Color.white,
-                lightmapColor = Color.white,
-            });
+            kept.Add(RandomTree(picks, new Vector3((spot.x - origin.x) / size.x, 0f, (spot.z - origin.z) / size.z), scale, random));
         }
 
         // 떠 있는 섬(VillageIsland)의 낮은 땅(숲 띠 바깥 ~ 가장자리)에 드문드문 숲 무더기. 빈 잔디판처럼 보이지 않게.
@@ -309,16 +281,7 @@ public static class VillageDecor
             if (data.GetSteepness(u, v) > 25f) continue;
 
             float scale = 0.85f + (float)random.NextDouble() * 0.5f;
-            kept.Add(new TreeInstance
-            {
-                prototypeIndex = picks[random.Next(picks.Count)],
-                position = new Vector3(u, 0f, v),
-                widthScale = scale,
-                heightScale = scale,
-                rotation = (float)(random.NextDouble() * Mathf.PI * 2f),
-                color = Color.white,
-                lightmapColor = Color.white,
-            });
+            kept.Add(RandomTree(picks, new Vector3(u, 0f, v), scale, random));
         }
 
         Undo.RegisterCompleteObjectUndo(data, "성벽 밖 숲");
@@ -331,5 +294,21 @@ public static class VillageDecor
         var lodSo = new SerializedObject(lod);
         lodSo.FindProperty("lodBias").floatValue = ForestLodBias;
         lodSo.ApplyModifiedProperties();
+    }
+
+    // 고른 나무 중 하나를 position(지형 기준 0~1)에 아무 방향으로 세운다. 씨앗을 고정해 두었으므로
+    // random을 부르는 순서(종류 → 방향)를 바꾸면 숲이 통째로 달라진다.
+    private static TreeInstance RandomTree(List<int> picks, Vector3 position, float scale, System.Random random)
+    {
+        return new TreeInstance
+        {
+            prototypeIndex = picks[random.Next(picks.Count)],
+            position = position,
+            widthScale = scale,
+            heightScale = scale,
+            rotation = (float)(random.NextDouble() * Mathf.PI * 2f),
+            color = Color.white,
+            lightmapColor = Color.white,
+        };
     }
 }

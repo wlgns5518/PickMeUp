@@ -28,9 +28,18 @@ public abstract class FacilityWindow : MonoBehaviour, IFacilityWindow
     // 캔버스와 화면을 실제로 만드는 곳. EnsureBuilt가 한 번만 부른다.
     protected abstract void BuildWindow();
 
-    // 여닫는 순간에 갱신할 것이 화면마다 다르다(목록 다시 그리기, 올려 둔 것 내려놓기 …).
-    public abstract void Show();
-    public abstract void Hide();
+    // 화면을 지금 값으로 다시 그린다. 열 때마다 부른다.
+    protected abstract void Refresh();
+
+    // 여닫는 순간에 더 할 일이 있는 화면(올려 둔 것 내려놓기, 팝업 닫기 …)만 덮어쓴다.
+    public virtual void Show()
+    {
+        EnsureBuilt();
+        Refresh();
+        SetOpen(true);
+    }
+
+    public virtual void Hide() => SetOpen(false);
 
     public bool IsOpen => popupRoot != null && popupRoot.activeSelf;
 
@@ -53,17 +62,12 @@ public abstract class FacilityWindow : MonoBehaviour, IFacilityWindow
         if (canvas != null) return;
 
         resolvedFont = HudFactory.ResolveFont(koreanFont, this);
-
-        // 참조만 잃고 남아 있는 이전 캔버스를 먼저 치운다(도메인 리로드 대비).
-        Transform stale = transform.Find(CanvasName);
-        if (stale != null) DestroyImmediate(stale.gameObject);
-
         BuildWindow();
     }
 
     // 화면을 담을 캔버스를 세운다. BuildWindow가 맨 먼저 부른다.
     protected void BuildCanvas()
     {
-        canvas = HudFactory.CreateScreenCanvas(transform, CanvasName, SortingOrder, out canvasRect);
+        canvas = HudFactory.RecreateScreenCanvas(transform, CanvasName, SortingOrder, out canvasRect);
     }
 }

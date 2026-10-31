@@ -771,9 +771,7 @@ public class PuzzleGame : MonoBehaviour
         int totalSec = Mathf.CeilToInt(Mathf.Max(0f, remainingTime));
         if (totalSec == lastShownSecond) return; // 같은 초면 string alloc 회피
         lastShownSecond = totalSec;
-        int m = totalSec / 60;
-        int s = totalSec % 60;
-        timerText.text = $"{m:00}:{s:00}";
+        timerText.text = TextFormat.Clock(totalSec);
     }
 
     private void Succeed()

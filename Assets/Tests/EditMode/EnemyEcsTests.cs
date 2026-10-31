@@ -818,7 +818,7 @@ public class EnemyEcsTests
     [Test]
     public void 무는_동작이_끝나면_크게_한_번_들어간다()
     {
-        Entity enemy = CreateEnemy(new float3(0f, 0f, 0f), BiterStats());
+        CreateEnemy(new float3(0f, 0f, 0f), BiterStats());
         AddAlly(new float3(0f, 0f, 1f));
 
         Tick(0.05f, 60);   // 3초 — 2.08초짜리 동작이 끝난다

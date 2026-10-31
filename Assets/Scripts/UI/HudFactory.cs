@@ -48,6 +48,15 @@ public static class HudFactory
         return rect;
     }
 
+    // 같은 이름으로 남아 있는 이전 캔버스(참조만 잃은 것, 도메인 리로드 대비)를 먼저 치우고 새로 세운다.
+    // 코드로 화면을 짓는 HUD·시설 화면이 Awake에서 부른다.
+    public static Canvas RecreateScreenCanvas(Transform parent, string name, int sortingOrder, out RectTransform rect)
+    {
+        Transform stale = parent.Find(name);
+        if (stale != null) Object.DestroyImmediate(stale.gameObject);
+        return CreateScreenCanvas(parent, name, sortingOrder, out rect);
+    }
+
     // 화면을 덮는 UI 캔버스 한 장.
     // 창마다 다른 것은 이름과 정렬 순서뿐이고 나머지 설정은 전부 같다 —
     // 1920x1080 기준으로 늘어나고, 클릭을 받을 수 있도록 레이캐스터를 붙인다.

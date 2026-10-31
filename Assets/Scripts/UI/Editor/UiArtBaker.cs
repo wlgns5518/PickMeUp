@@ -382,7 +382,16 @@ public static class UiArtBaker
 
     // 무늬: 가운데를 2:1로 잘라 512x256으로 줄이고, 이어 붙였을 때 이음새가 없게 가장자리를 섞는다.
     // 2:1인 이유 — 탑의 한 층(줄 높이)에 무늬 한 장이 딱 들어가야 층과 층 사이에서 무늬가 끊기지 않는다.
-    private static byte[] FitTexture(byte[] raw, string label)
+    private static byte[] FitTexture(byte[] raw, string label) => Reencode(raw, label, (pixels, w, h) =>
+    {
+        Rect crop = CenterCrop(w, h, (float)TextureWidth / TextureHeight);
+        pixels = AreaResample(pixels, w, h, crop.x, crop.y, crop.width, crop.height, TextureWidth, TextureHeight);
+        return (MakeSeamless(pixels, TextureWidth, TextureHeight), TextureWidth, TextureHeight);
+    });
+
+    // 원본 그림을 읽어 reshape가 돌려준 픽셀로 PNG를 다시 굽는다. 임시 텍스처는 실패해도 치운다.
+    private static byte[] Reencode(byte[] raw, string label,
+        Func<Color32[], int, int, (Color32[] pixels, int width, int height)> reshape)
     {
         var source = new Texture2D(2, 2, TextureFormat.RGBA32, false);
         Texture2D result = null;
@@ -390,16 +399,8 @@ public static class UiArtBaker
         {
             if (!source.LoadImage(raw)) throw new Exception($"{label} 원본을 그림으로 읽지 못했다.");
 
-            int w = source.width, h = source.height;
-            float targetAspect = (float)TextureWidth / TextureHeight;
-            float cropW = w, cropH = w / targetAspect;
-            if (cropH > h) { cropH = h; cropW = h * targetAspect; }
-
-            Color32[] pixels = AreaResample(source.GetPixels32(), w, h, (w - cropW) * 0.5f, (h - cropH) * 0.5f,
-                cropW, cropH, TextureWidth, TextureHeight);
-            pixels = MakeSeamless(pixels, TextureWidth, TextureHeight);
-
-            result = new Texture2D(TextureWidth, TextureHeight, TextureFormat.RGBA32, false);
+            (Color32[] pixels, int width, int height) = reshape(source.GetPixels32(), source.width, source.height);
+            result = new Texture2D(width, height, TextureFormat.RGBA32, false);
             result.SetPixels32(pixels);
             result.Apply();
             return result.EncodeToPNG();
@@ -409,6 +410,30 @@ public static class UiArtBaker
             UnityEngine.Object.DestroyImmediate(source);
             if (result != null) UnityEngine.Object.DestroyImmediate(result);
         }
+    }
+
+    // 가운데를 aspect(가로/세로) 비율로 가장 크게 잘라 낼 자리.
+    private static Rect CenterCrop(int w, int h, float aspect)
+    {
+        float cropW = w, cropH = w / aspect;
+        if (cropH > h) { cropH = h; cropW = h * aspect; }
+        return new Rect((w - cropW) * 0.5f, (h - cropH) * 0.5f, cropW, cropH);
+    }
+
+    // 배경 제거를 요청했지만 불투명하게 돌아오는 경우가 있다. 그때는 가장자리 색을 직접 뺀다.
+    private static void KeyOutIfOpaque(Color32[] px, int w, int h, string label)
+    {
+        if (HasTransparentBorder(px, w, h)) return;
+        Debug.LogWarning($"[UiArtBaker] {label} 배경이 지워지지 않고 왔다 — 가장자리 색을 직접 뺀다.");
+        KeyOutBorderColor(px, w, h);
+    }
+
+    // 불투명한 내용물이 차지한 칸. 통째로 투명하면 쓸 것이 없으니 멈춘다.
+    private static RectInt ContentBounds(Color32[] px, int w, int h, string label)
+    {
+        RectInt bounds = OpaqueBounds(px, w, h);
+        if (bounds.width <= 0) throw new Exception($"{label} 그림이 통째로 투명하다.");
+        return bounds;
     }
 
     // 가로로 한 번, 세로로 한 번 — 가장자리 띠에서 반 칸 밀린 자기 자신과 섞는다.
@@ -448,42 +473,18 @@ public static class UiArtBaker
 
     // 소품: 투명 여백만 잘라 내용물 그대로의 비율로, 긴 변이 PropMaxSize를 넘지 않게 줄인다.
     // 아이콘처럼 정사각 여백을 두지 않는 이유 — 지붕의 아래 변, 문의 계단 끝을 탑 벽에 딱 맞춰 놓아야 한다.
-    private static byte[] TrimProp(byte[] raw, string label, bool harden)
+    private static byte[] TrimProp(byte[] raw, string label, bool harden) => Reencode(raw, label, (pixels, w, h) =>
     {
-        var source = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-        Texture2D result = null;
-        try
-        {
-            if (!source.LoadImage(raw)) throw new Exception($"{label} 원본을 그림으로 읽지 못했다.");
+        KeyOutIfOpaque(pixels, w, h, label);
+        if (harden) HardenAlpha(pixels);
+        RectInt bounds = ContentBounds(pixels, w, h, label);
 
-            int w = source.width, h = source.height;
-            Color32[] pixels = source.GetPixels32();
-            if (!HasTransparentBorder(pixels, w, h))
-            {
-                Debug.LogWarning($"[UiArtBaker] {label} 배경이 지워지지 않고 왔다 — 가장자리 색을 직접 뺀다.");
-                KeyOutBorderColor(pixels, w, h);
-            }
-            if (harden) HardenAlpha(pixels);
-
-            RectInt bounds = OpaqueBounds(pixels, w, h);
-            if (bounds.width <= 0) throw new Exception($"{label} 그림이 통째로 투명하다.");
-
-            // 압축 블록(4x4)에 나누어 떨어지게 4의 배수로.
-            float scale = Mathf.Min(1f, (float)PropMaxSize / Mathf.Max(bounds.width, bounds.height));
-            int outW = Mathf.Max(4, Mathf.RoundToInt(bounds.width * scale / 4f) * 4);
-            int outH = Mathf.Max(4, Mathf.RoundToInt(bounds.height * scale / 4f) * 4);
-
-            result = new Texture2D(outW, outH, TextureFormat.RGBA32, false);
-            result.SetPixels32(AreaResample(pixels, w, h, bounds.x, bounds.y, bounds.width, bounds.height, outW, outH));
-            result.Apply();
-            return result.EncodeToPNG();
-        }
-        finally
-        {
-            UnityEngine.Object.DestroyImmediate(source);
-            if (result != null) UnityEngine.Object.DestroyImmediate(result);
-        }
-    }
+        // 압축 블록(4x4)에 나누어 떨어지게 4의 배수로.
+        float scale = Mathf.Min(1f, (float)PropMaxSize / Mathf.Max(bounds.width, bounds.height));
+        int outW = Mathf.Max(4, Mathf.RoundToInt(bounds.width * scale / 4f) * 4);
+        int outH = Mathf.Max(4, Mathf.RoundToInt(bounds.height * scale / 4f) * 4);
+        return (AreaResample(pixels, w, h, bounds.x, bounds.y, bounds.width, bounds.height, outW, outH), outW, outH);
+    });
 
     // 어두운 그림은 배경 제거가 속까지 살짝 비치게(알파 200~250) 돌려준다 — 검은 지붕 너머로 별이 비쳤다.
     // 반 넘게 찬 칸은 꽉 채우고, 그 아래(가장자리)만 두 배로 올려 부드러운 테를 남긴다.
@@ -494,71 +495,24 @@ public static class UiArtBaker
     }
 
     // 배너: 가운데를 2:1로 잘라 1024x512로 줄인다. 배경을 지우지 않은 한 장짜리 그림이다.
-    private static byte[] FitBanner(byte[] raw, string label)
+    private static byte[] FitBanner(byte[] raw, string label) => Reencode(raw, label, (pixels, w, h) =>
     {
-        var source = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-        Texture2D result = null;
-        try
-        {
-            if (!source.LoadImage(raw)) throw new Exception($"{label} 원본을 그림으로 읽지 못했다.");
-
-            int w = source.width, h = source.height;
-            float targetAspect = (float)BannerWidth / BannerHeight;
-            float cropW = w, cropH = w / targetAspect;
-            if (cropH > h) { cropH = h; cropW = h * targetAspect; }
-
-            float originX = (w - cropW) * 0.5f;
-            float originY = (h - cropH) * 0.5f;
-
-            result = new Texture2D(BannerWidth, BannerHeight, TextureFormat.RGBA32, false);
-            result.SetPixels32(AreaResample(source.GetPixels32(), w, h, originX, originY, cropW, cropH, BannerWidth, BannerHeight));
-            result.Apply();
-            return result.EncodeToPNG();
-        }
-        finally
-        {
-            UnityEngine.Object.DestroyImmediate(source);
-            if (result != null) UnityEngine.Object.DestroyImmediate(result);
-        }
-    }
+        Rect crop = CenterCrop(w, h, (float)BannerWidth / BannerHeight);
+        return (AreaResample(pixels, w, h, crop.x, crop.y, crop.width, crop.height, BannerWidth, BannerHeight),
+            BannerWidth, BannerHeight);
+    });
 
     // 아이콘: 투명 여백을 잘라 내용물을 가운데 둔 정사각으로 만들고 IconSize로 줄인다.
-    private static byte[] TrimIcon(byte[] raw, string label)
+    private static byte[] TrimIcon(byte[] raw, string label) => Reencode(raw, label, (pixels, w, h) =>
     {
-        var source = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-        Texture2D result = null;
-        try
-        {
-            if (!source.LoadImage(raw)) throw new Exception($"{label} 원본을 그림으로 읽지 못했다.");
+        KeyOutIfOpaque(pixels, w, h, label);
+        RectInt bounds = ContentBounds(pixels, w, h, label);
 
-            int w = source.width, h = source.height;
-            Color32[] pixels = source.GetPixels32();
-
-            // 배경 제거를 요청했지만 불투명하게 돌아오는 경우가 있다. 그때는 가장자리 색을 직접 뺀다.
-            if (!HasTransparentBorder(pixels, w, h))
-            {
-                Debug.LogWarning($"[UiArtBaker] {label} 배경이 지워지지 않고 왔다 — 가장자리 색을 직접 뺀다.");
-                KeyOutBorderColor(pixels, w, h);
-            }
-
-            RectInt bounds = OpaqueBounds(pixels, w, h);
-            if (bounds.width <= 0) throw new Exception($"{label} 그림이 통째로 투명하다.");
-
-            float side = Mathf.Max(bounds.width, bounds.height) / (1f - 2f * Margin);
-            float originX = bounds.x + bounds.width * 0.5f - side * 0.5f;
-            float originY = bounds.y + bounds.height * 0.5f - side * 0.5f;
-
-            result = new Texture2D(IconSize, IconSize, TextureFormat.RGBA32, false);
-            result.SetPixels32(AreaResample(pixels, w, h, originX, originY, side, side, IconSize, IconSize));
-            result.Apply();
-            return result.EncodeToPNG();
-        }
-        finally
-        {
-            UnityEngine.Object.DestroyImmediate(source);
-            if (result != null) UnityEngine.Object.DestroyImmediate(result);
-        }
-    }
+        float side = Mathf.Max(bounds.width, bounds.height) / (1f - 2f * Margin);
+        float originX = bounds.x + bounds.width * 0.5f - side * 0.5f;
+        float originY = bounds.y + bounds.height * 0.5f - side * 0.5f;
+        return (AreaResample(pixels, w, h, originX, originY, side, side, IconSize, IconSize), IconSize, IconSize);
+    });
 
     private const byte OpaqueAlpha = 10;
 

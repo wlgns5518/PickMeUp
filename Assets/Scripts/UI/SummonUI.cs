@@ -85,13 +85,6 @@ public class SummonUI : UiScreen
     private void OnEnable() => PlayerAccount.Changed += RefreshCosts;
     private void OnDisable() => PlayerAccount.Changed -= RefreshCosts;
 
-    public override void Show()
-    {
-        EnsureBuilt();
-        RefreshBanner();
-        SetOpen(true);
-    }
-
     public override void Hide()
     {
         if (ratePopup != null) ratePopup.Hide();
@@ -119,7 +112,7 @@ public class SummonUI : UiScreen
     {
         bannerCards.Clear();
 
-        BuildBannerList(root, size);
+        BuildBannerList(root);
 
         // 배너는 남는 폭과 높이를 모두 쓴다(화면 비율이 달라도 실행 버튼 줄은 늘 아래에 붙는다).
         float mainX = BannerListWidth + UiTheme.ColumnGap;
@@ -127,7 +120,7 @@ public class SummonUI : UiScreen
         BuildActionRow(root, mainX);
     }
 
-    private void BuildBannerList(RectTransform root, Vector2 size)
+    private void BuildBannerList(RectTransform root)
     {
         TMP_Text title = UiKit.SectionTitle(root, "BannerTitle", "소환 배너");
         UiKit.TopLeft(title.rectTransform, 4f, 0f, BannerListWidth, 44f);
@@ -222,7 +215,7 @@ public class SummonUI : UiScreen
     {
         BuildRatePopup();
         BuildResultBar();
-        RefreshBanner();
+        Refresh();
     }
 
     // ---- 확률 팝업 ------------------------------------------------------------
@@ -288,7 +281,7 @@ public class SummonUI : UiScreen
     {
         if (summoning) return;
         selected = kind;
-        RefreshBanner();
+        Refresh();
     }
 
     private void Draw(int count)
@@ -418,7 +411,7 @@ public class SummonUI : UiScreen
 
     // ---- 갱신 ---------------------------------------------------------------
 
-    private void RefreshBanner()
+    protected override void Refresh()
     {
         if (bannerName == null) return;
 

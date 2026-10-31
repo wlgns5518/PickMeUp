@@ -23,4 +23,23 @@ public static class EditorMaterials
         AssetDatabase.CreateAsset(material, path);
         return material;
     }
+
+    /// 경로의 머티리얼을 source와 같은 셰이더·값으로 맞춰 돌려준다. 없으면 source를 복사해 그 자리에 만든다.
+    /// 이미 있는 에셋을 지우지 않는 이유는 LoadOrCreateLit과 같다(GUID를 지킨다).
+    public static Material LoadOrCopy(string path, Material source, string name)
+    {
+        var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (material == null)
+        {
+            material = new Material(source) { name = name };
+            AssetDatabase.CreateAsset(material, path);
+            return material;
+        }
+
+        material.shader = source.shader;
+        material.CopyPropertiesFromMaterial(source);
+        material.shaderKeywords = source.shaderKeywords;
+        material.enableInstancing = source.enableInstancing;
+        return material;
+    }
 }

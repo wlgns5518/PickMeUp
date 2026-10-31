@@ -80,11 +80,6 @@ public class FloorSelectUI : UiScreen
         tower.ShowFloor(selectedFloor, rise: true);
     }
 
-    public override void Hide()
-    {
-        SetOpen(false);
-    }
-
     // 뒤로가기는 앞 단계(던전 선택)로.
     protected override void OnBack()
     {
@@ -224,7 +219,7 @@ public class FloorSelectUI : UiScreen
 
     // ---- 갱신 ---------------------------------------------------------------
 
-    private void Refresh()
+    protected override void Refresh()
     {
         if (tower == null || enterButton == null) return;
 

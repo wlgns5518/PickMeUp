@@ -44,7 +44,6 @@ public class UnitStats
     // 이 값이 그보다 낮으면 재생 배속이 1배 아래로 내려가 질주 모션이 슬로모션으로 돈다 —
     // 직업 배율이 가장 낮은 탱커(0.85)까지 1배 근처에 닿도록 잡은 값이다.
     public float runSpeed = 4.5f;
-    public float jumpPower = 5f;
     public float moveStopDistance = 0.25f;
 
     [Header("Detection")]
@@ -256,9 +255,6 @@ public class UnitStats
     [Range(0.3f, 1f)] public float combatSpacingRatio = 0.82f;
     [Tooltip("발놀림 이동 속도 = 걷기 속도 x 이 비율.")]
     [Range(0f, 1.5f)] public float footworkSpeedRatio = 0.65f;
-    [Tooltip("옆으로 도는 방향을 뒤집는 주기(초). 유닛마다 이 값 근처에서 무작위로 흔들린다. " +
-             "0이면 옆으로 돌지 않고 간격만 맞춘다.")]
-    public float strafeFlipInterval = 1.8f;
 
     [Header("Directional Damage")]
     [Tooltip("등 뒤에서 들어온 공격의 피해 배율. 뒤를 잡히면 아프다 — 아군끼리 서로 등을 " +

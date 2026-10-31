@@ -616,17 +616,3 @@ public struct EnemyAnimationFade : IComponentData
     // 첫 프레임에는 비교할 지난 값이 없다. 그때 섞으면 스폰 순간 T포즈에서 넘어온다.
     public bool initialized;
 }
-
-// 스폰 요청. 층마다 마리 수가 달라지므로 값으로 받는다.
-public struct EnemySpawnRequest : IComponentData
-{
-    public Entity prefab;
-    public int count;
-    public float3 center;
-    public float spread;
-    public int level;
-
-    // 층이 올라갈수록 붙는 배율. 아군 쪽 CharacterBattleSpawner.BuildEnemyStats와 같은 규칙이다.
-    public float hpMultiplier;
-    public float damageMultiplier;
-}

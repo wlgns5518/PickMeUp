@@ -2,7 +2,6 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
-using UnityEngine.UI;
 
 // 전투 HUD의 단일 진입점. 씬에 이 컴포넌트 하나만 올려두면
 // 캔버스부터 왼쪽 파티 패널과 결과창까지 전부 코드에서 만든다.

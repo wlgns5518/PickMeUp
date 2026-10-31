@@ -56,18 +56,6 @@ public class DungeonSelectUI : UiScreen
         SetOpen(openOnStart);
     }
 
-    public override void Show()
-    {
-        EnsureBuilt();
-        Refresh();
-        SetOpen(true);
-    }
-
-    public override void Hide()
-    {
-        SetOpen(false);
-    }
-
     // ---- 짓기 ---------------------------------------------------------------
 
     protected override void BuildContent(RectTransform root, Vector2 size)
@@ -164,7 +152,7 @@ public class DungeonSelectUI : UiScreen
 
     // ---- 갱신 ---------------------------------------------------------------
 
-    private void Refresh()
+    protected override void Refresh()
     {
         for (int i = 0; i < cards.Count; i++) Apply(cards[i]);
     }

@@ -34,11 +34,7 @@ public class TerritoryHud : MonoBehaviour
     {
         UiKit.UseFont(HudFactory.ResolveFont(koreanFont, this));
 
-        // 참조만 잃고 남아 있는 이전 캔버스를 먼저 치운다(도메인 리로드 대비).
-        Transform stale = transform.Find(CanvasName);
-        if (stale != null) DestroyImmediate(stale.gameObject);
-
-        HudFactory.CreateScreenCanvas(transform, CanvasName, SortingOrder, out canvasRect);
+        HudFactory.RecreateScreenCanvas(transform, CanvasName, SortingOrder, out canvasRect);
 
         UiButton button = UiButton.CreateIcon(canvasRect, "TerritoryButton", UiSprites.Icon(UiSprites.Glyph.Castle), true,
             Diameter, UiButtonStyle.Glass, Open);

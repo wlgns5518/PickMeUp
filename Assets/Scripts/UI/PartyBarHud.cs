@@ -1,6 +1,5 @@
 using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 
 // 마을 화면 왼쪽 아래에 늘 떠 있는 동그란 파티 편성 버튼.
 //
@@ -39,11 +38,7 @@ public class PartyBarHud : MonoBehaviour
     {
         UiKit.UseFont(HudFactory.ResolveFont(koreanFont, this));
 
-        // 참조만 잃고 남아 있는 이전 캔버스를 먼저 치운다(도메인 리로드 대비).
-        Transform stale = transform.Find(CanvasName);
-        if (stale != null) DestroyImmediate(stale.gameObject);
-
-        HudFactory.CreateScreenCanvas(transform, CanvasName, SortingOrder, out canvasRect);
+        HudFactory.RecreateScreenCanvas(transform, CanvasName, SortingOrder, out canvasRect);
         Build();
     }
 

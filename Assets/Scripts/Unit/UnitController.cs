@@ -1,9 +1,6 @@
 using System;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
-// System을 열면 Random이 System.Random과 충돌한다. 이 파일의 Random은 전부 UnityEngine 쪽.
-using Random = UnityEngine.Random;
 
 [RequireComponent(typeof(TargetScanner))]
 public partial class UnitController : MonoBehaviour
@@ -254,7 +251,7 @@ public partial class UnitController : MonoBehaviour
     //
     // 그래서 반대로 뒤집는다: 속도는 클립에 맞추고, 나아가는 거리는 그 결과로 정해진다
     // (기본 클립 기준 4.08m/s x 0.67초 = 약 2.7m). 거리를 바꾸고 싶으면 클립을 바꿔야 한다.
-    public float DodgeMoveSpeed(float distance) => dodgeClipSpeed;
+    public float DodgeMoveSpeed => dodgeClipSpeed;
 
     // 회피 도약을 실제 이동으로 옮긴다. 목적지를 주지 않고 직접 민다(LocomotionPart.MoveDodge 주석 참조).
     public void MoveDodge(Vector3 direction, float speed, float deltaTime) =>
@@ -611,8 +608,6 @@ public partial class UnitController : MonoBehaviour
     // 엔티티가 된 적 중에서 겨눌 상대를 찾는다.
     public bool TryAcquireEntityTarget() => Targeting.TryAcquireEntity();
 
-    public bool ShouldReleaseCurrentTarget() => Targeting.ShouldRelease();
-
     public bool HasUsableTarget() => Targeting.HasUsable();
 
     public void ReceiveSharedTarget(TargetRef target) => Targeting.ReceiveShared(target);
@@ -816,18 +811,6 @@ public partial class UnitController : MonoBehaviour
     private float KeepDistanceThreshold => Spacing.KeepDistanceThreshold;
 
     public bool ShouldKeepDistance() => Spacing.ShouldKeepDistance();
-
-    // 영창을 버리고 빠져야 하는가.
-    //
-    // 영창 중인 마법사를 실제로 위협하는 것은 겨눈 적이 아니라 옆에서 파고든 적이다 — 먼 적을 조준한 채
-    // 발밑의 고블린에게 맞고 있으면 겨눈 상대와의 거리는 영영 가깝지 않다. 그래서 "내 간격 안에 적이
-    // 들어왔는가"(ShouldKeepDistance)와 같은 것을 본다. 한때 이 둘이 서로 다른 기준을 쓰다가
-    // "영창은 접는데 물러나지는 않는" 어긋남을 만들었다 — 이제 한 곳에서 판단한다.
-    //
-    // 접어도 마력은 잃지 않는다(CancelSpellCast). 대가는 서 있던 시간과 다시 모으기까지의
-    // 한 박자(spellRetryDelay)뿐이라, 붙잡힌 채 버티는 것보다 언제나 낫다 — 영창 중에는
-    // 받는 피해가 castVulnerabilityMultiplier만큼 커지기 때문이다.
-    public bool ShouldAbandonCast() => ShouldKeepDistance();
 
     public bool IsBeingChased() => Spacing.IsBeingChased();
 

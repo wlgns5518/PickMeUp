@@ -112,13 +112,6 @@ public class ArmoryUI : UiScreen
         PlayerAccount.Changed -= HandleDataChanged;
     }
 
-    public override void Show()
-    {
-        EnsureBuilt();
-        Refresh();
-        SetOpen(true);
-    }
-
     public override void Hide()
     {
         if (enhancePopup != null) enhancePopup.Hide();
@@ -591,7 +584,7 @@ public class ArmoryUI : UiScreen
         toast.Show($"오른쪽 목록에서 {UiSlotContents.SlotName(slot)}를 고르세요.", UiToastKind.Info);
     }
 
-    private void Refresh()
+    protected override void Refresh()
     {
         if (heroPicker == null || detailPopup == null) return;
 

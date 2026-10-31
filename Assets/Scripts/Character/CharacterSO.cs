@@ -1,9 +1,5 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
 
 [CreateAssetMenu(fileName = "Character", menuName = "PickMeUp/Character")]
 public class CharacterSO : ScriptableObject
@@ -132,10 +128,6 @@ public class CharacterSO : ScriptableObject
     [Tooltip("배운 스킬의 id. 실제 이름과 설명은 SkillCatalog가 들고 있다.")]
     public List<string> skillIds = new List<string>();
 
-    // Relationships -----------------------------------------------------
-    [Header("Relationships")]
-    public List<FriendshipEntry> friendships = new List<FriendshipEntry>();
-
     // Utility -----------------------------------------------------------
 
     // 장착한 무기 에셋이 있으면 그쪽이 정답이다. mainHand enum은 에셋을 아직 안 고른
@@ -166,30 +158,6 @@ public class CharacterSO : ScriptableObject
     // 이미 배웠거나 자리가 없으면 false. 부르는 쪽이 그 이유를 미리 확인한다.
     public bool LearnSkill(string skillId) => CharacterProgress.LearnSkill(this, skillId);
 
-    // Relationships -----------------------------------------------------
-
-    public int GetFriendship(CharacterSO other)
-    {
-        if (other == null) return 0;
-        for (int i = 0; i < friendships.Count; i++)
-            if (friendships[i].target == other) return friendships[i].value;
-        return 0;
-    }
-
-    public void ModifyFriendship(CharacterSO other, int delta)
-    {
-        if (other == null) return;
-        for (int i = 0; i < friendships.Count; i++)
-        {
-            if (friendships[i].target == other)
-            {
-                friendships[i].value += delta;
-                return;
-            }
-        }
-        friendships.Add(new FriendshipEntry { target = other, value = delta });
-    }
-
 #if UNITY_EDITOR
     // 임포트/편집 시점에도 붙여 둔다. Id 게터의 지연 부여와 함께 두는 이유는,
     // 빌드에 나갈 때쯤이면 모든 에셋이 이미 값을 갖고 있게 하기 위해서다.
@@ -199,34 +167,4 @@ public class CharacterSO : ScriptableObject
         if (string.IsNullOrEmpty(id)) AssignId();
     }
 #endif
-
-    // Editor-only asset deletion. Runtime death/state handling belongs in runtime character data.
-    public void DeleteAssets()
-    {
-#if UNITY_EDITOR
-        try
-        {
-            if (!string.IsNullOrEmpty(portraitAssetPath))
-            {
-                AssetDatabase.DeleteAsset(portraitAssetPath);
-                portraitAssetPath = null;
-                portrait = null;
-            }
-
-            // 몸(GLB)도 같이 지운다. 초상화만 지우고 두면 6MB짜리 몸이 주인 없이 남는다.
-            // 에셋을 지우기 전에 id를 읽어야 한다 — 지운 뒤에는 이 캐릭터가 누구였는지 알 수 없다.
-            string bodyId = Id;
-            CharacterBodyFactory.Forget(bodyId);
-            CharacterModelStore.Delete(bodyId);
-
-            string soPath = AssetDatabase.GetAssetPath(this);
-            if (!string.IsNullOrEmpty(soPath)) AssetDatabase.DeleteAsset(soPath);
-            AssetDatabase.SaveAssets();
-        }
-        catch (Exception e)
-        {
-            Debug.LogError($"[CharacterSO] Failed to delete assets: {e.Message}");
-        }
-#endif
-    }
 }

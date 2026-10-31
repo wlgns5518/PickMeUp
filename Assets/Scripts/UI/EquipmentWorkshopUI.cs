@@ -100,13 +100,6 @@ public class EquipmentWorkshopUI : UiScreen
         PlayerAccount.Changed -= HandleDataChanged;
     }
 
-    public override void Show()
-    {
-        EnsureBuilt();
-        Refresh();
-        SetOpen(true);
-    }
-
     // 닫으면 넣어 둔 재료와 장비를 내려놓는다. 지난번에 무엇을 올려 뒀는지 화면이 기억하고 있으면,
     // 다시 열었을 때 그 사실을 모른 채 제작·합성을 눌러 엉뚱한 것을 태우게 된다(캐릭터 합성소도 같은 규칙).
     // 수동 제작으로 퍼즐이 뜨는 동안에도 닫히지만, 그때는 이미 재료가 창고에서 빠져 칸이 비어 있다.
@@ -440,7 +433,7 @@ public class EquipmentWorkshopUI : UiScreen
 
     // ---- 갱신 ---------------------------------------------------------------
 
-    private void Refresh()
+    protected override void Refresh()
     {
         if (craftFlow == null || synthFlow == null || resultPopup == null) return;
 
@@ -547,15 +540,7 @@ public class EquipmentWorkshopUI : UiScreen
         }
 
         long cost = complete ? Forge.CostOf(craftSlots) : 0;
-        long gold = PlayerAccount.Balance(Currency.Gold);
-        rows.Add(new UiFlowPanel.Requirement
-        {
-            Icon = UiIconLibrary.Currency(Currency.Gold),
-            Label = "골드",
-            Have = UiKit.Amount(gold),
-            Need = complete ? UiKit.Amount(cost) : "-",
-            Met = !complete || gold >= cost,
-        });
+        rows.Add(UiFlowPanel.Requirement.Gold(cost, complete));
         craftFlow.SetRequirements(rows);
 
         craftFlow.Action.SetLabel(manual ? "제작 시작" : "제작");
@@ -647,7 +632,6 @@ public class EquipmentWorkshopUI : UiScreen
         }
 
         long cost = complete ? EquipmentSynthesis.Cost(synthSlots) : 0;
-        long gold = PlayerAccount.Balance(Currency.Gold);
         synthFlow.SetRequirements(new List<UiFlowPanel.Requirement>
         {
             new UiFlowPanel.Requirement
@@ -657,14 +641,7 @@ public class EquipmentWorkshopUI : UiScreen
                 Need = EquipmentSynthesis.SlotCount.ToString(),
                 Met = complete,
             },
-            new UiFlowPanel.Requirement
-            {
-                Icon = UiIconLibrary.Currency(Currency.Gold),
-                Label = "골드",
-                Have = UiKit.Amount(gold),
-                Need = complete ? UiKit.Amount(cost) : "-",
-                Met = !complete || gold >= cost,
-            },
+            UiFlowPanel.Requirement.Gold(cost, complete),
         });
 
         if (complete) synthFlow.Action.SetCost(Currency.Gold, cost);

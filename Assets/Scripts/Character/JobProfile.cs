@@ -1,5 +1,3 @@
-using UnityEngine;
-
 // 직업과 장비를 실제 전투 능력치로 바꿔주는 표.
 //
 // 한때 JobType은 캐릭터를 만들 때 성장 가중치(Constitution)를 고르는 데만 쓰였고, 전투에서는

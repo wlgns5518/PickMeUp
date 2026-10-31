@@ -56,12 +56,12 @@ public sealed class UnitSpacing
     // "안전하다"고 판단해 버렸다. 그래서 물러났다가 곧바로 되돌아와 다시 맞는 왕복이 생겼다.
     //
     // 물러날지 정하는 기준(여기)과 어느 쪽으로 물러날지 정하는 기준
-    // (GetRetreatDirection), 영창을 접을지 정하는 기준(UnitController.ShouldAbandonCast)이
+    // (GetRetreatDirection), 긴 영창을 시작할지 정하는 기준(SpellcasterPart)이
     // 전부 같은 것을 봐야 한다. 셋이 어긋나면 그 차이가 그대로 갈팡질팡으로 나타난다.
     //
     // 한 프레임 안에서는 답을 기억해 둔다. 한 틱에 여러 번 불리기 때문이다 —
-    // 물러날지(UnitBehaviorTree.WantsRetreat), 어떻게 물러날지(RunsAway), 영창을 접을지
-    // (ShouldAbandonCast), 그리고 물러나는 동작 자체(EvadeBehavior)가 전부 같은 질문을 한다.
+    // 물러날지(UnitBehaviorTree.WantsRetreat), 어떻게 물러날지(RunsAway), 긴 영창을 시작할지
+    // (SpellcasterPart), 그리고 물러나는 동작 자체(EvadeBehavior)가 전부 같은 질문을 한다.
     // 안이 적 전체를 훑는 선형 스캔이라 그 중복이 그대로 비용이 된다.
     //
     // 프레임 안에서 답이 바뀔 일은 없다. 유닛은 프레임당 한 번 움직이고, 이 질문은 전부
@@ -262,7 +262,7 @@ public sealed class UnitSpacing
         // 무엇으로부터 물러나는가 — 겨누고 있는 상대가 아니라 실제로 품 안에 들어온 적들이다.
         //
         // 예전에는 CurrentTarget의 반대쪽으로 물러났다. 그런데 물러나기로 정하는 기준은
-        // "내 간격 안에 아무 적이나 들어왔는가"(ShouldAbandonCast)여서 둘이 어긋난다.
+        // "내 간격 안에 아무 적이나 들어왔는가"(ShouldKeepDistance)여서 둘이 어긋난다.
         // 파티 집중 사격이 들어온 뒤로 그 어긋남이 커졌다 — 마법사의 CurrentTarget은 8m 밖의
         // 집중 표적인 경우가 많은데, 정작 물러나게 만든 것은 발밑의 고블린이다.
         // 그 상태로 "표적 반대쪽"으로 뛰면 위협 쪽으로 뛰어드는 일까지 생기고,

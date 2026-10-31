@@ -101,11 +101,6 @@ public class DeckBuildUI : UiScreen, ICardDragHost
         Show();
     }
 
-    public override void Hide()
-    {
-        SetOpen(false);
-    }
-
     // 마을(훈련소)에서 열었으면 뒤로가기는 마을로 닫는다. 앞 화면을 두고 왔으면 그리로 돌아간다.
     protected override void OnBack()
     {
@@ -315,7 +310,7 @@ public class DeckBuildUI : UiScreen, ICardDragHost
 
     // ---- 갱신 ---------------------------------------------------------------
 
-    private void Refresh()
+    protected override void Refresh()
     {
         if (picker == null || partyTiles.Count == 0) return;
 
@@ -405,21 +400,8 @@ public class DeckBuildUI : UiScreen, ICardDragHost
 
     private void RefreshList()
     {
-        sorted.Clear();
-        IReadOnlyList<CharacterSO> members = OwnedRoster.Members;
-        for (int i = 0; i < members.Count; i++) if (members[i] != null) sorted.Add(members[i]);
-
-        bool byLevel = picker.Tabs.Selected == 1;
-        sorted.Sort((a, b) =>
-        {
-            // 쓰러진 영웅은 맨 뒤로. 그 안에서는 고른 기준대로.
-            int byFallen = PartyRoster.IsFallen(a).CompareTo(PartyRoster.IsFallen(b));
-            if (byFallen != 0) return byFallen;
-            int primary = byLevel ? b.Level.CompareTo(a.Level) : b.starCount.CompareTo(a.starCount);
-            if (primary != 0) return primary;
-            int secondary = byLevel ? b.starCount.CompareTo(a.starCount) : b.Level.CompareTo(a.Level);
-            return secondary != 0 ? secondary : string.CompareOrdinal(HeroLabel.Name(a), HeroLabel.Name(b));
-        });
+        // 쓰러진 영웅은 맨 뒤로. 그 안에서는 고른 기준대로.
+        HeroOrder.SortOwned(sorted, byLevel: picker.Tabs.Selected == 1, fallenLast: true);
 
         picker.Count.text = $"{sorted.Count}명";
         picker.Grid.Show(sorted.Count, BindHero, "보유한 영웅이 없습니다.");

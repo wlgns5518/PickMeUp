@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using TMPro;
 using UnityEngine;
 
 // 캐릭터 합성소 — 베이스 영웅이 다른 영웅을 재료로 태워 스킬 하나를 배운다.
@@ -191,7 +190,7 @@ public class SynthesisUI : UiScreen
 
     // ---- 갱신 ---------------------------------------------------------------
 
-    private void Refresh()
+    protected override void Refresh()
     {
         if (flow == null || picker == null) return;
 
@@ -260,17 +259,12 @@ public class SynthesisUI : UiScreen
     private void RefreshRequirements()
     {
         long cost = CharacterSynthesis.Cost(material);
-        long gold = PlayerAccount.Balance(Currency.Gold);
 
         var rows = new List<UiFlowPanel.Requirement>
         {
             new UiFlowPanel.Requirement { Label = "베이스 영웅", Have = main != null ? "1" : "0", Need = "1", Met = main != null },
             new UiFlowPanel.Requirement { Label = "재료 영웅", Have = material != null ? "1" : "0", Need = "1", Met = material != null },
-            new UiFlowPanel.Requirement
-            {
-                Icon = UiIconLibrary.Currency(Currency.Gold), Label = "골드",
-                Have = UiKit.Amount(gold), Need = material != null ? UiKit.Amount(cost) : "-", Met = material == null || gold >= cost,
-            },
+            UiFlowPanel.Requirement.Gold(cost, material != null),
         };
         flow.SetRequirements(rows);
 
@@ -280,18 +274,7 @@ public class SynthesisUI : UiScreen
 
     private void RefreshList()
     {
-        sorted.Clear();
-        IReadOnlyList<CharacterSO> members = OwnedRoster.Members;
-        for (int i = 0; i < members.Count; i++) if (members[i] != null) sorted.Add(members[i]);
-
-        bool byLevel = picker.Tabs.Selected == 1;
-        sorted.Sort((a, b) =>
-        {
-            int primary = byLevel ? b.Level.CompareTo(a.Level) : b.starCount.CompareTo(a.starCount);
-            if (primary != 0) return primary;
-            int secondary = byLevel ? b.starCount.CompareTo(a.starCount) : b.Level.CompareTo(a.Level);
-            return secondary != 0 ? secondary : string.CompareOrdinal(HeroLabel.Name(a), HeroLabel.Name(b));
-        });
+        HeroOrder.SortOwned(sorted, byLevel: picker.Tabs.Selected == 1, fallenLast: false);
 
         picker.Count.text = $"{sorted.Count}명";
         picker.Grid.Show(sorted.Count, BindHero, "보유한 영웅이 없습니다.");

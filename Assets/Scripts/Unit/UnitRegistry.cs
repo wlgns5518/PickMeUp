@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Unity.Entities;
 using UnityEngine;
 
 // 전장에 선 유닛들의 명부와, 그 명부를 훑는 질의들.
