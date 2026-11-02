@@ -84,6 +84,31 @@ public class CharacterBattleSpawner : MonoBehaviour
         SpawnEnemies();
     }
 
+    // 두 진영이 설 자리를 옮긴다. 11층부터 건물을 세우는 BattleTerrain이 스폰 전에(씬이 열리는 순간) 부른다 —
+    // 원래 자리(아군·적 사이 10m)에는 길목을 둘 틈이 없다. 스폰 지점들은 중심과 함께 통째로 옮긴다.
+    public void Relocate(Vector3 allyCenter, Vector3 enemyCenter)
+    {
+        Shift(allySpawnPoints, allySpawnCenter, allyCenter - AllyCenter());
+        Shift(enemySpawnPoints, enemySpawnCenter, enemyCenter - EnemyCenter());
+    }
+
+    private void Shift(Transform[] points, Transform center, Vector3 delta)
+    {
+        // 중심이 비어 있으면 스포너 기준의 오프셋이 대신하므로 그쪽을 옮긴다.
+        if (center == null && (points == null || points.Length == 0 || points[0] == null))
+        {
+            if (points == allySpawnPoints) allySpawnFallbackOffset += delta;
+            else enemySpawnFallbackOffset += delta;
+            return;
+        }
+
+        var moved = new HashSet<Transform>();
+        if (center != null && moved.Add(center)) center.position += delta;
+        if (points == null) return;
+        foreach (Transform point in points)
+            if (point != null && moved.Add(point)) point.position += delta;
+    }
+
     // 메인 씬에서 카드로 고른 편성이 있으면 그쪽이 이번 출전 명단이다.
     // 인스펙터 배열은 편성 화면을 거치지 않고 전투 씬을 바로 재생할 때의 대비책으로 남는다.
     private IReadOnlyList<CharacterSO> Lineup() =>

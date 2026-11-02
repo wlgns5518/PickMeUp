@@ -145,6 +145,39 @@ public static class EnemyHorde
     // 한 층 분량을 한 번에 만든다.
     //
     // emotionProfile: 감정 튜닝값(EnemyEmotionProfile.From). 비워 두면 감정을 굴리지 않는다.
+    // 건물이 선 전장(11층부터, BattleTerrain)에서 태어날 자리. 건물 속이거나 적 구역(BattleGround.EnemyZone) 밖이면
+    // 같은 원 안에서 다시 뽑고, 그래도 못 찾으면 적 구역 전체에서 뽑는다 — 100층의 1000마리는 원이 전장보다 크다.
+    // 끝내 못 찾으면 처음 자리를 쓴다(벽에 박힌 몸은 이동 시스템이 밀어낸다).
+    private const int OpenGroundAttempts = 16;
+
+    private static float3 PlaceOnOpenGround(float3 first, Vector3 center, float spread, float radius,
+        ref Unity.Mathematics.Random random)
+    {
+        Rect zone = BattleGround.EnemyZone;
+        bool hasZone = zone.width > 0f && zone.height > 0f;
+        float margin = math.max(0.5f, radius + 0.2f);
+
+        bool Open(float3 p) =>
+            (!hasZone || zone.Contains(new Vector2(p.x, p.z))) && BattleGround.SampleClearance(p) > margin;
+
+        if (Open(first)) return first;
+
+        for (int attempt = 0; attempt < OpenGroundAttempts; attempt++)
+        {
+            float2 offset = random.NextFloat2Direction() * (math.sqrt(random.NextFloat()) * spread);
+            var p = new float3(center.x + offset.x, center.y, center.z + offset.y);
+            if (Open(p)) return p;
+        }
+
+        if (!hasZone) return first;
+        for (int attempt = 0; attempt < OpenGroundAttempts * 4; attempt++)
+        {
+            var p = new float3(random.NextFloat(zone.xMin, zone.xMax), center.y, random.NextFloat(zone.yMin, zone.yMax));
+            if (Open(p)) return p;
+        }
+        return first;
+    }
+
     public static int Spawn(in EnemyStats stats, int count, Vector3 center, float spread, uint seed = 1,
         EnemyEmotionProfile emotionProfile = default)
     {
@@ -171,6 +204,7 @@ public static class EnemyHorde
             // 무리가 밀려나기만 하는 첫 몇 초가 보인다. 제곱근을 씌우면 면적에 비례해 퍼진다.
             float2 offset = random.NextFloat2Direction() * (math.sqrt(random.NextFloat()) * spread);
             float3 position = new float3(center.x + offset.x, center.y, center.z + offset.y);
+            if (BattleGround.IsBuiltNow) position = PlaceOnOpenGround(position, center, spread, stats.radius, ref random);
 
             manager.SetComponentData(entity, LocalTransform.FromPositionRotation(
                 position, quaternion.RotateY(random.NextFloat(0f, math.PI * 2f))));

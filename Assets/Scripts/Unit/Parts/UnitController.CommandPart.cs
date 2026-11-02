@@ -28,12 +28,18 @@ public partial class UnitController
 
         // 돌아가는 데 이보다 오래 걸리면 거기서 멈추고 싸운다(초). 자리가 적에게 둘러싸여 닿지 못하는 채로
         // 맞기만 하면서 걸어가는 것보다 그 자리에서 칼을 드는 편이 낫다.
+        // 스스로 고른 지형 자리는 몇 걸음 떨어진 곳이라(TerrainTactics 탐색 반경 8~12m) 가는 데 더 걸린다.
         private const float MaxHoldReturnTime = 2.5f;
+        private const float MaxTerrainTravelTime = 5f;
 
         private readonly UnitController u;
 
         private PartyOrder order = PartyOrder.Engage;
         private Vector3 anchor;
+
+        // 스스로 고른 싸울 자리(TerrainPart). 명령이 없을 때만 쓴다 — 명령의 자리가 늘 먼저다.
+        private bool hasTerrainAnchor;
+        private Vector3 terrainAnchor;
 
         // 지휘관이 찍은 표적. 쓰러질 때까지 다른 표적 판단(스캐너·어그로·공유 표적)이 덮지 못한다.
         private TargetRef focus;
@@ -58,23 +64,59 @@ public partial class UnitController
         public Vector3 Anchor => anchor;
         public TargetRef Focus => focus;
 
-        public bool IsReturningToHoldAnchor => holdReturning && Time.time < holdReturnStartTime + MaxHoldReturnTime;
+        // 자리를 지키며 싸우는 중인가. 지휘관의 진형 유지 명령이거나, 스스로 고른 지형 자리다.
+        // 둘은 같은 동작으로 지킨다(HoldPositionBehavior) — 다른 것은 자리를 누가 정했느냐뿐이다.
+        public bool IsHoldingPosition => order == PartyOrder.Hold || (order == PartyOrder.Engage && hasTerrainAnchor);
+        public bool HasTerrainAnchor => hasTerrainAnchor;
+
+        // 지킬 자리. 명령이 서 있으면 명령의 자리가 먼저다.
+        public Vector3 HoldAnchor => order == PartyOrder.Hold ? anchor : terrainAnchor;
+
+        private float HoldReturnTimeout => order == PartyOrder.Hold ? MaxHoldReturnTime : MaxTerrainTravelTime;
+
+        public bool IsReturningToHoldAnchor => holdReturning && Time.time < holdReturnStartTime + HoldReturnTimeout;
+
+        // 돌아가다 시간이 다 됐는가(지형 자리를 놓을 때 본다 — 가는 길이 적에게 막혔다).
+        public bool HoldReturnTimedOut => holdReturning && Time.time >= holdReturnStartTime + HoldReturnTimeout;
 
         // 지킬 자리에서 떨어진 거리(높이 제외).
         public float HoldAnchorDistance
         {
             get
             {
-                Vector3 offset = anchor - u.transform.position;
+                Vector3 offset = HoldAnchor - u.transform.position;
                 offset.y = 0f;
                 return offset.magnitude;
             }
         }
 
-        // 붙잡는 거리를 넘었는가. 돌아가기를 포기한 직후(MaxHoldReturnTime)에는 한동안 다시 묻지 않는다 —
+        public bool IsAtHoldAnchor => HoldAnchorDistance <= HoldLeash;
+
+        // 붙잡는 거리를 넘었는가. 돌아가기를 포기한 직후(HoldReturnTimeout)에는 한동안 다시 묻지 않는다 —
         // 안 그러면 포기한 다음 틱에 또 돌아가기 시작해 같은 자리를 맴돈다.
         public bool IsBeyondHoldLeash =>
-            HoldAnchorDistance > HoldLeash && Time.time >= holdReturnStartTime + MaxHoldReturnTime * 2f;
+            HoldAnchorDistance > HoldLeash && Time.time >= holdReturnStartTime + HoldReturnTimeout * 2f;
+
+        // 지형 자리를 잡는다. 명령의 자리처럼 지키되, 놓는 것은 TerrainPart가 정한다.
+        public void SetTerrainAnchor(Vector3 spot)
+        {
+            hasTerrainAnchor = true;
+            terrainAnchor = spot;
+            if (order == PartyOrder.Hold) return;
+            nextHoldRetargetTime = 0f;
+            holdReturning = false;
+            holdReturnStartTime = -999f;
+        }
+
+        public void ClearTerrainAnchor()
+        {
+            if (!hasTerrainAnchor) return;
+            hasTerrainAnchor = false;
+            // 진형 유지 명령 중이 아니면 돌아가던 것도 함께 접는다(명령의 자리는 명령이 따로 쥐고 있다).
+            if (order == PartyOrder.Hold) return;
+            holdReturning = false;
+            holdReturnStartTime = -999f;
+        }
 
         public void SetReturningToHoldAnchor(bool returning)
         {
@@ -151,6 +193,8 @@ public partial class UnitController
         {
             order = PartyOrder.Engage;
             anchor = Vector3.zero;
+            hasTerrainAnchor = false;
+            terrainAnchor = Vector3.zero;
             focus = TargetRef.None;
             focusPending = false;
             nextHoldRetargetTime = 0f;
@@ -212,7 +256,7 @@ public partial class UnitController
         public bool IsBlockingRetarget(TargetRef candidate)
         {
             if (focus.IsAlive && u.CurrentTarget == focus && candidate != focus) return true;
-            if (order == PartyOrder.Hold && candidate.Exists && !IsWithinStrikeReach(candidate.Position)) return true;
+            if (IsHoldingPosition && candidate.Exists && !IsWithinStrikeReach(candidate.Position)) return true;
             return false;
         }
 

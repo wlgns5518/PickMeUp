@@ -64,7 +64,8 @@ public static class UnitBehaviorTree
         BTSelector<UnitController> combat = new BTSelector<UnitController>(unit, true,
             // 진형 유지 명령. 손 닿는 적이 없으면 자리를 지키고, 있으면 아래 교전이 그 자리에서 받는다.
             // 교전보다 위에 두는 이유는 "쫓아 나가는 것"을 막기 위해서다 — 아래로 내리면 추격이 먼저 잡힌다.
-            Guard(unit, () => unit.IsHoldOrdered && ShouldKeepHoldPosition(unit, engage), new HoldPositionBehavior(unit)),
+            // 스스로 고른 지형 자리(벽을 등진 자리·길목, 11층부터)도 같은 가지로 지킨다.
+            Guard(unit, () => unit.IsHoldingPosition && ShouldKeepHoldPosition(unit, engage), new HoldPositionBehavior(unit)),
 
             // 겨눌 상대가 있으면 싸운다.
             Guard(unit, () => HasEngagement(unit, engage), engage),
@@ -294,9 +295,9 @@ public static class UnitBehaviorTree
     // CanLeapAttack이 "사거리 안이면 거짓"이므로 아래 공격 가지와 겹치지 않는다.
     private static bool WantsLeapAttack(UnitController unit)
     {
-        // 덤벼드는 것은 자리를 떠나는 것이다. 진형을 지키는 중에는 뛰어나가지 않는다.
+        // 덤벼드는 것은 자리를 떠나는 것이다. 진형·지형 자리를 지키는 중에는 뛰어나가지 않는다.
         // 칼을 든 적 앞에서 몸을 띄우지도 않는다(도약은 끝까지 거둘 수 없다).
-        return !unit.IsAttackAnimationLocked && !unit.IsHoldOrdered && !unit.IsHoldingForGuard && unit.CanLeapAttack();
+        return !unit.IsAttackAnimationLocked && !unit.IsHoldingPosition && !unit.IsHoldingForGuard && unit.CanLeapAttack();
     }
 
     // 암살자는 콤보를 한 바퀴 돌리고 나면 일단 빠진다. 그 사이에 은신이 걸리고,

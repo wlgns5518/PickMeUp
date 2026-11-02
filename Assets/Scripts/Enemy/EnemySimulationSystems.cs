@@ -366,16 +366,22 @@ public partial struct EnemyPatrolSystem : ISystem
         var job = new PatrolJob
         {
             allies = bridge.allies.AsArray(),
+            groundClearance = bridge.groundClearance,
             now = SystemAPI.Time.ElapsedTime,
         };
 
         state.Dependency = job.ScheduleParallel(state.Dependency);
     }
 
+    // 정찰 지점을 다시 고르는 횟수와, 지점이 벽에서 떨어져 있어야 하는 거리(BattleGround, 11층부터).
+    private const int WaypointAttempts = 8;
+    private const float WaypointClearance = 1f;
+
     [BurstCompile]
     private partial struct PatrolJob : IJobEntity
     {
         [ReadOnly] public NativeArray<EnemyWorldBridge.AllyState> allies;
+        [ReadOnly] public NativeArray<float> groundClearance;
         public double now;
 
         private void Execute(Entity entity, ref EnemyTactics tactics, in EnemyTarget target, in EnemyStats stats,
@@ -440,19 +446,36 @@ public partial struct EnemyPatrolSystem : ISystem
 
             if (now < tactics.nextWaypointTime) return;
 
-            PickWaypoint(ref tactics, stats);
+            PickWaypoint(ref tactics, stats, transform.Position);
         }
 
         // 마지막으로 본 자리를 중심으로 반경 안의 한 점을 고른다. 고를 때마다 반경을 넓혀, 같은 자리만
         // 맴돌지 않고 결국 전장 전체를 덮는다. 전장 밖으로는 나가지 않는다(정찰 절 주석).
-        private void PickWaypoint(ref EnemyTactics tactics, in EnemyStats stats)
+        private void PickWaypoint(ref EnemyTactics tactics, in EnemyStats stats, float3 from)
         {
             float radius = math.max(1f, tactics.searchRadius);
-            float2 offset = tactics.random.NextFloat2Direction() * (math.sqrt(tactics.random.NextFloat()) * radius);
-
             float3 extent = new float3(stats.patrolHalfExtents.x, 0f, stats.patrolHalfExtents.y);
-            float3 point = tactics.searchCenter + new float3(offset.x, 0f, offset.y);
-            point = math.clamp(point, stats.patrolCenter - extent, stats.patrolCenter + extent);
+            float3 point = tactics.searchCenter;
+
+            // 건물이 선 전장(11층부터)에서는 건물 속에 찍힌 지점을 다시 고르고, 가능하면 벽에 가리지 않은 곳을 고른다 —
+            // 정찰에는 흐름장이 없어 곧장 걸어가므로, 벽 너머 지점이면 15초 동안 벽을 타고 돌다 포기한다.
+            // 몇 번 만에 못 찾으면 서 있을 수 있는 마지막 것을 쓴다.
+            bool grounded = BattleGround.IsBuilt(groundClearance);
+            float3 standable = float3.zero;
+            bool hasStandable = false;
+            for (int attempt = 0; attempt < (grounded ? WaypointAttempts : 1); attempt++)
+            {
+                float2 offset = tactics.random.NextFloat2Direction() * (math.sqrt(tactics.random.NextFloat()) * radius);
+                point = tactics.searchCenter + new float3(offset.x, 0f, offset.y);
+                point = math.clamp(point, stats.patrolCenter - extent, stats.patrolCenter + extent);
+                if (!grounded) break;
+
+                if (BattleGround.SampleClearance(groundClearance, point) <= WaypointClearance) continue;
+                standable = point;
+                hasStandable = true;
+                if (BattleGround.IsSegmentClear(groundClearance, from, point, 0.3f)) break;
+            }
+            if (grounded && hasStandable) point = standable;
 
             tactics.waypoint = point;
             tactics.hasWaypoint = true;
@@ -662,6 +685,7 @@ public partial struct EnemyCombatSystem : ISystem
             allies = bridge.allies.AsArray(),
             hits = bridge.hitsOnAllies.AsParallelWriter(),
             clipRanges = clipRanges,
+            groundClearance = bridge.groundClearance,
             emotions = SystemAPI.GetComponentLookup<EnemyEmotion>(true),
             emotionProfiles = SystemAPI.GetComponentLookup<EnemyEmotionProfile>(true),
             deltaTime = SystemAPI.Time.DeltaTime,
@@ -680,6 +704,9 @@ public partial struct EnemyCombatSystem : ISystem
         // 여기서는 z(클립을 한 칸 미는 데)와 w(재생 배속을 맞추는 데)를 쓴다. 줄 번호 둘은
         // 그리는 쪽이 읽는다(EnemyAnimationRenderSystem).
         [ReadOnly] public NativeArray<float4> clipRanges;
+
+        // 전장 바닥의 여유(BattleGround). 도약이 벽·바리케이드를 넘지 않게 사이를 짚어 본다.
+        [ReadOnly] public NativeArray<float> groundClearance;
 
         // 감정(EnemyEmotion). 붙어 있지 않은 개체(테스트, 굽기 전의 원본)도 있어서 질의에 넣지 않고 찾아 읽는다.
         [ReadOnly] public ComponentLookup<EnemyEmotion> emotions;
@@ -840,8 +867,11 @@ public partial struct EnemyCombatSystem : ISystem
             // 아직 닿지 않지만 한 번에 붙을 수 있는 거리다 — 걸어 들어가는 대신 덤벼든다.
             // 이미 닿는 상대에게는 뛰지 않는다(위 inRange가 먼저 걸린다).
             // 곁에서 틈을 보던 놈이 자리를 받는 순간이 대개 여기다 — 한 걸음 떨어져 있었으므로.
+            // 바리케이드를 뛰어넘지는 않는다 — 그 길은 걸어서 돌아가야 한다. 이게 없으면 길목이 도약 한 번에
+            // 무의미해진다(창 든 아군이 울타리 너머로 찌르는 이점도 함께 사라진다).
             if (mayStrike && !inRange && stats.leapRange > 0f && stats.leapDuration > 0f &&
-                distance <= stats.leapRange && now >= action.nextLeapTime)
+                distance <= stats.leapRange && now >= action.nextLeapTime &&
+                BattleGround.IsSegmentClear(groundClearance, transform.Position, ally.position, 0f))
             {
                 float3 toAlly = Flat(ally.position - transform.Position);
                 float flat = math.length(toAlly);
@@ -1440,6 +1470,8 @@ public partial struct EnemyMovementSystem : ISystem
             hash = hash.map,
             emotions = SystemAPI.GetComponentLookup<EnemyEmotion>(true),
             emotionProfiles = SystemAPI.GetComponentLookup<EnemyEmotionProfile>(true),
+            groundClearance = bridge.groundClearance,
+            groundFlow = bridge.groundFlow,
             cellSize = hash.cellSize,
             deltaTime = SystemAPI.Time.DeltaTime,
             now = SystemAPI.Time.ElapsedTime,
@@ -1448,6 +1480,19 @@ public partial struct EnemyMovementSystem : ISystem
         state.Dependency = job.ScheduleParallel(state.Dependency);
     }
 
+    // ---------------------------------------------------------------- 지형지물(BattleGround, 11층부터)
+
+    // 이보다 가까우면 흐름장 대신 곧장 다가간다 — 둘 사이가 트여 있을 때만.
+    // 흐름장은 1m 칸이라 코앞에서는 칸 중심을 향해 비껴 걷는다.
+    private const float DirectApproachDistance = 3f;
+
+    // 막힌 땅이 이보다 가까우면 그쪽으로 파고드는 걸음을 벽을 따라 미끄러지는 걸음으로 바꾼다.
+    private const float ObstacleAvoidRange = 1.2f;
+
+    // 표적 없이 파티 쪽으로 진격하는 걸음(달리기 속도에 대한 비율). 정찰 걸음(1.5m/s)이면 문까지 30m에
+    // 20초가 걸려 싸움이 늘어지고, 달리기로 오면 행군이 아니라 돌격으로 보인다.
+    private const float AdvanceSpeedRatio = 0.6f;
+
     [BurstCompile]
     private partial struct SteerJob : IJobEntity
     {
@@ -1455,6 +1500,8 @@ public partial struct EnemyMovementSystem : ISystem
         [ReadOnly] public NativeParallelMultiHashMap<int, EnemyNeighbor> hash;
         [ReadOnly] public ComponentLookup<EnemyEmotion> emotions;
         [ReadOnly] public ComponentLookup<EnemyEmotionProfile> emotionProfiles;
+        [ReadOnly] public NativeArray<float> groundClearance;
+        [ReadOnly] public NativeArray<float> groundFlow;
         public float cellSize;
         public float deltaTime;
         public double now;
@@ -1490,11 +1537,30 @@ public partial struct EnemyMovementSystem : ISystem
 
             float3 desired = float3.zero;
 
+            // 전장에 건물이 섰는가(11층부터, BattleTerrain). 아니면 아래 지형 처리는 전부 건너뛴다.
+            bool grounded = BattleGround.IsBuilt(groundClearance);
+
             // 표적 없이 정찰 지점을 향하는 중인가(EnemyPatrolSystem). 걸음이 느려지고, 가는 쪽을 본다.
             bool patrolling = !hasTarget && tactics.patrolling && tactics.hasWaypoint;
             float speedLimit = patrolling && stats.patrolSpeed > 0f ? math.min(stats.patrolSpeed, stats.moveSpeed) : stats.moveSpeed;
 
-            if (!holdsGround && patrolling)
+            // 건물이 선 전장(11층부터)에서는 정찰 대신 진격한다 — 가장 가까운 아군의 흐름장을 따라 문·골목을 지나
+            // 파티 쪽으로 행군한다. 파티가 길목을 막고 기다리는 판이라(TerrainPart의 방어 진지), 적이 태어난 자리
+            // 둘레만 뒤지면 싸움이 시작되지 않는다. 탐지 거리에 들면 표적 시스템이 평소대로 잡는다.
+            bool advancing = false;
+            if (!holdsGround && patrolling && grounded)
+            {
+                int nearest = NearestAlly(transform.Position);
+                if (nearest >= 0 &&
+                    BattleGround.TryFlowDirection(groundFlow, nearest, transform.Position, out float3 march))
+                {
+                    desired += march;
+                    speedLimit = math.max(speedLimit, stats.moveSpeed * AdvanceSpeedRatio);
+                    advancing = true;
+                }
+            }
+
+            if (!holdsGround && patrolling && !advancing)
             {
                 float3 toWaypoint = tactics.waypoint - transform.Position;
                 toWaypoint.y = 0f;
@@ -1529,7 +1595,23 @@ public partial struct EnemyMovementSystem : ISystem
                     // 남아 0.5m를 더 미끄러지며 섰고, 그 그림이 "상대 코앞까지 쏜살같이 달려와 박힌다"였다.
                     // 게임오브젝트 고블린 시절에는 NavMeshAgent의 자동 감속이 이 일을 했다.
                     float arrival = math.saturate((distance - standoff) / ArrivalSlowDistance(stats));
-                    desired += toTarget / distance * math.max(MinArrivalFactor, arrival);
+                    float3 heading = toTarget / distance;
+
+                    // 길을 찾는다. 멀거나 사이에 건물이 있으면 흐름장이 가리키는 쪽으로 간다 — 벽을 돌아
+                    // 길목으로 몰린다. 트인 곳에서 코앞이면 곧장 붙는다.
+                    if (grounded)
+                    {
+                        bool direct = distance <= DirectApproachDistance &&
+                                      BattleGround.IsSegmentClear(groundClearance, transform.Position,
+                                          allies[target.allyIndex].position, 0f);
+                        if (!direct &&
+                            BattleGround.TryFlowDirection(groundFlow, target.allyIndex, transform.Position, out float3 flow))
+                        {
+                            heading = flow;
+                        }
+                    }
+
+                    desired += heading * math.max(MinArrivalFactor, arrival);
                 }
             }
 
@@ -1612,6 +1694,15 @@ public partial struct EnemyMovementSystem : ISystem
             float moveSpeed = speedLimit * motion.SlowFactor(now) * impact.FlinchFactor(now) *
                               EnemyEmotion.StatMultiplier(entity, emotions, emotionProfiles);
 
+            // 벽 쪽으로 파고드는 걸음을 벽을 따라 미끄러지는 걸음으로 바꾼다.
+            if (grounded && !holdsGround)
+            {
+                float3 goal = hasTarget ? toTarget
+                    : patrolling && !advancing ? tactics.waypoint - transform.Position
+                    : desired;
+                desired = SlideAlongObstacles(entity, transform.Position, desired, goal);
+            }
+
             // 속도는 미는 힘의 크기를 따른다(1에서 자른다).
             //
             // 예전에는 방향만 남기고(normalize) 늘 최고 속도를 냈다. 그래서 표적 쪽으로 밀 일이 없는 놈
@@ -1672,7 +1763,70 @@ public partial struct EnemyMovementSystem : ISystem
             // 무리가 한쪽으로 흐르는 일이 없다.
             transform.Position += correction;
 
+            if (grounded) PushOutOfObstacles(ref transform, ref motion, stats, dt);
+
             TickFacing(ref transform, motion, stats, action, hasTarget, toTarget, dt);
+        }
+
+        // 흐름장을 들고 있는 아군 중 가장 가까운 쪽(평면 거리). 진격할 방향을 고르는 데만 쓴다.
+        private int NearestAlly(float3 position)
+        {
+            int best = -1;
+            float bestSqr = float.MaxValue;
+            int count = math.min(allies.Length, BattleGround.MaxFlowTargets);
+            for (int i = 0; i < count; i++)
+            {
+                if (allies[i].alive == 0) continue;
+                float3 d = allies[i].position - position;
+                float sqr = d.x * d.x + d.z * d.z;
+                if (sqr >= bestSqr) continue;
+                bestSqr = sqr;
+                best = i;
+            }
+            return best;
+        }
+
+        // 막힌 땅(건물·전장 밖) 쪽으로 파고드는 성분을 벽을 따라 도는 성분으로 바꾼다.
+        //
+        // 흐름장이 큰 길은 잡아 주지만 1m 칸이라 건물 모서리를 스치며 간다. 그대로 두면 모서리마다
+        // 파고들었다 밀려나기를 되풀이하며 떤다. 파고드는 만큼을 지우고 같은 크기로 옆으로 돌린다 —
+        // 가려던 곳(goal)에 더 가까운 옆으로. 벽에 수직으로 박혀 옆이 둘 다 같으면 개체마다 한쪽으로 정해 둔다.
+        private float3 SlideAlongObstacles(Entity entity, float3 position, float3 desired, float3 goal)
+        {
+            float clearance = BattleGround.SampleClearance(groundClearance, position);
+            if (clearance >= ObstacleAvoidRange) return desired;
+
+            float3 normal = BattleGround.ClearanceNormal(groundClearance, position);
+            if (math.lengthsq(normal) <= 0f) return desired;
+
+            float into = -math.dot(desired, normal);
+            if (into <= 0f) return desired;
+
+            float weight = math.saturate(1f - clearance / ObstacleAvoidRange);
+            float3 tangent = new float3(normal.z, 0f, -normal.x);
+            float side = math.dot(tangent, goal);
+            if (math.abs(side) < 0.001f) side = (entity.Index & 1) == 0 ? 1f : -1f;
+
+            return desired + (normal + tangent * math.sign(side)) * (into * weight);
+        }
+
+        // 그래도 몸이 벽에 박혀 있으면 밖으로 밀어낸다. 넉백·도약·겹침 풀기가 벽 쪽으로 밀어 넣었거나,
+        // 무리에 떠밀려 모서리를 파고들었을 때다. 기준은 몸 둘레(반지름)다 — 중심만 보면 몸 반쪽이 벽 속에 선다.
+        // 한 프레임에 달리기 속도까지만 민다 — 깊이 들어가 있어도 순간이동이 아니라 걸어 나오는 것으로 보이게.
+        private void PushOutOfObstacles(ref LocalTransform transform, ref EnemyMotion motion, in EnemyStats stats, float dt)
+        {
+            float clearance = BattleGround.SampleClearance(groundClearance, transform.Position);
+            float depth = stats.radius - clearance;
+            if (depth <= 0f) return;
+
+            float3 normal = BattleGround.ClearanceNormal(groundClearance, transform.Position);
+            if (math.lengthsq(normal) <= 0f) return;
+
+            float push = math.min(depth, math.max(stats.moveSpeed, 2f) * dt);
+            transform.Position += normal * push;
+
+            float into = -math.dot(motion.velocity, normal);
+            if (into > 0f) motion.velocity += normal * into;
         }
 
         // 어느 쪽을 볼 것인가.

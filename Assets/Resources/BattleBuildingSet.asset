@@ -1,0 +1,47 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 623a6d05a5e441940bb52acb8dc56f15, type: 3}
+  m_Name: BattleBuildingSet
+  m_EditorClassIdentifier: PickMeUp::BattleBuildingSet
+  wallSegment: {fileID: 456414066383447404, guid: 5537c2a8d3fb38e478eb972b937bc37c,
+    type: 3}
+  wallTower: {fileID: 7023048657203391679, guid: 4673f144b52712f4b8882c5b7873b089,
+    type: 3}
+  wallScale: 0.35
+  houses:
+  - {fileID: 108558, guid: bdb2f4770fc4d6c4ab75f778ea426367, type: 3}
+  - {fileID: 169268, guid: 86fee95da60b3e447a5446d0481f297e, type: 3}
+  - {fileID: 165828, guid: f3afbc3e5d4b65b478c18ddb73235d7b, type: 3}
+  - {fileID: 169814, guid: be4701cf5a2ebb248ab252cb593f7108, type: 3}
+  - {fileID: 100186, guid: 22b16cdfeeca942428d0d1458f6699f9, type: 3}
+  - {fileID: 130602, guid: 2718b3df59a74a847a5ba6fa36f726eb, type: 3}
+  - {fileID: 121702, guid: 5c1249db4bbf22f4381f8012cb58103d, type: 3}
+  - {fileID: 195994, guid: 7928660b8a42b334bb3914f3609cb373, type: 3}
+  barricades:
+  - {fileID: 158224, guid: f043bd7187b88ce4f8b4bb0c06411ed8, type: 3}
+  - {fileID: 126492, guid: 53e653d8083a62a4cbfe56076878e075, type: 3}
+  - {fileID: 189180, guid: 120d67521fdef474eafcdbb01d41a1b2, type: 3}
+  - {fileID: 181726, guid: c4b0e7c121b2b594290db52a13ae8940, type: 3}
+  - {fileID: 180688, guid: 405a4e8a192b51046b23af3a7c35ae62, type: 3}
+  - {fileID: 140950, guid: 093bf6390d9509648a188503feb0dc79, type: 3}
+  - {fileID: 139260, guid: 6e454738044fc1c41b643593002d5e1a, type: 3}
+  - {fileID: 156570, guid: bea17cc144b90b6419ed4ff038d2fb46, type: 3}
+  - {fileID: 185346, guid: da06ef9c063b2644eb3f7ed4b3178aab, type: 3}
+  - {fileID: 141058, guid: 571b59bec11db3d4ba1e35f0623c74b7, type: 3}
+  - {fileID: 4969653166334047848, guid: 4d512d6a427333447a791733c2b154e4, type: 3}
+  fence: {fileID: 101744, guid: 2cfd54bf0c46b2b4ea3a18a8fc902902, type: 3}
+  pillars:
+  - {fileID: 5976246016886449333, guid: 3e8d78f3a50596949ad7f25ded2eb013, type: 3}
+  - {fileID: 4052132861325455453, guid: 6369707e264606d44b30d3f97dee11c0, type: 3}
+  - {fileID: 3527626544475643117, guid: 73f2676553575ec4cbfb1ab3e0aa85d1, type: 3}
+  lights:
+  - {fileID: 8481310530743454929, guid: 27b2c5f416bfba84b967322c6e43c7fa, type: 3}

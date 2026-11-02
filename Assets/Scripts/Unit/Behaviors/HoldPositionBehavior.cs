@@ -1,4 +1,5 @@
 // 지휘관의 진형 유지 명령. 지킬 자리에 서서 손 닿는 적만 상대한다.
+// 스스로 고른 지형 자리(벽에 등을 댄 자리·길목, TerrainPart)도 같은 동작으로 지킨다.
 //
 // 이 동작은 싸우지 않는다. 칼이 닿는 적이 생기면 트리의 가지 조건이 뒤집혀 평소의 교전
 // (방어·공격·영창)이 그 자리에서 받는다(UnitBehaviorTree.ShouldKeepHoldPosition). 여기서 하는 것은
@@ -44,7 +45,7 @@ public class HoldPositionBehavior : UnitBehavior
             }
 
             bool run = distance > unit.RunDistance;
-            unit.MoveTo(unit.CommandAnchor, run ? unit.Stats.runSpeed : unit.Stats.walkSpeed, 0.1f);
+            unit.MoveTo(unit.HoldAnchor, run ? unit.Stats.runSpeed : unit.Stats.walkSpeed, 0.1f);
             unit.SetMoveAnimationFromGroundSpeed(run);
             return BTStatus.Running;
         }

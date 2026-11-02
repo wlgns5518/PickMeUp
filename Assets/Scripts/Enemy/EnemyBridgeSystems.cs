@@ -33,6 +33,9 @@ public partial class EnemyBridgeInputSystem : SystemBase
         Dependency.Complete();
 
         EnemyWorldBridge.PublishAllies(UnitRegistry.Allies);
+
+        // 움직인 아군 한 명분의 흐름장을 다시 구한다(BattleGround 주석). 잡이 전부 끝난 지금이 배열을 쓸 수 있는 때다.
+        BattleGround.UpdateFlowFields(EnemyWorldBridge.AllyStates, (float)World.Time.ElapsedTime);
     }
 }
 

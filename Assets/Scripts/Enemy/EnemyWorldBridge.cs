@@ -181,6 +181,10 @@ public static class EnemyWorldBridge
         public NativeQueue<HitOnEnemy> hitsOnEnemies;
         public NativeQueue<EnemyKill> kills;
         public NativeQueue<BloodOnEnemy> bloodOnEnemies;
+
+        // 전장 바닥(BattleGround). 여유·흐름장. 굽지 않았으면(1~10층) 막힘 없음이다.
+        public NativeArray<float> groundClearance;
+        public NativeArray<float> groundFlow;
     }
 
     public static BridgeData AsComponent() => new BridgeData
@@ -191,6 +195,8 @@ public static class EnemyWorldBridge
         hitsOnEnemies = HitsOnEnemies,
         kills = Kills,
         bloodOnEnemies = BloodOnEnemies,
+        groundClearance = BattleGround.Clearance,
+        groundFlow = BattleGround.Flow,
     };
 
     // ---------------------------------------------------------------- 컨테이너
@@ -233,6 +239,7 @@ public static class EnemyWorldBridge
         HitsOnEnemies = new NativeQueue<HitOnEnemy>(Allocator.Persistent);
         Kills = new NativeQueue<EnemyKill>(Allocator.Persistent);
         BloodOnEnemies = new NativeQueue<BloodOnEnemy>(Allocator.Persistent);
+        BattleGround.Allocate();
         ClearSnapshotLookups();
         IsReady = true;
     }
@@ -261,6 +268,7 @@ public static class EnemyWorldBridge
         if (HitsOnEnemies.IsCreated) HitsOnEnemies.Dispose();
         if (Kills.IsCreated) Kills.Dispose();
         if (BloodOnEnemies.IsCreated) BloodOnEnemies.Dispose();
+        BattleGround.Dispose();
 
         AllyByIndex.Clear();
         IndexByAlly.Clear();
